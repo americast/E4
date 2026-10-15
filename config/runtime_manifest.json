@@ -1,0 +1,14 @@
+{
+  "runtime": "llama.cpp",
+  "source": "https://github.com/ggml-org/llama.cpp",
+  "release_tag": "v0.6.0",
+  "revision": "d81235049384534c167caea52b85a694f6103d14",
+  "tree": "a47b4d437e9769fc34c0116371412b5af5de67d1",
+  "build": {
+    "cmake": "3.22 or newer",
+    "cuda_toolkit": "12.3",
+    "cuda_architecture": "70",
+    "cmake_options": ["GGML_CUDA=ON", "CMAKE_CUDA_ARCHITECTURES=70", "CMAKE_BUILD_TYPE=Release"],
+    "targets": ["llama-server", "llama-cli"]
+  }
+}

@@ -1,0 +1,11 @@
+.venv/
+data/models/
+third_party/llama.cpp/
+third_party/OpenRCA/
+third_party/python_deps/
+artifacts/**
+!artifacts/.gitkeep
+data/raw/
+data/prepared/
+__pycache__/
+*.py[cod]

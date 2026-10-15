@@ -1,0 +1,14 @@
+{
+  "base_url": "http://127.0.0.1:8080",
+  "model_alias": "e4-local",
+  "model_path": "data/models/gemma-4-31B_q4_0-it.gguf",
+  "context_tokens": 16384,
+  "max_generation_tokens": 2048,
+  "reasoning_budget": 512,
+  "request_timeout_seconds": 600,
+  "model_init_timeout_seconds": 1800,
+  "temperature": 1.0,
+  "top_p": 0.95,
+  "top_k": 64,
+  "seed": 42
+}
