@@ -1,0 +1,26 @@
+{
+  "official_repository": "https://github.com/microsoft/OpenRCA",
+  "official_repository_revision": "c121a483a5a91dbae50708e5942c42a6609098b2",
+  "official_telemetry_archive": {
+    "provider": "Google Drive",
+    "folder_id": "1wGiEnu4OkWrjPxfx5ZTROnU37-5UDoPM",
+    "reported_quota_failure_item_id": "1cyOKpqyAP4fy-QiJ6a_cKuwR7D46zyVe",
+    "status": "download quota was reported by the source host during this run"
+  },
+  "metadata_mirror": {
+    "repository": "tracer-cloud/opensre",
+    "revision": "07714872ea2cec77c13f9dec17a688e9df9621d1",
+    "note": "Used as a working mirror after the official archive quota response. Byte-for-byte identity with the official Google Drive archive has not been independently verified."
+  },
+  "metadata_sha256": {
+    "record.csv": "a98aa504db6604d6008dc815d3a30babb96caedc199bffcaf70b6677da2f65e2",
+    "query.csv": "c2726ea18183a05c83dfb22796d20cb7a371ce4db51ce3da3fda3f6e793735b5"
+  },
+  "telecom_deployment_mapping": {
+    "file": "data/raw/downloads/AppTelecomDeploymentList.xlsx",
+    "official_google_drive_file_id": "14j_z6K5vqwY9sQvkPsygksbL7Dm4bpiR",
+    "mirror_path": "AppTelecomDeploymentList.xlsx",
+    "sha256": "6af1fac2779fbbe4c5767f6f282a7c753c3f500db7d78eefadd9e53508e1be35",
+    "note": "Downloaded mapping workbook from Google Drive; its SHA-256 matches the pinned mirror copy. Workbook merged-cell expansion was reviewed against the 61-entity catalog; blank database hosts remain unknown."
+  }
+}

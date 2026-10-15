@@ -1,0 +1,163 @@
+{
+  "dataset": "OpenRCA Telecom",
+  "source": {
+    "official_repository": "https://github.com/microsoft/OpenRCA",
+    "official_repository_revision": "c121a483a5a91dbae50708e5942c42a6609098b2",
+    "metadata_mirror": {
+      "repository": "tracer-cloud/opensre",
+      "revision": "07714872ea2cec77c13f9dec17a688e9df9621d1",
+      "note": "Used as a working mirror after the official archive quota response. Byte-for-byte identity with the official Google Drive archive has not been independently verified."
+    },
+    "metadata_file_sha256": {
+      "record.csv": "a98aa504db6604d6008dc815d3a30babb96caedc199bffcaf70b6677da2f65e2",
+      "query.csv": "c2726ea18183a05c83dfb22796d20cb7a371ce4db51ce3da3fda3f6e793735b5"
+    }
+  },
+  "selection": {
+    "seed": 42,
+    "candidate_incidents": 51,
+    "eligible_incidents_after_metric_coverage": 46,
+    "stratification": "ground-truth reason set; exactly 2 scored incidents per each of 5 strata",
+    "scored_count": 10,
+    "development_count": 2,
+    "scored_ids": [
+      "telecom-20200411T0130-utc8",
+      "telecom-20200411T0530-utc8",
+      "telecom-20200522T0030-utc8",
+      "telecom-20200523T0030-utc8",
+      "telecom-20200523T0330-utc8",
+      "telecom-20200525T0430-utc8",
+      "telecom-20200528T0330-utc8",
+      "telecom-20200530T0500-utc8",
+      "telecom-20200531T0300-utc8",
+      "telecom-20200531T0330-utc8"
+    ],
+    "development_ids": [
+      "telecom-20200523T0430-utc8",
+      "telecom-20200529T0230-utc8"
+    ],
+    "development_overlap_policy": "exclude any development [alert_start - 30m, alert_end) interval that overlaps a scored interval; half-open endpoint adjacency is allowed"
+  },
+  "metric_app_eligibility": {
+    "baseline": "[alert_start - 30m, alert_start)",
+    "alert": "[alert_start, alert_end)",
+    "minimum_unique_timestamps_per_window": 24,
+    "coverage_uses_unique_timestamps": true,
+    "repeated_rows_preserved": true
+  },
+  "timezone": "Asia/Shanghai",
+  "record_timestamp_unit": "seconds",
+  "telemetry_timestamp_unit": "milliseconds",
+  "alert_kpi": {
+    "status": "No fixed KPI is supplied by the OpenRCA Telecom query text. The alert contains only the supplied 30-minute failure window; KPI selection is deferred to telemetry-backed development analysis.",
+    "alert_construction": "normalized from the supplied query instruction time window; scoring_points omitted"
+  },
+  "prepared_public_manifest_sha256": {
+    "scored": "c055f0be18ab92e3ed9291d11653d07cd0a1440c20e2f22682514ab12c7d2a63",
+    "dev": "13657075f56664758e81b985aa87373396bc4bad29c8ddc18c35a972c5870acf"
+  },
+  "public_manifest_paths": {
+    "scored": "data/prepared/telecom/scored_incidents.jsonl",
+    "dev": "data/prepared/telecom/dev_incidents.jsonl"
+  },
+  "scored_cases": [
+    {
+      "incident_id": "telecom-20200411T0130-utc8",
+      "alert_window_start_local": "2020-04-11T01:30:00+08:00",
+      "alert_window_end_local": "2020-04-11T02:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-04-11 01:30:00 to 2020-04-11 02:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_04_11",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200411T0530-utc8",
+      "alert_window_start_local": "2020-04-11T05:30:00+08:00",
+      "alert_window_end_local": "2020-04-11T06:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-04-11 05:30:00 to 2020-04-11 06:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_04_11",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200522T0030-utc8",
+      "alert_window_start_local": "2020-05-22T00:30:00+08:00",
+      "alert_window_end_local": "2020-05-22T01:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-22 00:30:00 to 2020-05-22 01:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_22",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200523T0030-utc8",
+      "alert_window_start_local": "2020-05-23T00:30:00+08:00",
+      "alert_window_end_local": "2020-05-23T01:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-23 00:30:00 to 2020-05-23 01:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_23",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200523T0330-utc8",
+      "alert_window_start_local": "2020-05-23T03:30:00+08:00",
+      "alert_window_end_local": "2020-05-23T04:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-23 03:30:00 to 2020-05-23 04:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_23",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200525T0430-utc8",
+      "alert_window_start_local": "2020-05-25T04:30:00+08:00",
+      "alert_window_end_local": "2020-05-25T05:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-25 04:30:00 to 2020-05-25 05:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_25",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200528T0330-utc8",
+      "alert_window_start_local": "2020-05-28T03:30:00+08:00",
+      "alert_window_end_local": "2020-05-28T04:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-28 03:30:00 to 2020-05-28 04:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_28",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200530T0500-utc8",
+      "alert_window_start_local": "2020-05-30T05:00:00+08:00",
+      "alert_window_end_local": "2020-05-30T05:30:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-30 05:00:00 to 2020-05-30 05:30:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_30",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200531T0300-utc8",
+      "alert_window_start_local": "2020-05-31T03:00:00+08:00",
+      "alert_window_end_local": "2020-05-31T03:30:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-31 03:00:00 to 2020-05-31 03:30:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_31",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200531T0330-utc8",
+      "alert_window_start_local": "2020-05-31T03:30:00+08:00",
+      "alert_window_end_local": "2020-05-31T04:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-31 03:30:00 to 2020-05-31 04:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_31",
+      "timezone": "Asia/Shanghai"
+    }
+  ],
+  "development_cases": [
+    {
+      "incident_id": "telecom-20200523T0430-utc8",
+      "alert_window_start_local": "2020-05-23T04:30:00+08:00",
+      "alert_window_end_local": "2020-05-23T05:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-23 04:30:00 to 2020-05-23 05:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_23",
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "incident_id": "telecom-20200529T0230-utc8",
+      "alert_window_start_local": "2020-05-29T02:30:00+08:00",
+      "alert_window_end_local": "2020-05-29T03:00:00+08:00",
+      "alert_text": "A failure was reported in the Telecom system during the interval 2020-05-29 02:30:00 to 2020-05-29 03:00:00 (UTC+8). The affected component and underlying cause are unknown. Diagnose the incident using the available telemetry.",
+      "telemetry_date": "2020_05_29",
+      "timezone": "Asia/Shanghai"
+    }
+  ]
+}
