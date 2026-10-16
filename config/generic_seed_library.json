@@ -1,0 +1,496 @@
+{
+  "dag_depth_max": 12,
+  "dag_nodes_max": 40,
+  "examples": {
+    "combined": {
+      "nodes": [
+        {
+          "bindings": {},
+          "id": "data",
+          "inputs": {},
+          "operator": "case.telemetry",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "metrics_reference",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "metrics.aggregate",
+          "params": {
+            "window": "reference"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "metrics_alert",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "metrics.aggregate",
+          "params": {
+            "window": "alert"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "traces_reference",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "traces.aggregate",
+          "params": {
+            "window": "reference"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "traces_alert",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "traces.aggregate",
+          "params": {
+            "window": "alert"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "candidates",
+          "inputs": {
+            "aggregates": [
+              "metrics_reference",
+              "metrics_alert",
+              "traces_reference",
+              "traces_alert"
+            ],
+            "data": "data"
+          },
+          "operator": "candidates.generate",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "metric_score",
+          "inputs": {
+            "alert": "metrics_alert",
+            "candidates": "candidates",
+            "reference": "metrics_reference"
+          },
+          "operator": "metrics.contrast",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "error_score",
+          "inputs": {
+            "alert": "traces_alert",
+            "candidates": "candidates",
+            "reference": "traces_reference"
+          },
+          "operator": "traces.error_contrast",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "latency_score",
+          "inputs": {
+            "alert": "traces_alert",
+            "candidates": "candidates",
+            "reference": "traces_reference"
+          },
+          "operator": "traces.latency_contrast",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "flow_score",
+          "inputs": {
+            "candidates": "candidates",
+            "data": "data"
+          },
+          "operator": "flow.conditional_contribution",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "dependency_score",
+          "inputs": {
+            "candidates": "candidates",
+            "data": "data"
+          },
+          "operator": "dependencies.propagation",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "rank",
+          "inputs": {
+            "scores": [
+              "metric_score",
+              "error_score",
+              "latency_score",
+              "flow_score",
+              "dependency_score"
+            ]
+          },
+          "operator": "answers.combine",
+          "params": {},
+          "version": "1"
+        }
+      ],
+      "return": {
+        "node": "rank"
+      },
+      "schema_version": "e4-dag/1"
+    },
+    "conditional_flow": {
+      "nodes": [
+        {
+          "bindings": {},
+          "id": "data",
+          "inputs": {},
+          "operator": "case.telemetry",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "candidates",
+          "inputs": {
+            "aggregates": [],
+            "data": "data"
+          },
+          "operator": "candidates.generate",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "flow_score",
+          "inputs": {
+            "candidates": "candidates",
+            "data": "data"
+          },
+          "operator": "flow.conditional_contribution",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "rank",
+          "inputs": {
+            "scores": [
+              "flow_score"
+            ]
+          },
+          "operator": "answers.combine",
+          "params": {},
+          "version": "1"
+        }
+      ],
+      "return": {
+        "node": "rank"
+      },
+      "schema_version": "e4-dag/1"
+    },
+    "dependency": {
+      "nodes": [
+        {
+          "bindings": {},
+          "id": "data",
+          "inputs": {},
+          "operator": "case.telemetry",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "candidates",
+          "inputs": {
+            "aggregates": [],
+            "data": "data"
+          },
+          "operator": "candidates.generate",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "dependency_score",
+          "inputs": {
+            "candidates": "candidates",
+            "data": "data"
+          },
+          "operator": "dependencies.propagation",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "rank",
+          "inputs": {
+            "scores": [
+              "dependency_score"
+            ]
+          },
+          "operator": "answers.combine",
+          "params": {},
+          "version": "1"
+        }
+      ],
+      "return": {
+        "node": "rank"
+      },
+      "schema_version": "e4-dag/1"
+    },
+    "metric": {
+      "nodes": [
+        {
+          "bindings": {},
+          "id": "data",
+          "inputs": {},
+          "operator": "case.telemetry",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "metrics_reference",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "metrics.aggregate",
+          "params": {
+            "window": "reference"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "metrics_alert",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "metrics.aggregate",
+          "params": {
+            "window": "alert"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "candidates",
+          "inputs": {
+            "aggregates": [
+              "metrics_reference",
+              "metrics_alert"
+            ],
+            "data": "data"
+          },
+          "operator": "candidates.generate",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "metric_score",
+          "inputs": {
+            "alert": "metrics_alert",
+            "candidates": "candidates",
+            "reference": "metrics_reference"
+          },
+          "operator": "metrics.contrast",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "rank",
+          "inputs": {
+            "scores": [
+              "metric_score"
+            ]
+          },
+          "operator": "answers.combine",
+          "params": {},
+          "version": "1"
+        }
+      ],
+      "return": {
+        "node": "rank"
+      },
+      "schema_version": "e4-dag/1"
+    },
+    "trace_error": {
+      "nodes": [
+        {
+          "bindings": {},
+          "id": "data",
+          "inputs": {},
+          "operator": "case.telemetry",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "traces_reference",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "traces.aggregate",
+          "params": {
+            "window": "reference"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "traces_alert",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "traces.aggregate",
+          "params": {
+            "window": "alert"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "candidates",
+          "inputs": {
+            "aggregates": [
+              "traces_reference",
+              "traces_alert"
+            ],
+            "data": "data"
+          },
+          "operator": "candidates.generate",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "error_score",
+          "inputs": {
+            "alert": "traces_alert",
+            "candidates": "candidates",
+            "reference": "traces_reference"
+          },
+          "operator": "traces.error_contrast",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "rank",
+          "inputs": {
+            "scores": [
+              "error_score"
+            ]
+          },
+          "operator": "answers.combine",
+          "params": {},
+          "version": "1"
+        }
+      ],
+      "return": {
+        "node": "rank"
+      },
+      "schema_version": "e4-dag/1"
+    },
+    "trace_latency": {
+      "nodes": [
+        {
+          "bindings": {},
+          "id": "data",
+          "inputs": {},
+          "operator": "case.telemetry",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "traces_reference",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "traces.aggregate",
+          "params": {
+            "window": "reference"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "traces_alert",
+          "inputs": {
+            "data": "data"
+          },
+          "operator": "traces.aggregate",
+          "params": {
+            "window": "alert"
+          },
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "candidates",
+          "inputs": {
+            "aggregates": [
+              "traces_reference",
+              "traces_alert"
+            ],
+            "data": "data"
+          },
+          "operator": "candidates.generate",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "latency_score",
+          "inputs": {
+            "alert": "traces_alert",
+            "candidates": "candidates",
+            "reference": "traces_reference"
+          },
+          "operator": "traces.latency_contrast",
+          "params": {},
+          "version": "1"
+        },
+        {
+          "bindings": {},
+          "id": "rank",
+          "inputs": {
+            "scores": [
+              "latency_score"
+            ]
+          },
+          "operator": "answers.combine",
+          "params": {},
+          "version": "1"
+        }
+      ],
+      "return": {
+        "node": "rank"
+      },
+      "schema_version": "e4-dag/1"
+    }
+  },
+  "purpose": "Reviewed illustrative structures, not predictions or label-derived answers",
+  "schema": "e4-dag/1"
+}

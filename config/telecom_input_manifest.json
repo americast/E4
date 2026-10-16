@@ -1,0 +1,530 @@
+{
+  "schema_version": "e4-input-manifest/1",
+  "dataset": "OpenRCA Telecom",
+  "source_repository": "tracer-cloud/opensre",
+  "source_revision": "07714872ea2cec77c13f9dec17a688e9df9621d1",
+  "sample_config_sha256": "1c9369ba768a610d68354acba16193ef8bd1406d12fb498ca5ead316872b418e",
+  "scored_manifest_sha256": "c055f0be18ab92e3ed9291d11653d07cd0a1440c20e2f22682514ab12c7d2a63",
+  "dev_manifest_sha256": "13657075f56664758e81b985aa87373396bc4bad29c8ddc18c35a972c5870acf",
+  "clip_manifest_sha256": "65b16e3407df8a4f25ae0cdb718591ff052b88d292f907e85cb238187a1d9c16",
+  "deployment_catalog_file_sha256": "7327c40349b1172df1277bf32adc8ebaf1ca49225c9cbc607bfb32e80db5f3b1",
+  "deployment_mapping_source_sha256": "6af1fac2779fbbe4c5767f6f282a7c753c3f500db7d78eefadd9e53508e1be35",
+  "cases": {
+    "telecom-20200411T0130-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-04-11T01:30:00+08:00",
+      "alert_window_end_local": "2020-04-11T02:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "af35d5a71f53a176a3444d6ba554d945a2f8b605497fc2d098cefd5cd0d1d679",
+          "bytes": 2769,
+          "source_sha256": "1a533b149e44cd13e1a0bca579ded7fb1ae9d4a5fbdd4137ee3845ccf6b256f5",
+          "rows": 65
+        },
+        "metric/metric_container.csv": {
+          "sha256": "abcf6bfa665df728718ab8786f8d7bb5ce8e5cb6a164fed77e11a520831460b2",
+          "bytes": 352586,
+          "source_sha256": "b7764731a86364cdd2d16f63fb14bc0e48571f0079b6df424171cb13de371249",
+          "rows": 4257
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "7ae79e45f9b5afac73935cbdaa581c1de55d0b52f6be999105c9045f8c3f2532",
+          "bytes": 1197739,
+          "source_sha256": "cc30f8a6a20b984dbb190e64ddeb6a8fc8559ff13f6ff1b06eab01ac221d48a8",
+          "rows": 15839
+        },
+        "metric/metric_node.csv": {
+          "sha256": "ee27e74876660ce27c2fc163040cf92ef36e6d5a8a1b8ada85b1af8d2fd01c0b",
+          "bytes": 3525240,
+          "source_sha256": "cccab03a25d59345e16d27d66d63debf8d227194f3ff46dcd82a2188eaa40893",
+          "rows": 50343
+        },
+        "metric/metric_service.csv": {
+          "sha256": "49d22a4598133c3ba14b2aac4f40b9f41e58373b938eeac7047a6a72cdfae846",
+          "bytes": 1964800,
+          "source_sha256": "a8af8349c6419e98333f586d4584e20a330544ed11136670eecdf6167f4a8d2b",
+          "rows": 28736
+        },
+        "trace/trace_span.csv": {
+          "sha256": "4dc533d89373a6b0495904c9378056dfeeeae867a0f61b32e189909373df9c6a",
+          "bytes": 218915109,
+          "source_sha256": "4a75e1ac9430d7b19b14f77dd985bef9e3252c46b59c8b2afa5dae9bcda788dd",
+          "rows": 1857948
+        }
+      }
+    },
+    "telecom-20200411T0530-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-04-11T05:30:00+08:00",
+      "alert_window_end_local": "2020-04-11T06:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "ccbbd68baf11fc75d750be8d339ff765a50c43344670100fd110dce60f81b2f8",
+          "bytes": 2685,
+          "source_sha256": "1a533b149e44cd13e1a0bca579ded7fb1ae9d4a5fbdd4137ee3845ccf6b256f5",
+          "rows": 63
+        },
+        "metric/metric_container.csv": {
+          "sha256": "a092e208363fc5a2f8b8fad693a953bf11c1acb3ae27593dad9a3af177a8fac2",
+          "bytes": 354808,
+          "source_sha256": "b7764731a86364cdd2d16f63fb14bc0e48571f0079b6df424171cb13de371249",
+          "rows": 4284
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "67d5ebe5d96499c8a2afdbce51dfb8529d08c64d92a56a9a4f9f53a67dfe3fed",
+          "bytes": 1197828,
+          "source_sha256": "cc30f8a6a20b984dbb190e64ddeb6a8fc8559ff13f6ff1b06eab01ac221d48a8",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "c835ba9d98737df13e759db4b9c1aeea87dc13d28a1dd3c59ca3d01f2d3330f1",
+          "bytes": 3526565,
+          "source_sha256": "cccab03a25d59345e16d27d66d63debf8d227194f3ff46dcd82a2188eaa40893",
+          "rows": 50366
+        },
+        "metric/metric_service.csv": {
+          "sha256": "098d2721fecba200a11c82f527a3b7b78365fe338e4c7e085ac788457cdfa26e",
+          "bytes": 1956234,
+          "source_sha256": "a8af8349c6419e98333f586d4584e20a330544ed11136670eecdf6167f4a8d2b",
+          "rows": 28617
+        },
+        "trace/trace_span.csv": {
+          "sha256": "e74b4743bc0a19c6f2bac140121b5fcd6466d793e3b92ec6a9b3ad58c9e43395",
+          "bytes": 205447057,
+          "source_sha256": "4a75e1ac9430d7b19b14f77dd985bef9e3252c46b59c8b2afa5dae9bcda788dd",
+          "rows": 1744072
+        }
+      }
+    },
+    "telecom-20200522T0030-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-22T00:30:00+08:00",
+      "alert_window_end_local": "2020-05-22T01:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "e3e3d281ead3e45bf54cc2e110259dc860a38d8ee907c658084bb61a03ec38ff",
+          "bytes": 2861,
+          "source_sha256": "fa8b6757ec257c2b251360abe5798187dabb0488212bffb7b7a9b9dcd7c77eb8",
+          "rows": 68
+        },
+        "metric/metric_container.csv": {
+          "sha256": "cf9cb61e6bdb125b38f7d41933963cea80c107121d245542cf973455f51301fd",
+          "bytes": 351116,
+          "source_sha256": "bf67700166da651a89ada2d33b8cea5191c36d494e34e81d9c6a36fffae383f8",
+          "rows": 4239
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "2c6eab825679c6a30f94adb89062bc04027e2b880d87cf248758503fa80d8724",
+          "bytes": 1198312,
+          "source_sha256": "2b6e9d17896d863320134a0da2e0779ec12f285465598184493bb6b5287b3b16",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "d3df790afc4a1dc53de7135ab3f132c95020d4dc9a5b76b8cf2277cc51dec674",
+          "bytes": 2319767,
+          "source_sha256": "0d5ddced052c1414f6d20b34f5639aed84d94dcc816ece19c9d4014e8416399b",
+          "rows": 33042
+        },
+        "metric/metric_service.csv": {
+          "sha256": "dc630b2a90b8c336f25cc49c687015f6f1084f21e5e921de8f0729d9d711e0d6",
+          "bytes": 1960459,
+          "source_sha256": "c494d91320de75c5a6a526aa3cd4c878a285279f133721f102762f5b0969cf3b",
+          "rows": 28656
+        },
+        "trace/trace_span.csv": {
+          "sha256": "c7e783a7d39dee17d644b39f9e4a2fe58febf01b3ff0b7179fb3e5498c32ad43",
+          "bytes": 152707798,
+          "source_sha256": "573c1ea84043355702ed7b992d08e47a4f34dd6cdf9b505bacccf2e7bd40e6f1",
+          "rows": 1296100
+        }
+      }
+    },
+    "telecom-20200523T0030-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-23T00:30:00+08:00",
+      "alert_window_end_local": "2020-05-23T01:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "d636f015706220481eed0d6ddb63f4dcbea492764c0b99ea20c4555375a75bfd",
+          "bytes": 2675,
+          "source_sha256": "805b299864a5769a00c3af01f8bd7efc10832db90511f6656b9acc78193c2809",
+          "rows": 63
+        },
+        "metric/metric_container.csv": {
+          "sha256": "d5244709ee7d3b17ba7428f433b9ebd5b0459a053268ca9bc0424e581501efa8",
+          "bytes": 351186,
+          "source_sha256": "2b6aa2f29bc545820640945f8843dbd53d89c01f0691db0427580d24aa89f74e",
+          "rows": 4239
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "42f31385d2c43e336db713fb4e53b14a567cc30c323842d3441ea3b00aa0c967",
+          "bytes": 1198155,
+          "source_sha256": "bf0ebbeca499922067b3da3fc222dc3ebcb3cf31bd189c8e93cfcc5bf3f92b2e",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "76b878c232eac9492eaff37452e1ed0d9ff76ec26b2c4a58f70ee64552555431",
+          "bytes": 3509388,
+          "source_sha256": "9fd796c099f19eb1948c9b99456afd2209a98ede80feeba6685d7517f3954e15",
+          "rows": 50141
+        },
+        "metric/metric_service.csv": {
+          "sha256": "cbf76da83002998d41f506d71bf2866cfd38ceee29b60fbbf8ddff7e3a34f7bf",
+          "bytes": 1956537,
+          "source_sha256": "7775ed2c5b3dcec49e050f17820eb1d944a77e4ceec741e4bcb2a7c07725fc0a",
+          "rows": 28607
+        },
+        "trace/trace_span.csv": {
+          "sha256": "76d38bc3ad897c5f7c43e528290071e2a0abbddf3c566d6156da9d4124e1e6a3",
+          "bytes": 169212612,
+          "source_sha256": "eb2ad376183da9e22676df562530c6da736c2a3580d4007455c95cd9c2c10994",
+          "rows": 1436098
+        }
+      }
+    },
+    "telecom-20200523T0330-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-23T03:30:00+08:00",
+      "alert_window_end_local": "2020-05-23T04:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "f866adb052c3fe5420aa292c660be24fc867537d09930e79047fe623100a55b4",
+          "bytes": 2720,
+          "source_sha256": "805b299864a5769a00c3af01f8bd7efc10832db90511f6656b9acc78193c2809",
+          "rows": 64
+        },
+        "metric/metric_container.csv": {
+          "sha256": "a150981247f5409095b1908b5d91e9afc5960f05d6e93a2d6a92d17d328d50a1",
+          "bytes": 352372,
+          "source_sha256": "2b6aa2f29bc545820640945f8843dbd53d89c01f0691db0427580d24aa89f74e",
+          "rows": 4253
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "1469dfedc089613df0cdf91fca690c0e82e48bcdffef891abeb9688afa8a840f",
+          "bytes": 1198250,
+          "source_sha256": "bf0ebbeca499922067b3da3fc222dc3ebcb3cf31bd189c8e93cfcc5bf3f92b2e",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "886b9af7ee4984114468cfe7d4e73a1189beb5cb4b77a812189c9f0894ff926b",
+          "bytes": 3515081,
+          "source_sha256": "9fd796c099f19eb1948c9b99456afd2209a98ede80feeba6685d7517f3954e15",
+          "rows": 50215
+        },
+        "metric/metric_service.csv": {
+          "sha256": "178983298f33400973e4e912ff659f592c9980b066b6797b77c50d8dceeab01e",
+          "bytes": 1958013,
+          "source_sha256": "7775ed2c5b3dcec49e050f17820eb1d944a77e4ceec741e4bcb2a7c07725fc0a",
+          "rows": 28637
+        },
+        "trace/trace_span.csv": {
+          "sha256": "492b1197fc15adfead8bc44b0db97159f84ad6661db71d15cbff81a9601b907a",
+          "bytes": 149701741,
+          "source_sha256": "eb2ad376183da9e22676df562530c6da736c2a3580d4007455c95cd9c2c10994",
+          "rows": 1270365
+        }
+      }
+    },
+    "telecom-20200525T0430-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-25T04:30:00+08:00",
+      "alert_window_end_local": "2020-05-25T05:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "8849a531986dba293a710c3f6be3ec076b0d86d7c0a8b400c824d1ee1991ca9b",
+          "bytes": 2588,
+          "source_sha256": "a4202795c5c86708ec65cf2af08cb321ee8c6438199c14ab2c4af2e54691f9cb",
+          "rows": 60
+        },
+        "metric/metric_container.csv": {
+          "sha256": "a84d1b8953f93d7ca4c3ff25fe22801b672cf4797969f3eab75f950f3cbfb602",
+          "bytes": 357014,
+          "source_sha256": "1ed8ed241e9aeef07faf801a18f7f4b480d27b1ad8f2370b2188462d4df77f52",
+          "rows": 4311
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "b4b6b97773d564bf3752ae8361cd0db06f82a97b37e4928c4b94297427733ca6",
+          "bytes": 1198032,
+          "source_sha256": "ae7fb4f4cba1d1a0152c774a5ea05a3b2e2f6745e02db046f8c2c4d5fe2537f8",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "ee8feddd5f34e0b59ca1b43586cc9f1cf04f7b5b62bc1441bde91ee63f99c95d",
+          "bytes": 3523008,
+          "source_sha256": "4de5c28bcb77e69e47f9e2241bd8f48b65d40103ec8d4941647f3c2c5bb8803a",
+          "rows": 50321
+        },
+        "metric/metric_service.csv": {
+          "sha256": "ee7c89df67326acfdf8fc5c2196ecf473e59130c6148b482303db4802f8d8092",
+          "bytes": 1955327,
+          "source_sha256": "acb0bb54294c3d11a9455ad0125aa31a24552f3b8e7db773488f802a9f1c5f20",
+          "rows": 28595
+        },
+        "trace/trace_span.csv": {
+          "sha256": "2ae6f2cede2d42d1ebeaaf3c78f006d0b5108cf3a39b12f050f10cda4af01eee",
+          "bytes": 194048982,
+          "source_sha256": "578dc8cff6d7061d7e6883c7a31ea928d4d9a0b3447a67e40f45a7fbe807ef97",
+          "rows": 1646415
+        }
+      }
+    },
+    "telecom-20200528T0330-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-28T03:30:00+08:00",
+      "alert_window_end_local": "2020-05-28T04:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "a6ab49056e621f9af0cad081614af6aacec8ad26b0092092917af708102038cc",
+          "bytes": 2773,
+          "source_sha256": "8224eacc1603a165c8a21b50a1cf7aa7762cfcb6c7875b90e8be5e27c6df573f",
+          "rows": 65
+        },
+        "metric/metric_container.csv": {
+          "sha256": "7626a05955f0a0ce92f3a3a6e8eaa564ab1bb9505e598427b7a006378d9e5c74",
+          "bytes": 351085,
+          "source_sha256": "091399166cd35ff20b254d24cf2fba723f1ad312f43aff4ee26c96f47635cd5d",
+          "rows": 4239
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "72c40ce94d28204142083b522aef6143c802aabdcdc0b39bf33976294fb9ae09",
+          "bytes": 1198010,
+          "source_sha256": "ff80ffc2fa90b5b694b7f52b852ecb079cd5ebc0a8c3fe7065d095885238433d",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "7c0aea6bb8da0900f640dc6ba3518daf2550719b4c6da01f3503ae0c74d1c5a2",
+          "bytes": 3527147,
+          "source_sha256": "eac287de4004974ce73eed23f8ea63bfc7f1d4f325a711ef4f2d68cc021e6314",
+          "rows": 50375
+        },
+        "metric/metric_service.csv": {
+          "sha256": "12504e19f4c25c89af1e58a1219aff1a34721533d481e31c78d314948ff8f7b9",
+          "bytes": 1963178,
+          "source_sha256": "09c8f273fd07f031b3971f755c2473e19aa433fa3a697e86635def00d75b14fb",
+          "rows": 28713
+        },
+        "trace/trace_span.csv": {
+          "sha256": "4734df048257e2408a95de534a00d1108c53c9ecc29dd933430d1330dbb9ef21",
+          "bytes": 167567701,
+          "source_sha256": "f1d05faebce8c6642f6b7850dbc2fe7f1708563321def7d84fc8e3cbcf5f0dc3",
+          "rows": 1421664
+        }
+      }
+    },
+    "telecom-20200530T0500-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-30T05:00:00+08:00",
+      "alert_window_end_local": "2020-05-30T05:30:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "50e04ca84f3c16e5a6cecb51d2c4483dc6d4a2677554fd0124503792ccf7637a",
+          "bytes": 2739,
+          "source_sha256": "013b16d4ec827ce69506c8d9bc2614352fc8c596d715a40e9f1cb13693d68988",
+          "rows": 64
+        },
+        "metric/metric_container.csv": {
+          "sha256": "d61fb497c3474e51195dc60a042e2bc38835e95cd3255817ea57c0de7ab51f7a",
+          "bytes": 354936,
+          "source_sha256": "028a0ad1ca724f101207497a48bf5e0939ea1a121cc9fd5aec1d64b719e1f423",
+          "rows": 4284
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "95b52fdc326b81fdc8b63a5c1282cd6decde84b6f0d6652b388f3a6cc5b0aa02",
+          "bytes": 1197769,
+          "source_sha256": "8dafb36610c9eab92577abdd44152f4491e31d7c18c5bba2a9400f89e5493f0e",
+          "rows": 15838
+        },
+        "metric/metric_node.csv": {
+          "sha256": "dcb8edb84551c42eeadcbb3d85908b0ef620f9b8a1a52c3aa41e0187bdb15e6e",
+          "bytes": 3535850,
+          "source_sha256": "542e6d94994cf94e7a107400a98ab591f4a40ae4b8323fd420a1244ae3d66560",
+          "rows": 50490
+        },
+        "metric/metric_service.csv": {
+          "sha256": "3a88567ed68cead61356a67fc962446aa678630d64a826c4d740e95dd4909d7b",
+          "bytes": 1966056,
+          "source_sha256": "028b29e61a20e23ca830e7f854c214759fed314ecb0620abbad9ff30670c4fc5",
+          "rows": 28750
+        },
+        "trace/trace_span.csv": {
+          "sha256": "ce7b28c36b5b8270baf13f66b194257be4882689e3c3f9fef1dfebda11dec5af",
+          "bytes": 211080909,
+          "source_sha256": "d80ee41ee728270b7e90cd21b335cc7b7e9c92d24ee3e9ad00126f64458c0161",
+          "rows": 1791081
+        }
+      }
+    },
+    "telecom-20200531T0300-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-31T03:00:00+08:00",
+      "alert_window_end_local": "2020-05-31T03:30:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "68b5d23db1721b3267ea187d21a611216b0f3ef2824a2a576e36ac202af2fe7d",
+          "bytes": 2767,
+          "source_sha256": "4e0f8ca56e090377d8e1cd0a54722971cf6a0ec5e5f2276553238a5240ebabff",
+          "rows": 65
+        },
+        "metric/metric_container.csv": {
+          "sha256": "0c087f0709b57981c13d1a0528e12f8bc2e5984e71b37b95776901ba131ca331",
+          "bytes": 352583,
+          "source_sha256": "5afde8aade1f4c9b7fe0f945d58a42ccabdeabc37f65f76370aae29707835e04",
+          "rows": 4257
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "d1bf274884f8fb1b82b61a69f7ff59a3097fb770c64b289d98582507bcd07b8e",
+          "bytes": 1198114,
+          "source_sha256": "3d2ab1cea0193bde54cb89aa0ba1518b5b1ebb84338c9005ed77b48d57600b02",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "2e1a8046b4aa9bcdcfad801cd5ee826aa50c393ded48bd9f13b823198a23fe6f",
+          "bytes": 3521678,
+          "source_sha256": "487c3d77f42c265945fd309b527dea3e7e16f9322a648b2458c55f5624cb6c9e",
+          "rows": 50301
+        },
+        "metric/metric_service.csv": {
+          "sha256": "bc4673cce9081239c34067054c815a189ba39e440a7e54e5360d06072743a1d7",
+          "bytes": 1959924,
+          "source_sha256": "3e965331347c9810aa107b69e8389342dc0dfdc2473aaa4b36f1b3233b8285cd",
+          "rows": 28667
+        },
+        "trace/trace_span.csv": {
+          "sha256": "114779448754fc170ec58e7c2b6a18fa0c8cb2eb755b5b091e11de0deebd54e6",
+          "bytes": 163915085,
+          "source_sha256": "f93f9ba00adf134561fe8c42aef8d3e91b3225ad41cb796ee3a8a5495b6ed5cb",
+          "rows": 1391222
+        }
+      }
+    },
+    "telecom-20200531T0330-utc8": {
+      "split": "scored",
+      "alert_window_start_local": "2020-05-31T03:30:00+08:00",
+      "alert_window_end_local": "2020-05-31T04:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "b8a989ef660a8810725fd7b5d49d9f0c602a07b3f5cb69006dfcd7b482bcb71c",
+          "bytes": 2670,
+          "source_sha256": "4e0f8ca56e090377d8e1cd0a54722971cf6a0ec5e5f2276553238a5240ebabff",
+          "rows": 63
+        },
+        "metric/metric_container.csv": {
+          "sha256": "f2cefc05982c52cdf1854e8796840155828cc4ff1e5f327725c257c81b82e9d1",
+          "bytes": 353320,
+          "source_sha256": "5afde8aade1f4c9b7fe0f945d58a42ccabdeabc37f65f76370aae29707835e04",
+          "rows": 4266
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "2d92984bf5af078565f30c667f3ea9595f6e21d10c127e9123eb37cf0b66e3c0",
+          "bytes": 1198130,
+          "source_sha256": "3d2ab1cea0193bde54cb89aa0ba1518b5b1ebb84338c9005ed77b48d57600b02",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "b6a8fc7db4a56ea7fccdf071aac6608fb15513325c271b692775d58ac44fa789",
+          "bytes": 3521833,
+          "source_sha256": "487c3d77f42c265945fd309b527dea3e7e16f9322a648b2458c55f5624cb6c9e",
+          "rows": 50303
+        },
+        "metric/metric_service.csv": {
+          "sha256": "98bc7a46148109ae1e9a2eb1f50ba8dedfebb7423a139a757cf7aa86a818b569",
+          "bytes": 1959153,
+          "source_sha256": "3e965331347c9810aa107b69e8389342dc0dfdc2473aaa4b36f1b3233b8285cd",
+          "rows": 28658
+        },
+        "trace/trace_span.csv": {
+          "sha256": "b0af0a21d21563dca994ac25fef92290c5c93976564a4e2dca9c3be9d8d546d9",
+          "bytes": 149513390,
+          "source_sha256": "f93f9ba00adf134561fe8c42aef8d3e91b3225ad41cb796ee3a8a5495b6ed5cb",
+          "rows": 1269206
+        }
+      }
+    },
+    "telecom-20200523T0430-utc8": {
+      "split": "dev",
+      "alert_window_start_local": "2020-05-23T04:30:00+08:00",
+      "alert_window_end_local": "2020-05-23T05:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "9bb745170e42039a54ff923ee3b93cbbd3378437f1888a88cdde578f1df5d3b8",
+          "bytes": 2720,
+          "source_sha256": "805b299864a5769a00c3af01f8bd7efc10832db90511f6656b9acc78193c2809",
+          "rows": 64
+        },
+        "metric/metric_container.csv": {
+          "sha256": "fe7edf02f3730683a71d8a122ef4fc839f9d676df9010608831cf4faa59662db",
+          "bytes": 353484,
+          "source_sha256": "2b6aa2f29bc545820640945f8843dbd53d89c01f0691db0427580d24aa89f74e",
+          "rows": 4266
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "bb212c31179a28d983f5018d123c80ac42b9c073651db2c348e4d0c3bdd1ed24",
+          "bytes": 1198198,
+          "source_sha256": "bf0ebbeca499922067b3da3fc222dc3ebcb3cf31bd189c8e93cfcc5bf3f92b2e",
+          "rows": 15840
+        },
+        "metric/metric_node.csv": {
+          "sha256": "9fc7f5f8ce81c8057f32ec12b5dc1d11811879fa1c55d95b1bec4e6539d5f3b5",
+          "bytes": 3527524,
+          "source_sha256": "9fd796c099f19eb1948c9b99456afd2209a98ede80feeba6685d7517f3954e15",
+          "rows": 50380
+        },
+        "metric/metric_service.csv": {
+          "sha256": "370c1a07332e23738bb961fce22935139a7145cecd4fd0c6a3114b83e1c6e821",
+          "bytes": 1960287,
+          "source_sha256": "7775ed2c5b3dcec49e050f17820eb1d944a77e4ceec741e4bcb2a7c07725fc0a",
+          "rows": 28663
+        },
+        "trace/trace_span.csv": {
+          "sha256": "2efbfbec0c17cbe1e65b0ef9a2298c739def4e26a5531e2a037ee822277ebba4",
+          "bytes": 193344733,
+          "source_sha256": "eb2ad376183da9e22676df562530c6da736c2a3580d4007455c95cd9c2c10994",
+          "rows": 1640653
+        }
+      }
+    },
+    "telecom-20200529T0230-utc8": {
+      "split": "dev",
+      "alert_window_start_local": "2020-05-29T02:30:00+08:00",
+      "alert_window_end_local": "2020-05-29T03:00:00+08:00",
+      "files": {
+        "metric/metric_app.csv": {
+          "sha256": "de66932bd96ad2e87d994f577a8a6366d3af3c5b82584cdcb091383ac020b2c1",
+          "bytes": 3756,
+          "source_sha256": "046b87aef29b42597f36c16ebb0633d4f8ef924d9c3002987ea7bd0e3d19dccf",
+          "rows": 91
+        },
+        "metric/metric_container.csv": {
+          "sha256": "9b678da553bfe57f9203d91c8b46478dc20f1bd5fb9812b9442b83580a5d75dd",
+          "bytes": 298547,
+          "source_sha256": "733fd7c9407a5eda99547913f81d814a10d15469c9238d3f16ad87b3e39c8928",
+          "rows": 3603
+        },
+        "metric/metric_middleware.csv": {
+          "sha256": "f6d679674c40999712de926523a2e359538c6f2b9a2a3c628f1246994c6e4e3d",
+          "bytes": 1169108,
+          "source_sha256": "769dcc7bc735852c5b812591ec29a14064df666fc71baaa81bc947149ea3df76",
+          "rows": 15456
+        },
+        "metric/metric_node.csv": {
+          "sha256": "6e35871fbe9ddcf601f4b18d583df172a1e00f4e9c33c3ca8146a64d0cda31e1",
+          "bytes": 2176515,
+          "source_sha256": "70e33029e00521bd6090498cdd0cf0c2456030a89eff3a7ea9de24fae5c8083d",
+          "rows": 31107
+        },
+        "metric/metric_service.csv": {
+          "sha256": "187fed494a685c7044f5892f07ed2def5ae2fcdacc7f10308b3e057e0e94e41c",
+          "bytes": 1892783,
+          "source_sha256": "6e87f90651472ebcd5748e6c0c2fea2130c16e298616b8f1c55d9fcc53477609",
+          "rows": 27697
+        },
+        "trace/trace_span.csv": {
+          "sha256": "7818b84335bbd28d21482aa8d54064dad1aba5ab96b75da2fb4ee0cd09bde95e",
+          "bytes": 164932577,
+          "source_sha256": "ef8e0c262f7ac93ba86c70578304ea5f91cd5bd641797512dab6973d21d76007",
+          "rows": 1399745
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "schema_version": "e4-dag/1",
+  "node_shape": {
+    "id": "unique nonempty string",
+    "operator": "registered operator name",
+    "version": "exact registered version",
+    "inputs": "port name to earlier node ID; variadic ports take an ordered ID array",
+    "params": "explicit operator arguments; take precedence over bindings",
+    "bindings": "parameter name to a declared runtime.<field> path",
+    "return": "the document has exactly one {\"node\": <RankedAnswer node ID>}"
+  },
+  "resolution_order": ["explicit argument", "explicit runtime binding", "operator-declared runtime field", "declared static default"],
+  "auto": "Allowed only for a parameter declaring a named estimator; estimators receive reference-window-only data.",
+  "dag_depth": "Configured maximum number of operator nodes on a dependency path. The verifier reports measured_graph_depth separately.",
+  "runtime_fields": "See config/runtime_schema.json and config/core_runtime.json.",
+  "acceptance": "Primary component identity in top 3; component-plus-predicted-source-category is secondary. Unknown category is null.",
+  "identity": "EntityRef preserves role plus original identifier. Acceptance and final-lead dedup strip/casefold identifiers only; they do not infer aliases."
+}

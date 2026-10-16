@@ -1,0 +1,1981 @@
+{
+  "candidate_manifest_sha256": "81c058fd836567ae3d62805ce914d11c7bb9278299062ec059c1292558e4bff3",
+  "cases": {
+    "bank-20210304T0100-utc8": {
+      "alert_sha256": "d75c4c4b4cccf0d9ca2212f2acea39e2e18804aa63321977eb10ee3e259585af",
+      "files": {
+        "source_dates/2021_03_04/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1182984,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 19343,
+          "sha256": "d5b89d60b5dd18d735c9334633de4a540b377a7c7a5c4ddc27aa808b88131cb5",
+          "size_bytes": 3353043,
+          "source_git_blob_sha1": "8cf18802aef123c17c42ad8c05e6854f816f7025",
+          "source_lfs_sha256": "66e45f613e8a515eb7c6b4d6a1fdc59ed729c999ec190eef8bf842dffcd02e4d",
+          "source_path": "Bank/telemetry/2021_03_04/log/log_service.csv",
+          "source_rows": 1182984,
+          "source_sha256": "66e45f613e8a515eb7c6b4d6a1fdc59ed729c999ec190eef8bf842dffcd02e4d",
+          "source_size_bytes": 214194991,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_04/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 180000,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 13568,
+            "rows_outside_nominal_source_date": 44,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 616,
+          "sha256": "74a8f080cbd581c975b6f1dc8716b7eac93e75a2c0d61b32cb1ac32cd0c620f5",
+          "size_bytes": 27317,
+          "source_git_blob_sha1": "f51e605005c05e9298b84253ac1d9f60de39905e",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_04/metric/metric_app.csv",
+          "source_rows": 13568,
+          "source_sha256": "80932766feb1a7611a17ed27a8070b044f429b69138c1ab3cb2e501fa45300c1",
+          "source_size_bytes": 617331,
+          "spillover_after_day_max_ms": 180000,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_04/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1258400,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 52766,
+          "sha256": "e2db10ea1e59a1c10e03eafb514970eeb864e05f08439eaa4df9b6f681c5bbfe",
+          "size_bytes": 3605901,
+          "source_git_blob_sha1": "93b913e848224aaf2366bfd5de0efb9c7095f173",
+          "source_lfs_sha256": "5029de2cf5290101434059bbe06a31cd39c2b407d0125a46846000f3f72e791d",
+          "source_path": "Bank/telemetry/2021_03_04/metric/metric_container.csv",
+          "source_rows": 1258400,
+          "source_sha256": "5029de2cf5290101434059bbe06a31cd39c2b407d0125a46846000f3f72e791d",
+          "source_size_bytes": 86066591,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_04/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 322312,
+            "max_spillover_before_day_ms": 372,
+            "rows_checked": 12152300,
+            "rows_outside_nominal_source_date": 14238,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 104402,
+          "sha256": "61ab3a4b6a708ec39a22895209ef3bd6d7241e8af5f0abb1bc99293539c72217",
+          "size_bytes": 10772585,
+          "source_git_blob_sha1": "1879b903a746bcad380986e924254bd83dd70ff6",
+          "source_lfs_sha256": "b0babcbd67be0e68b7970151733cfa4d9e1ae60668e15a0f32281362a2a8f545",
+          "source_path": "Bank/telemetry/2021_03_04/trace/trace_span.csv",
+          "source_rows": 12152300,
+          "source_sha256": "b0babcbd67be0e68b7970151733cfa4d9e1ae60668e15a0f32281362a2a8f545",
+          "source_size_bytes": 1256254711,
+          "spillover_after_day_max_ms": 322312,
+          "spillover_before_day_max_ms": 372,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1614792600000,
+          "start_epoch_ms_utc": 1614790800000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1614790800000,
+          "start_epoch_ms_utc": 1614789000000
+        }
+      }
+    },
+    "bank-20210304T1800-utc8": {
+      "alert_sha256": "088b8d6cde0ce727a322b0d6512e23c5b28a294dd467f835ee3c18c0e860e931",
+      "files": {
+        "source_dates/2021_03_04/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1182984,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 74383,
+          "sha256": "3975be6615acf3b86952e3958689b33dfc4b3302d15a7b223bd57ead3b9e8f07",
+          "size_bytes": 12496583,
+          "source_git_blob_sha1": "8cf18802aef123c17c42ad8c05e6854f816f7025",
+          "source_lfs_sha256": "66e45f613e8a515eb7c6b4d6a1fdc59ed729c999ec190eef8bf842dffcd02e4d",
+          "source_path": "Bank/telemetry/2021_03_04/log/log_service.csv",
+          "source_rows": 1182984,
+          "source_sha256": "66e45f613e8a515eb7c6b4d6a1fdc59ed729c999ec190eef8bf842dffcd02e4d",
+          "source_size_bytes": 214194991,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_04/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 180000,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 13568,
+            "rows_outside_nominal_source_date": 44,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 660,
+          "sha256": "d8ea15539b4701b5b7c5da90dbbf1a2203a495f5579b077640c7d48aa6566fc3",
+          "size_bytes": 30172,
+          "source_git_blob_sha1": "f51e605005c05e9298b84253ac1d9f60de39905e",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_04/metric/metric_app.csv",
+          "source_rows": 13568,
+          "source_sha256": "80932766feb1a7611a17ed27a8070b044f429b69138c1ab3cb2e501fa45300c1",
+          "source_size_bytes": 617331,
+          "spillover_after_day_max_ms": 180000,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_04/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1258400,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 52490,
+          "sha256": "937932b87023531322b4c5968edc27392ee3b6a49eceef4c1c433ca973dcc61a",
+          "size_bytes": 3592629,
+          "source_git_blob_sha1": "93b913e848224aaf2366bfd5de0efb9c7095f173",
+          "source_lfs_sha256": "5029de2cf5290101434059bbe06a31cd39c2b407d0125a46846000f3f72e791d",
+          "source_path": "Bank/telemetry/2021_03_04/metric/metric_container.csv",
+          "source_rows": 1258400,
+          "source_sha256": "5029de2cf5290101434059bbe06a31cd39c2b407d0125a46846000f3f72e791d",
+          "source_size_bytes": 86066591,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_04/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 322312,
+            "max_spillover_before_day_ms": 372,
+            "rows_checked": 12152300,
+            "rows_outside_nominal_source_date": 14238,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 705129,
+          "sha256": "172b1acf70326e8b1284a8cdcea30745ba03bb143406c8239c18ed9c2b41b2ea",
+          "size_bytes": 72852743,
+          "source_git_blob_sha1": "1879b903a746bcad380986e924254bd83dd70ff6",
+          "source_lfs_sha256": "b0babcbd67be0e68b7970151733cfa4d9e1ae60668e15a0f32281362a2a8f545",
+          "source_path": "Bank/telemetry/2021_03_04/trace/trace_span.csv",
+          "source_rows": 12152300,
+          "source_sha256": "b0babcbd67be0e68b7970151733cfa4d9e1ae60668e15a0f32281362a2a8f545",
+          "source_size_bytes": 1256254711,
+          "spillover_after_day_max_ms": 322312,
+          "spillover_before_day_max_ms": 372,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1614853800000,
+          "start_epoch_ms_utc": 1614852000000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1614852000000,
+          "start_epoch_ms_utc": 1614850200000
+        }
+      }
+    },
+    "bank-20210306T0330-utc8": {
+      "alert_sha256": "51a2f35fbbc7d8c2740974d4727d7ee01a6b5c761b0671d4777ec56fe36a8d63",
+      "files": {
+        "source_dates/2021_03_06/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1975614,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 956,
+          "sha256": "4342079856999098dd96c8f1667d660623eebb97fd185bd399cbbcb87c46df75",
+          "size_bytes": 160222,
+          "source_git_blob_sha1": "b9ffa312d2632f4bc226b84e98002ae1262a19ff",
+          "source_lfs_sha256": "d0e6f8b7595cf35f5581ffad647dff953bceaa8e7e1b2bb7b3b412b181d0888f",
+          "source_path": "Bank/telemetry/2021_03_06/log/log_service.csv",
+          "source_rows": 1975614,
+          "source_sha256": "d0e6f8b7595cf35f5581ffad647dff953bceaa8e7e1b2bb7b3b412b181d0888f",
+          "source_size_bytes": 328804568,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_06/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13916,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 132,
+          "sha256": "d49ae150ddb13c5deca2c79b07657b90df6e970e04437b943772a1b03e7353e0",
+          "size_bytes": 5572,
+          "source_git_blob_sha1": "b4a492107024fb56e67f6031d8fbcadbce3da2f5",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_06/metric/metric_app.csv",
+          "source_rows": 13916,
+          "source_sha256": "883ec49b01c12a464064dc055e6ab7e0dfd2943d55f7f8b1d1fe512961969776",
+          "source_size_bytes": 639422,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_06/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1229024,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 51186,
+          "sha256": "fe1311bab187937e0c053a1e6713196f3a7e8f4f9e7287b46b7a58a7a09f6a96",
+          "size_bytes": 3493903,
+          "source_git_blob_sha1": "f07b8d67ec82822b6e076df1491b6f660f71893e",
+          "source_lfs_sha256": "02990d27fa4680e9116ff3086e180beff919254031b7214c6c37d965eba55e41",
+          "source_path": "Bank/telemetry/2021_03_06/metric/metric_container.csv",
+          "source_rows": 1229024,
+          "source_sha256": "02990d27fa4680e9116ff3086e180beff919254031b7214c6c37d965eba55e41",
+          "source_size_bytes": 84110809,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_06/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 4088,
+            "rows_checked": 25441791,
+            "rows_outside_nominal_source_date": 545,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 12123,
+          "sha256": "4b6b6378f2d97031fb7082fab25fdd37d256ad95ecd045b52d80ebad7581a21b",
+          "size_bytes": 1246205,
+          "source_git_blob_sha1": "890ee37936f1c3bfe9e7df93b265cd9a6ef277f1",
+          "source_lfs_sha256": "eb5b405a47b425b4629abab6f1a2bd4b296c01d6d4c487d45e5344ea755120bb",
+          "source_path": "Bank/telemetry/2021_03_06/trace/trace_span.csv",
+          "source_rows": 25441791,
+          "source_sha256": "eb5b405a47b425b4629abab6f1a2bd4b296c01d6d4c487d45e5344ea755120bb",
+          "source_size_bytes": 2632745307,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 4088,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1614974400000,
+          "start_epoch_ms_utc": 1614972600000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1614972600000,
+          "start_epoch_ms_utc": 1614970800000
+        }
+      }
+    },
+    "bank-20210307T0300-utc8": {
+      "alert_sha256": "df482d03bdab709e4b6c81471fa566e8cccd14b3f016f1f47cf4d6aa956e278d",
+      "files": {
+        "source_dates/2021_03_07/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2473784,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 2031,
+          "sha256": "15793e429f762031ea0da45fd53a8e3d8de22f89f3b26f410f3604cbfc2323ac",
+          "size_bytes": 342688,
+          "source_git_blob_sha1": "a246898c6d1703fa935f9da25ed9213343a8ec98",
+          "source_lfs_sha256": "ff1f16010635cea3c1c98b5f2b4053f3755079604d3658e506281111d4939ffe",
+          "source_path": "Bank/telemetry/2021_03_07/log/log_service.csv",
+          "source_rows": 2473784,
+          "source_sha256": "ff1f16010635cea3c1c98b5f2b4053f3755079604d3658e506281111d4939ffe",
+          "source_size_bytes": 416743389,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_07/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13915,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 190,
+          "sha256": "b92e2ab562bccd86e40b2c2c79203e41c68306f430dcbd68e3874259a6034aaf",
+          "size_bytes": 8141,
+          "source_git_blob_sha1": "15ec8c2f1e679cfd60270152511d228eeab3f2b8",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_07/metric/metric_app.csv",
+          "source_rows": 13915,
+          "source_sha256": "fa12343359c84d96c51ccc4f896ec3cd1afa159e6ecd2a145f27ddbe4cfdb578",
+          "source_size_bytes": 639097,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_07/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1236563,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 52211,
+          "sha256": "c983b9bcc7e242c73876c4897e284b36a36af7c8e456cf10b4bfdf1b164ba988",
+          "size_bytes": 3568617,
+          "source_git_blob_sha1": "770ec2e97a069f31fcc3a6a9c9be732b10d25601",
+          "source_lfs_sha256": "56e7b482592cec731f3a5b7c1ccbe2cef5876d5cab1a2950d8acda4a8a7adffc",
+          "source_path": "Bank/telemetry/2021_03_07/metric/metric_container.csv",
+          "source_rows": 1236563,
+          "source_sha256": "56e7b482592cec731f3a5b7c1ccbe2cef5876d5cab1a2950d8acda4a8a7adffc",
+          "source_size_bytes": 84638758,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_07/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 1164,
+            "rows_checked": 23919164,
+            "rows_outside_nominal_source_date": 43,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 19048,
+          "sha256": "3537cdd2ffd5717a2cb56e904aeb4f3fcf34f1deb76feeb42f4a812f905cefcf",
+          "size_bytes": 1956852,
+          "source_git_blob_sha1": "011448d1686c42627111aaaf767559ce659a057c",
+          "source_lfs_sha256": "9d21307f9c37a9f82b2436b371a8985c8450011bbf2d9826bf48edcca66c3029",
+          "source_path": "Bank/telemetry/2021_03_07/trace/trace_span.csv",
+          "source_rows": 23919164,
+          "source_sha256": "9d21307f9c37a9f82b2436b371a8985c8450011bbf2d9826bf48edcca66c3029",
+          "source_size_bytes": 2474565687,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 1164,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1615059000000,
+          "start_epoch_ms_utc": 1615057200000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1615057200000,
+          "start_epoch_ms_utc": 1615055400000
+        }
+      }
+    },
+    "bank-20210307T0330-utc8": {
+      "alert_sha256": "d581f82e735fd695e9ad6d17c0b8a2056b7e3efd07dc38aa3769513d75d1c4d3",
+      "files": {
+        "source_dates/2021_03_07/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2473784,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 1352,
+          "sha256": "27e3f6a5bbd2bc6b2604aeb20b7f6346308d0f39bc963469c848bcf3f2d22bba",
+          "size_bytes": 234708,
+          "source_git_blob_sha1": "a246898c6d1703fa935f9da25ed9213343a8ec98",
+          "source_lfs_sha256": "ff1f16010635cea3c1c98b5f2b4053f3755079604d3658e506281111d4939ffe",
+          "source_path": "Bank/telemetry/2021_03_07/log/log_service.csv",
+          "source_rows": 2473784,
+          "source_sha256": "ff1f16010635cea3c1c98b5f2b4053f3755079604d3658e506281111d4939ffe",
+          "source_size_bytes": 416743389,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_07/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13915,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 132,
+          "sha256": "b8a16689b79f96d5cf7848ffc40172346d166f375a44b9d7bc0f7c199421d540",
+          "size_bytes": 5614,
+          "source_git_blob_sha1": "15ec8c2f1e679cfd60270152511d228eeab3f2b8",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_07/metric/metric_app.csv",
+          "source_rows": 13915,
+          "source_sha256": "fa12343359c84d96c51ccc4f896ec3cd1afa159e6ecd2a145f27ddbe4cfdb578",
+          "source_size_bytes": 639097,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_07/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1236563,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 51908,
+          "sha256": "fc18892f7a8fe7a7302cb92ad440b3281293d48d9a9f77554651e976d509975e",
+          "size_bytes": 3547973,
+          "source_git_blob_sha1": "770ec2e97a069f31fcc3a6a9c9be732b10d25601",
+          "source_lfs_sha256": "56e7b482592cec731f3a5b7c1ccbe2cef5876d5cab1a2950d8acda4a8a7adffc",
+          "source_path": "Bank/telemetry/2021_03_07/metric/metric_container.csv",
+          "source_rows": 1236563,
+          "source_sha256": "56e7b482592cec731f3a5b7c1ccbe2cef5876d5cab1a2950d8acda4a8a7adffc",
+          "source_size_bytes": 84638758,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_07/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 1164,
+            "rows_checked": 23919164,
+            "rows_outside_nominal_source_date": 43,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 12247,
+          "sha256": "f346eb586dd78945836bb0b63c9d034fe0c1371e2ec361a94313c193331e719d",
+          "size_bytes": 1258670,
+          "source_git_blob_sha1": "011448d1686c42627111aaaf767559ce659a057c",
+          "source_lfs_sha256": "9d21307f9c37a9f82b2436b371a8985c8450011bbf2d9826bf48edcca66c3029",
+          "source_path": "Bank/telemetry/2021_03_07/trace/trace_span.csv",
+          "source_rows": 23919164,
+          "source_sha256": "9d21307f9c37a9f82b2436b371a8985c8450011bbf2d9826bf48edcca66c3029",
+          "source_size_bytes": 2474565687,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 1164,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1615060800000,
+          "start_epoch_ms_utc": 1615059000000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1615059000000,
+          "start_epoch_ms_utc": 1615057200000
+        }
+      }
+    },
+    "bank-20210309T0800-utc8": {
+      "alert_sha256": "974106dca304f625c366407f0b9f801c6c757af34cd18d7bb83b8087de73f3e3",
+      "files": {
+        "source_dates/2021_03_09/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2193522,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 33369,
+          "sha256": "369752c240d8225b3b7d252360a1181a847277ab0847fa6f07399a186a81a4e8",
+          "size_bytes": 5932955,
+          "source_git_blob_sha1": "04cd2225f3c070ea335643c651c12de3df67c2d1",
+          "source_lfs_sha256": "ddbce54377f1e3a8cc8aef3da48fbfcea9b09c845ca4f61116fc7980df379f23",
+          "source_path": "Bank/telemetry/2021_03_09/log/log_service.csv",
+          "source_rows": 2193522,
+          "source_sha256": "ddbce54377f1e3a8cc8aef3da48fbfcea9b09c845ca4f61116fc7980df379f23",
+          "source_size_bytes": 375183054,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_09/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13838,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 660,
+          "sha256": "27fbee59ab388ae017d0edb5b7b3a40092462b03d5f8e66d5a46796f00596768",
+          "size_bytes": 36437,
+          "source_git_blob_sha1": "15206e88b773d3fe6ce9e965bfa8819ce855f079",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_09/metric/metric_app.csv",
+          "source_rows": 13838,
+          "source_sha256": "7f04d52a1892a04a44ba7ffda0dda6760b4107201bfb16c8fdaac724a9d69dd7",
+          "source_size_bytes": 673884,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_09/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1226464,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 50864,
+          "sha256": "208f29403466a7148265162757425bc6c737264f62dd78e87e45919141d03ba1",
+          "size_bytes": 3464994,
+          "source_git_blob_sha1": "d731d65bec79aacf292047463a34aec686659529",
+          "source_lfs_sha256": "7bc517bc31904212e02c28cfefa06d4c01096017913463bfdae72035c5ab98ca",
+          "source_path": "Bank/telemetry/2021_03_09/metric/metric_container.csv",
+          "source_rows": 1226464,
+          "source_sha256": "7bc517bc31904212e02c28cfefa06d4c01096017913463bfdae72035c5ab98ca",
+          "source_size_bytes": 83866542,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_09/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 15328291,
+            "rows_checked": 22975015,
+            "rows_outside_nominal_source_date": 1028,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 273609,
+          "sha256": "37eeee55950dfdfabfdc997231bdacff050f0db627e879d855c2713a79ac8db7",
+          "size_bytes": 28217116,
+          "source_git_blob_sha1": "e74bf784cbf6767367b54b72877664533a3706c0",
+          "source_lfs_sha256": "a102bf1b4aaf7d1eb0c54d3f90a0dee516e6a74797b21f85740ceb5cee0cc050",
+          "source_path": "Bank/telemetry/2021_03_09/trace/trace_span.csv",
+          "source_rows": 22975015,
+          "source_sha256": "a102bf1b4aaf7d1eb0c54d3f90a0dee516e6a74797b21f85740ceb5cee0cc050",
+          "source_size_bytes": 2377970111,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 15328291,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1615249800000,
+          "start_epoch_ms_utc": 1615248000000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1615248000000,
+          "start_epoch_ms_utc": 1615246200000
+        }
+      }
+    },
+    "bank-20210309T1730-utc8": {
+      "alert_sha256": "31e73ebbdb02e87416fdaaefa4490e078c244333d731cf2e098cdda64d984979",
+      "files": {
+        "source_dates/2021_03_09/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2193522,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 151308,
+          "sha256": "c4459f551043e3e9a2a30edf13e016e63a931ddee5741bf387ac54534ce81278",
+          "size_bytes": 25643311,
+          "source_git_blob_sha1": "04cd2225f3c070ea335643c651c12de3df67c2d1",
+          "source_lfs_sha256": "ddbce54377f1e3a8cc8aef3da48fbfcea9b09c845ca4f61116fc7980df379f23",
+          "source_path": "Bank/telemetry/2021_03_09/log/log_service.csv",
+          "source_rows": 2193522,
+          "source_sha256": "ddbce54377f1e3a8cc8aef3da48fbfcea9b09c845ca4f61116fc7980df379f23",
+          "source_size_bytes": 375183054,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_09/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13838,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 660,
+          "sha256": "fa66dcffdf84a061fe86fd0eb00720c5ed22c754e8ae5d8bec916a028b5583d9",
+          "size_bytes": 30876,
+          "source_git_blob_sha1": "15206e88b773d3fe6ce9e965bfa8819ce855f079",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_09/metric/metric_app.csv",
+          "source_rows": 13838,
+          "source_sha256": "7f04d52a1892a04a44ba7ffda0dda6760b4107201bfb16c8fdaac724a9d69dd7",
+          "source_size_bytes": 673884,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_09/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1226464,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 51790,
+          "sha256": "e8adc1264495c90b17258d55eede6e2b861115851030332d8a0de1ab8a896fdf",
+          "size_bytes": 3551905,
+          "source_git_blob_sha1": "d731d65bec79aacf292047463a34aec686659529",
+          "source_lfs_sha256": "7bc517bc31904212e02c28cfefa06d4c01096017913463bfdae72035c5ab98ca",
+          "source_path": "Bank/telemetry/2021_03_09/metric/metric_container.csv",
+          "source_rows": 1226464,
+          "source_sha256": "7bc517bc31904212e02c28cfefa06d4c01096017913463bfdae72035c5ab98ca",
+          "source_size_bytes": 83866542,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_09/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 15328291,
+            "rows_checked": 22975015,
+            "rows_outside_nominal_source_date": 1028,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 1666172,
+          "sha256": "b9825efb119768e0237031ddca3e9289bfa4e57d5ca9abc2dc1fecb73dfccffa",
+          "size_bytes": 172430816,
+          "source_git_blob_sha1": "e74bf784cbf6767367b54b72877664533a3706c0",
+          "source_lfs_sha256": "a102bf1b4aaf7d1eb0c54d3f90a0dee516e6a74797b21f85740ceb5cee0cc050",
+          "source_path": "Bank/telemetry/2021_03_09/trace/trace_span.csv",
+          "source_rows": 22975015,
+          "source_sha256": "a102bf1b4aaf7d1eb0c54d3f90a0dee516e6a74797b21f85740ceb5cee0cc050",
+          "source_size_bytes": 2377970111,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 15328291,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1615284000000,
+          "start_epoch_ms_utc": 1615282200000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1615282200000,
+          "start_epoch_ms_utc": 1615280400000
+        }
+      }
+    },
+    "bank-20210312T2030-utc8": {
+      "alert_sha256": "f41ce3343a2baf3f03c17bad0a2bfe2a5e2ca47f7b93dd584b0f29cc390fc9c8",
+      "files": {
+        "source_dates/2021_03_12/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2600063,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 103143,
+          "sha256": "5eda8770acee9145939098ca33f4b8e1a29b2c21706734be8f84f3db0e35e42a",
+          "size_bytes": 17337298,
+          "source_git_blob_sha1": "996f9cfea4d9763588924db326cf9f847e1c6eb4",
+          "source_lfs_sha256": "f10ba58a06de8dacf9ac7f07b9f7f15ee0557335485237b2139910c0119bc028",
+          "source_path": "Bank/telemetry/2021_03_12/log/log_service.csv",
+          "source_rows": 2600063,
+          "source_sha256": "f10ba58a06de8dacf9ac7f07b9f7f15ee0557335485237b2139910c0119bc028",
+          "source_size_bytes": 438163539,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_12/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13916,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 660,
+          "sha256": "4116fcbe7d276127585639ce67c3458266bf87c82a8fbe4d0d6c666f168cb1eb",
+          "size_bytes": 30428,
+          "source_git_blob_sha1": "fa15b426eb1d816b3fc7010903dfde1012c66ced",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_12/metric/metric_app.csv",
+          "source_rows": 13916,
+          "source_sha256": "4e178b90f62d90662e2e9f6d41307b7c46373b2e7adfee6f253e7845f79828c3",
+          "source_size_bytes": 638751,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_12/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1217002,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 50372,
+          "sha256": "a4ce7e71f18a6b9677a18159437bdb318d93037ed24e1cca13c5e9814c942b0c",
+          "size_bytes": 3453891,
+          "source_git_blob_sha1": "7156cc7c54bdcb986abf4b3ad56e3f490c854758",
+          "source_lfs_sha256": "2d83ce125d44ea1b06a7462c4ead3a87671b8b8b784da3fd430e35307feeb3f1",
+          "source_path": "Bank/telemetry/2021_03_12/metric/metric_container.csv",
+          "source_rows": 1217002,
+          "source_sha256": "2d83ce125d44ea1b06a7462c4ead3a87671b8b8b784da3fd430e35307feeb3f1",
+          "source_size_bytes": 83447568,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_12/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "milliseconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 717,
+            "rows_checked": 24697945,
+            "rows_outside_nominal_source_date": 96,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 1011670,
+          "sha256": "66e9d5c232f549983c76a7a9a6001b5f40c4c6502e0377e9aa5c4cc1f1d657e1",
+          "size_bytes": 104522384,
+          "source_git_blob_sha1": "2392abe88ff2d6cc08b350fd1c092dbcebaf7bee",
+          "source_lfs_sha256": "3652f724cb57b77d1e597b0189e2a116602ff8cb8b2750f89c4d50a25c066788",
+          "source_path": "Bank/telemetry/2021_03_12/trace/trace_span.csv",
+          "source_rows": 24697945,
+          "source_sha256": "3652f724cb57b77d1e597b0189e2a116602ff8cb8b2750f89c4d50a25c066788",
+          "source_size_bytes": 2556233870,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 717,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "milliseconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1615554000000,
+          "start_epoch_ms_utc": 1615552200000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1615552200000,
+          "start_epoch_ms_utc": 1615550400000
+        }
+      }
+    },
+    "bank-20210323T0630-utc8": {
+      "alert_sha256": "ef866212f34992fbff346a69bd373641acd468594ee063c6848068485d348a26",
+      "files": {
+        "source_dates/2021_03_23/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2657455,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 13777,
+          "sha256": "4361e003f0bb9a1740f13740f55eb3f9b81c6fe47f03283eb0af4fd9322a6b34",
+          "size_bytes": 2311903,
+          "source_git_blob_sha1": "4bc5c303c0686b6ec33f6990562ed940455c11b5",
+          "source_lfs_sha256": "852fdc22350ac1924a1eab4924ff69daba00b80a36af5d51d0179d8d701eef7d",
+          "source_path": "Bank/telemetry/2021_03_23/log/log_service.csv",
+          "source_rows": 2657455,
+          "source_sha256": "852fdc22350ac1924a1eab4924ff69daba00b80a36af5d51d0179d8d701eef7d",
+          "source_size_bytes": 447369934,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_23/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13763,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 609,
+          "sha256": "22ef221beec008e2469729cbfe49aa2f4364a15237cbe7c13f6fe786fafa122b",
+          "size_bytes": 26849,
+          "source_git_blob_sha1": "3998074f7135947f9a98402f46518551050976d9",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_23/metric/metric_app.csv",
+          "source_rows": 13763,
+          "source_sha256": "133d45187276dd3331ef70a449a64e47f597dfbebdd102d581e19e6d05ea1d7b",
+          "source_size_bytes": 629656,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_23/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1127509,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 57178,
+          "sha256": "eef3dd93d85fccbefc72b9f2566eaec01936fb457579577bb6f5299d8d7c8e65",
+          "size_bytes": 3902595,
+          "source_git_blob_sha1": "2a890287b5a6e9e13866b920a934f4cb22c7ad49",
+          "source_lfs_sha256": "db374c935356344828a09f19c6751afb5f47b5334102f04c410a1492981860f8",
+          "source_path": "Bank/telemetry/2021_03_23/metric/metric_container.csv",
+          "source_rows": 1127509,
+          "source_sha256": "db374c935356344828a09f19c6751afb5f47b5334102f04c410a1492981860f8",
+          "source_size_bytes": 77007359,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_23/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 2000,
+            "rows_checked": 24615934,
+            "rows_outside_nominal_source_date": 98,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 136736,
+          "sha256": "217890118d81acc362521220040b1e451a6581771b981bf2a64b4b112eecab43",
+          "size_bytes": 13644366,
+          "source_git_blob_sha1": "29c5bf665346c5ab4f2d726a0eed9734e6a3d81e",
+          "source_lfs_sha256": "af297e6864fb11e69e4adf9f1d05df18f4f44af7da2b6039ca5ba06327675018",
+          "source_path": "Bank/telemetry/2021_03_23/trace/trace_span.csv",
+          "source_rows": 24615934,
+          "source_sha256": "af297e6864fb11e69e4adf9f1d05df18f4f44af7da2b6039ca5ba06327675018",
+          "source_size_bytes": 2469840756,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 2000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1616454000000,
+          "start_epoch_ms_utc": 1616452200000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1616452200000,
+          "start_epoch_ms_utc": 1616450400000
+        }
+      }
+    },
+    "bank-20210324T1100-utc8": {
+      "alert_sha256": "639fd9770c4777f3fca0a77501c5405606fad275c2e446b3c51c6331bb47dbbe",
+      "files": {
+        "source_dates/2021_03_24/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2586990,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 248938,
+          "sha256": "9e51b6b3a4c684d11874ddc14952f8ea349a8a4a028cb091cf6b6bf3a40a5f3e",
+          "size_bytes": 41957435,
+          "source_git_blob_sha1": "2abccbe0209c635027b58d2a82195d09f8a1f8ae",
+          "source_lfs_sha256": "ad8abba0fa744ef0af340fdf2189cb8c898eb6c753bf236bc78833146d99e9c4",
+          "source_path": "Bank/telemetry/2021_03_24/log/log_service.csv",
+          "source_rows": 2586990,
+          "source_sha256": "ad8abba0fa744ef0af340fdf2189cb8c898eb6c753bf236bc78833146d99e9c4",
+          "source_size_bytes": 435708516,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_24/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13915,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 660,
+          "sha256": "e666751efa61d57f43687fb3589182fd6fa3bda692464fb0bab002e2b1939743",
+          "size_bytes": 31699,
+          "source_git_blob_sha1": "9cc8968423e6a2ef8a2ea34997fc42dbe54208c7",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_24/metric/metric_app.csv",
+          "source_rows": 13915,
+          "source_sha256": "1d32a96751d9008539f81b4ec7ea4e4d5f5c0ac5df078c2af366ddd817e9fca6",
+          "source_size_bytes": 640570,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_24/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1122586,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 42063,
+          "sha256": "e31d4acacb871161ace9e29a4ebfcea0f0a2762050766b20487a5be2662a5dec",
+          "size_bytes": 2890762,
+          "source_git_blob_sha1": "ae4a443b3b71cb027465e71d172f7bb76663a8d7",
+          "source_lfs_sha256": "00875da15a0a7a78e3e5591c76d6147d19f4fbff965824bc0b3f240b75e50dc7",
+          "source_path": "Bank/telemetry/2021_03_24/metric/metric_container.csv",
+          "source_rows": 1122586,
+          "source_sha256": "00875da15a0a7a78e3e5591c76d6147d19f4fbff965824bc0b3f240b75e50dc7",
+          "source_size_bytes": 76856235,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_24/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 2000,
+            "rows_checked": 24750987,
+            "rows_outside_nominal_source_date": 54,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 2353504,
+          "sha256": "de3b09f1909b659737d630a3cbe434aefe8673064cf30305ef48d95a3eee1a76",
+          "size_bytes": 236455995,
+          "source_git_blob_sha1": "7421b92633948b146935764785fc7ffdca93a999",
+          "source_lfs_sha256": "6531c34c2041ed24cd939cfa8f28ce2b4984210cec23e02c130de461a54cfd35",
+          "source_path": "Bank/telemetry/2021_03_24/trace/trace_span.csv",
+          "source_rows": 24750987,
+          "source_sha256": "6531c34c2041ed24cd939cfa8f28ce2b4984210cec23e02c130de461a54cfd35",
+          "source_size_bytes": 2484272191,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 2000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1616556600000,
+          "start_epoch_ms_utc": 1616554800000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1616554800000,
+          "start_epoch_ms_utc": 1616553000000
+        }
+      }
+    },
+    "bank-20210325T1530-utc8": {
+      "alert_sha256": "ba70aceb9ba5efaffc2a532ed32bd86a976e188b1909c844922b7f3a1ad9ed00",
+      "files": {
+        "source_dates/2021_03_25/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2657560,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 241653,
+          "sha256": "2f3d3f105ae2ef59548faee6eedcdbf00c9a5a8acfb2d4ecbd6b865d96a2ffeb",
+          "size_bytes": 40709225,
+          "source_git_blob_sha1": "1753079f2079a8f341e17f4f6b8bd4f3ffe4d30c",
+          "source_lfs_sha256": "3163a2404ce702213d6ec364b86d05b925aa8024e196aee3da05579764a8e43f",
+          "source_path": "Bank/telemetry/2021_03_25/log/log_service.csv",
+          "source_rows": 2657560,
+          "source_sha256": "3163a2404ce702213d6ec364b86d05b925aa8024e196aee3da05579764a8e43f",
+          "source_size_bytes": 447317896,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_25/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13815,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 644,
+          "sha256": "0b5931d7af954ce95b3eecf9398eecdfc7ec4ae3219a7441641f95752f3772a7",
+          "size_bytes": 30176,
+          "source_git_blob_sha1": "5d0a29c2f7ebb6d4c2fba498b51fc8c8b2c3c93a",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_25/metric/metric_app.csv",
+          "source_rows": 13815,
+          "source_sha256": "c4b0a6d42d4434d361aa0f310c8a25dc6227eade626d0f571d01dcd4bf67b11a",
+          "source_size_bytes": 633446,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_25/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1307752,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 54848,
+          "sha256": "d5211194368b9f129920842ecb70ae86e72627e1ed048fbf248b606455655bf3",
+          "size_bytes": 3751458,
+          "source_git_blob_sha1": "de0f3642f320412bf82bb295279c142e6f198583",
+          "source_lfs_sha256": "9286270dfb1386186b7c8bf7f7556b1854226ac052bd2a03daab14197da3e7ff",
+          "source_path": "Bank/telemetry/2021_03_25/metric/metric_container.csv",
+          "source_rows": 1307752,
+          "source_sha256": "9286270dfb1386186b7c8bf7f7556b1854226ac052bd2a03daab14197da3e7ff",
+          "source_size_bytes": 89559550,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_25/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 1000,
+            "rows_checked": 25699839,
+            "rows_outside_nominal_source_date": 2,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 2337139,
+          "sha256": "23b51bc01720f8def7c206bfad373b6fa7bddf0bf6f24d97f376f4892e867b0f",
+          "size_bytes": 234779925,
+          "source_git_blob_sha1": "a01aa2b2b930896ce2eb600f3c4e8cbd751ab61b",
+          "source_lfs_sha256": "e4b98cd140223edcad4311c71bbf9a70dc5f95d528a3ff6ca9ab8b35fe98581b",
+          "source_path": "Bank/telemetry/2021_03_25/trace/trace_span.csv",
+          "source_rows": 25699839,
+          "source_sha256": "e4b98cd140223edcad4311c71bbf9a70dc5f95d528a3ff6ca9ab8b35fe98581b",
+          "source_size_bytes": 2578501342,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 1000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1616659200000,
+          "start_epoch_ms_utc": 1616657400000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1616657400000,
+          "start_epoch_ms_utc": 1616655600000
+        }
+      }
+    },
+    "bank-20210325T2000-utc8": {
+      "alert_sha256": "4618676e575b1be5096ff4e1ddcd5a2c2c5f28c1325cea5d0b5d8c59dc72f836",
+      "files": {
+        "source_dates/2021_03_25/log/log_service.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 2657560,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "log_id",
+            "timestamp",
+            "cmdb_id",
+            "log_name",
+            "value"
+          ],
+          "rows": 104454,
+          "sha256": "8e126441dece6d9a83796886eef8943e040b87818fa182fe7c4236ca005c92ed",
+          "size_bytes": 17554178,
+          "source_git_blob_sha1": "1753079f2079a8f341e17f4f6b8bd4f3ffe4d30c",
+          "source_lfs_sha256": "3163a2404ce702213d6ec364b86d05b925aa8024e196aee3da05579764a8e43f",
+          "source_path": "Bank/telemetry/2021_03_25/log/log_service.csv",
+          "source_rows": 2657560,
+          "source_sha256": "3163a2404ce702213d6ec364b86d05b925aa8024e196aee3da05579764a8e43f",
+          "source_size_bytes": 447317896,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_25/metric/metric_app.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 60000,
+            "rows_checked": 13815,
+            "rows_outside_nominal_source_date": 11,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "rr",
+            "sr",
+            "cnt",
+            "mrt",
+            "tc"
+          ],
+          "rows": 646,
+          "sha256": "07bf66c19c0aeb737dae15c29a761c59b5fd5572d30834af6c5fae99754861c2",
+          "size_bytes": 29706,
+          "source_git_blob_sha1": "5d0a29c2f7ebb6d4c2fba498b51fc8c8b2c3c93a",
+          "source_lfs_sha256": null,
+          "source_path": "Bank/telemetry/2021_03_25/metric/metric_app.csv",
+          "source_rows": 13815,
+          "source_sha256": "c4b0a6d42d4434d361aa0f310c8a25dc6227eade626d0f571d01dcd4bf67b11a",
+          "source_size_bytes": 633446,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 60000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "full-file header/timestamp coverage audit"
+        },
+        "source_dates/2021_03_25/metric/metric_container.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 0,
+            "rows_checked": 1307752,
+            "rows_outside_nominal_source_date": 0,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "kpi_name",
+            "value"
+          ],
+          "rows": 55127,
+          "sha256": "9d600db92119a6d53ebb0428ecb7ba4f4411b356d66573d5a0df6e9609783a47",
+          "size_bytes": 3772669,
+          "source_git_blob_sha1": "de0f3642f320412bf82bb295279c142e6f198583",
+          "source_lfs_sha256": "9286270dfb1386186b7c8bf7f7556b1854226ac052bd2a03daab14197da3e7ff",
+          "source_path": "Bank/telemetry/2021_03_25/metric/metric_container.csv",
+          "source_rows": 1307752,
+          "source_sha256": "9286270dfb1386186b7c8bf7f7556b1854226ac052bd2a03daab14197da3e7ff",
+          "source_size_bytes": 89559550,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 0,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "upstream prompt declaration; full-file validation pending"
+        },
+        "source_dates/2021_03_25/trace/trace_span.csv": {
+          "full_source_file_unit_validation": {
+            "expected_unit": "seconds",
+            "homogeneous_unit_validation": "passed_all_rows",
+            "max_spillover_after_day_ms": 0,
+            "max_spillover_before_day_ms": 1000,
+            "rows_checked": 25699839,
+            "rows_outside_nominal_source_date": 2,
+            "rows_outside_source_year": 0,
+            "source_year": 2021,
+            "source_year_end_epoch_ms_utc": 1640966400000,
+            "source_year_start_epoch_ms_utc": 1609430400000,
+            "spillover_policy": "same_source_year_is_required; other dates are counted, not rejected by a fixed day tolerance",
+            "unit_magnitude_mismatches": 0
+          },
+          "header": [
+            "timestamp",
+            "cmdb_id",
+            "parent_id",
+            "span_id",
+            "trace_id",
+            "duration"
+          ],
+          "rows": 1010006,
+          "sha256": "19bdd64509a09d04247d249f20282de010d0243c03cafc7b574d1e4e94fce4e1",
+          "size_bytes": 101219255,
+          "source_git_blob_sha1": "a01aa2b2b930896ce2eb600f3c4e8cbd751ab61b",
+          "source_lfs_sha256": "e4b98cd140223edcad4311c71bbf9a70dc5f95d528a3ff6ca9ab8b35fe98581b",
+          "source_path": "Bank/telemetry/2021_03_25/trace/trace_span.csv",
+          "source_rows": 25699839,
+          "source_sha256": "e4b98cd140223edcad4311c71bbf9a70dc5f95d528a3ff6ca9ab8b35fe98581b",
+          "source_size_bytes": 2578501342,
+          "spillover_after_day_max_ms": 0,
+          "spillover_before_day_max_ms": 1000,
+          "timestamp_field": "timestamp",
+          "timestamp_unit": "seconds",
+          "unit_evidence": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        }
+      },
+      "windows": {
+        "alert": {
+          "end_epoch_ms_utc": 1616675400000,
+          "start_epoch_ms_utc": 1616673600000
+        },
+        "reference": {
+          "end_epoch_ms_utc": 1616673600000,
+          "start_epoch_ms_utc": 1616671800000
+        }
+      }
+    }
+  },
+  "clip_manifest_sha256": "49ca7f43cc8bab322b6df86826653983b9489a73985ccd2c068643cca4fe8225",
+  "deployment_catalog_file_sha256": "0f98a2880a0dc6284aaf9de30ad113ffa29cc0c9416f13c720d1e18dfaae90a1",
+  "deployment_catalog_schema_sha256": "a702127cd22cde022f7f3975c0ab3203c15d8ceb0e74b3357f2615d1fafef987",
+  "deployment_mapping_source_sha256": "a702127cd22cde022f7f3975c0ab3203c15d8ceb0e74b3357f2615d1fafef987",
+  "dev_manifest_sha256": "a63bdb5eeaad5f1acf614eb1984db08f1af5cd5f131994d6153613f2b82d9f3d",
+  "sample_config_sha256": "329acdc980afc0faa7bdeaf3c6a5ff6d1fca3c1b2e167b0d391674fdb28b7d52",
+  "schema_version": "e4-bank-input-manifest/1",
+  "scored_manifest_sha256": "62bfb45bcb644e1530d43582c845dd7e09712b704c9310646cb1f1eb9fcc6de6"
+}

@@ -1,0 +1,278 @@
+{
+  "schema_version": "e4-bank-metric-kind-policy/1",
+  "source_semantics": {
+    "metric_app": {
+      "upstream_declared_timestamp_unit": "seconds",
+      "entity_field": "tc",
+      "entity_role": "app_kpi",
+      "fields": {
+        "rr": {
+          "kind": "unknown",
+          "unit": "undeclared",
+          "ranking_eligible": false
+        },
+        "sr": {
+          "kind": "unknown",
+          "unit": "undeclared",
+          "ranking_eligible": false
+        },
+        "cnt": {
+          "kind": "unknown",
+          "unit": "undeclared",
+          "ranking_eligible": false
+        },
+        "mrt": {
+          "kind": "unknown",
+          "unit": "undeclared",
+          "ranking_eligible": false,
+          "working_interpretation": "field name suggests mean-response-time-style KPI; source definitions and units not independently specified"
+        }
+      }
+    },
+    "metric_container": {
+      "upstream_declared_timestamp_unit": "seconds",
+      "entity_field": "cmdb_id",
+      "entity_role": "component",
+      "default_kind": "unknown",
+      "ranking_allowlist": {
+        "OSLinux-CPU_CPU_CPUCpuUtil": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-CPU_CPU_CPULoad": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_MEMORY_MEMORY_MEMUsedMemPerc": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_MEMORY_MEMORY_NoCacheMemPerc": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_MEMORY_MEMORY_MEMFreeMem": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_MEMORY_MEMORY_UserMem": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Operating System_7778_JVM_JVM_CPULoad": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Operating System_7779_JVM_JVM_CPULoad": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Memory_7778_JVM_Memory_HeapMemoryUsage": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Memory_7779_JVM_Memory_HeapMemoryUsage": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Memory_7778_JVM_Memory_HeapMemoryUsed": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Memory_7779_JVM_Memory_HeapMemoryUsed": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Memory_7778_JVM_Memory_NoHeapMemoryUsed": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "JVM-Memory_7779_JVM_Memory_NoHeapMemoryUsed": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Tomcat-MEMORY_7441-MEMORY_JVMMemoryUsedPercent": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Tomcat-MEMORY_7441-MEMORY_JVMUsedMemory": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Tomcat-MEMORY_7441-MEMORY_JVMFreeMemory": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_LOCALDISK_LOCALDISK-sda_DSKPercentBusy": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_LOCALDISK_LOCALDISK-sdb_DSKPercentBusy": {
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_LOCALDISK_LOCALDISK-sda_DSKBps": {
+          "kind": "rate",
+          "unit": "rate-like by field suffix; exact unit undeclared",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_LOCALDISK_LOCALDISK-sdb_DSKBps": {
+          "kind": "rate",
+          "unit": "rate-like by field suffix; exact unit undeclared",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_LOCALDISK_LOCALDISK-sda_DSKRTps": {
+          "kind": "rate",
+          "unit": "rate-like by field suffix; exact unit undeclared",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "OSLinux-OSLinux_LOCALDISK_LOCALDISK-sdb_DSKRTps": {
+          "kind": "rate",
+          "unit": "rate-like by field suffix; exact unit undeclared",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_3bf443a64876--bcou-role-st-uat-statefulset-1--bcou--UATWKR03_CpuPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_464dc801314b--bcou-trace-st-uat-statefulset-0--bcou--UATWKR04_CpuPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_464dc801314b--bcou-trace-st-uat-statefulset-0--bcou--UATWKR04_MemPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_76d31070b844--bcou-role-st-uat-statefulset-1--bcou--UATWKR06_CpuPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_76d31070b844--bcou-role-st-uat-statefulset-1--bcou--UATWKR06_MemPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_f861998c398e--bcou-role-st-uat-statefulset-0--bcou--UATWKR18_CpuPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        },
+        "Container-DOCKER_CONTAINER_f861998c398e--bcou-role-st-uat-statefulset-0--bcou--UATWKR18_MemPercent": {
+          "kind": "gauge",
+          "unit": "percent-like by field suffix; exact scale unverified",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
+        }
+      }
+    },
+    "trace_span": {
+      "upstream_declared_timestamp_unit": "milliseconds",
+      "entity_field": "cmdb_id",
+      "entity_role": "component",
+      "duration_field": "duration",
+      "duration_unit": "undeclared",
+      "success_field": null,
+      "call_type_field": null,
+      "within_field_comparison_only": true
+    },
+    "log_service": {
+      "upstream_declared_timestamp_unit": "seconds",
+      "entity_field": "cmdb_id",
+      "log_name_field": "log_name",
+      "derived_metric": "log_volume_count",
+      "derived_unit": "record rows per fixed one-minute case-relative bucket; empty buckets are zero rows recorded in the supplied clip",
+      "derived_kind": "event_count",
+      "ranking_eligible": true,
+      "raw_value_interpretation": "not parsed; original clipped CSV remains hash-pinned"
+    }
+  },
+  "loader_limits": {
+    "max_file_bytes": 5368709120,
+    "max_rows_per_file": 10000000,
+    "max_csv_field_chars": 4194304,
+    "max_log_groups": 1000000,
+    "max_log_summary_groups": 256
+  }
+}

@@ -1,0 +1,170 @@
+{
+  "version": "e4-runtime/1",
+  "description": "Typed immutable execution context. Runtime values do not synthesize telemetry observations.",
+  "fields": {
+    "dag_depth": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "run",
+      "meaning": "Configured maximum number of operator nodes on a dependency path. This is a limit, not measured graph depth; the final return reference is not itself a node."
+    },
+    "max_nodes": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "run",
+      "meaning": "Maximum number of nodes allowed in one DAG."
+    },
+    "lead_count": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "run",
+      "meaning": "Number of distinct component leads retained internally."
+    },
+    "acceptance_top_k": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "run",
+      "meaning": "Frozen primary diagnostic cutoff; component identity in the first three leads."
+    },
+    "seed": {
+      "type": "integer",
+      "required": true,
+      "scope": "run",
+      "meaning": "Seed for explicitly stochastic numerical operators."
+    },
+    "minimum_support": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum distinct metric timestamps or independent traceId units in each window before an inferential contrast. It is not the number of block-permutation units."
+    },
+    "permutation_resamples": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Number of deterministic permutation resamples for declared tests."
+    },
+    "block_minutes": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minute block size used to reduce serial dependence before metric-level permutation tests."
+    },
+    "tail_quantile": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Quantile used for explicit tail contrasts in metric blocks and per-trace elapsedTime distributions."
+    },
+    "minimum_independent_blocks": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum number of aggregated blocks required in each window for permutation evidence."
+    },
+    "relative_scale_floor": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Declared minimum robust normalization scale as a fraction of the reference center."
+    },
+    "absolute_scale_floor": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Declared absolute lower bound on the contrast normalization scale, in the source metric's own units."
+    },
+    "permutation_p_score_floor": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Declared lower bound on permutation p before converting evidence to a diagnostic ranking score; not a root-cause probability."
+    },
+    "minimum_normalized_effect": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum absolute dimensionless effect required before a permutation-backed lead receives positive ranking score."
+    },
+    "maximum_change_p_value": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Maximum permutation p-value for inferential change eligibility; evidence remains recorded when a test does not pass."
+    },
+    "minimum_request_count": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum per-minute request count for average-latency evidence; below this, that KPI abstains."
+    },
+    "flow_min_samples": {
+      "type": "positive_integer",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum matched root traces for conditional flow fitting."
+    },
+    "flow_min_r2": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum in-sample R-squared for conditional flow attribution; lower fit abstains."
+    },
+    "flow_min_contribution_fraction": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Minimum absolute coefficient contribution fraction required to rank a flow feature."
+    },
+    "flow_alpha": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "L1 regularization strength for the explicitly scoped reference-plus-alert flow model."
+    },
+    "trace_propagation_weight": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Declared discount applied to a failed span's ancestor when representing same-trace failure propagation."
+    },
+    "deployment_host_weight": {
+      "type": "number",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Declared discount applied when deployment-catalog host membership propagates component evidence to a host candidate."
+    },
+    "analysis_weights": {
+      "type": "number_map",
+      "required": true,
+      "scope": "operator",
+      "meaning": "Nonnegative weights for eligible analysis families before stable cross-family merging."
+    },
+    "reference_window": {
+      "type": "window",
+      "required": true,
+      "scope": "case",
+      "provider": "verified_case_manifest",
+      "meaning": "Supplied preceding 30-minute reference interval, half-open and represented in UTC milliseconds. Coverage does not establish health."
+    },
+    "alert_window": {
+      "type": "window",
+      "required": true,
+      "scope": "case",
+      "provider": "verified_case_manifest",
+      "meaning": "Supplied 30-minute failure interval, half-open and represented in UTC milliseconds."
+    },
+    "measured_graph_depth": {
+      "type": "positive_integer",
+      "scope": "execution_output",
+      "writable": false,
+      "meaning": "Measured longest dependency path in the verified DAG, excluding configured-limit semantics."
+    },
+    "measured_node_count": {
+      "type": "positive_integer",
+      "scope": "execution_output",
+      "writable": false,
+      "meaning": "Measured verified DAG node count."
+    }
+  }
+}

@@ -1,0 +1,370 @@
+{
+  "schema_version": "e4-bank-seed-library/1",
+  "provenance": "Luna-authored source-neutral structural examples for the Bank adapter; no incident IDs, targets, reasons, or observed outcomes.",
+  "examples": {
+    "native_metric_contrast": {
+      "schema_version": "e4-dag/1",
+      "nodes": [
+        {
+          "id": "data",
+          "operator": "case.telemetry",
+          "version": "1",
+          "inputs": {},
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "metric_reference",
+          "operator": "bank.metrics.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "reference"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "metric_alert",
+          "operator": "bank.metrics.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "alert"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "candidates",
+          "operator": "bank.candidates.generate",
+          "version": "1",
+          "inputs": {
+            "data": "data",
+            "aggregates": [
+              "metric_reference",
+              "metric_alert"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "metric_scores",
+          "operator": "bank.metrics.contrast",
+          "version": "1",
+          "inputs": {
+            "reference": "metric_reference",
+            "alert": "metric_alert",
+            "candidates": "candidates"
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "answer",
+          "operator": "bank.answers.combine",
+          "version": "1",
+          "inputs": {
+            "scores": [
+              "metric_scores"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        }
+      ],
+      "return": {
+        "node": "answer"
+      }
+    },
+    "per_trace_native_duration": {
+      "schema_version": "e4-dag/1",
+      "nodes": [
+        {
+          "id": "data",
+          "operator": "case.telemetry",
+          "version": "1",
+          "inputs": {},
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "trace_reference",
+          "operator": "bank.traces.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "reference"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "trace_alert",
+          "operator": "bank.traces.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "alert"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "candidates",
+          "operator": "bank.candidates.generate",
+          "version": "1",
+          "inputs": {
+            "data": "data",
+            "aggregates": [
+              "trace_reference",
+              "trace_alert"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "trace_scores",
+          "operator": "bank.traces.latency_contrast",
+          "version": "1",
+          "inputs": {
+            "reference": "trace_reference",
+            "alert": "trace_alert",
+            "candidates": "candidates"
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "answer",
+          "operator": "bank.answers.combine",
+          "version": "1",
+          "inputs": {
+            "scores": [
+              "trace_scores"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        }
+      ],
+      "return": {
+        "node": "answer"
+      }
+    },
+    "per_minute_log_volume": {
+      "schema_version": "e4-dag/1",
+      "nodes": [
+        {
+          "id": "data",
+          "operator": "case.telemetry",
+          "version": "1",
+          "inputs": {},
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "metric_reference",
+          "operator": "bank.metrics.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "reference"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "metric_alert",
+          "operator": "bank.metrics.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "alert"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "candidates",
+          "operator": "bank.candidates.generate",
+          "version": "1",
+          "inputs": {
+            "data": "data",
+            "aggregates": [
+              "metric_reference",
+              "metric_alert"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "log_volume_scores",
+          "operator": "bank.logs.volume_contrast",
+          "version": "1",
+          "inputs": {
+            "reference": "metric_reference",
+            "alert": "metric_alert",
+            "candidates": "candidates"
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "answer",
+          "operator": "bank.answers.combine",
+          "version": "1",
+          "inputs": {
+            "scores": [
+              "log_volume_scores"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        }
+      ],
+      "return": {
+        "node": "answer"
+      }
+    },
+    "combined_shared_candidates": {
+      "schema_version": "e4-dag/1",
+      "nodes": [
+        {
+          "id": "data",
+          "operator": "case.telemetry",
+          "version": "1",
+          "inputs": {},
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "metric_reference",
+          "operator": "bank.metrics.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "reference"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "metric_alert",
+          "operator": "bank.metrics.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "alert"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "trace_reference",
+          "operator": "bank.traces.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "reference"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "trace_alert",
+          "operator": "bank.traces.aggregate",
+          "version": "1",
+          "inputs": {
+            "data": "data"
+          },
+          "params": {
+            "window": "alert"
+          },
+          "bindings": {}
+        },
+        {
+          "id": "candidates",
+          "operator": "bank.candidates.generate",
+          "version": "1",
+          "inputs": {
+            "data": "data",
+            "aggregates": [
+              "metric_reference",
+              "metric_alert",
+              "trace_reference",
+              "trace_alert"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "metric_scores",
+          "operator": "bank.metrics.contrast",
+          "version": "1",
+          "inputs": {
+            "reference": "metric_reference",
+            "alert": "metric_alert",
+            "candidates": "candidates"
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "trace_scores",
+          "operator": "bank.traces.latency_contrast",
+          "version": "1",
+          "inputs": {
+            "reference": "trace_reference",
+            "alert": "trace_alert",
+            "candidates": "candidates"
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "log_volume_scores",
+          "operator": "bank.logs.volume_contrast",
+          "version": "1",
+          "inputs": {
+            "reference": "metric_reference",
+            "alert": "metric_alert",
+            "candidates": "candidates"
+          },
+          "params": {},
+          "bindings": {}
+        },
+        {
+          "id": "answer",
+          "operator": "bank.answers.combine",
+          "version": "1",
+          "inputs": {
+            "scores": [
+              "metric_scores",
+              "trace_scores",
+              "log_volume_scores"
+            ]
+          },
+          "params": {},
+          "bindings": {}
+        }
+      ],
+      "return": {
+        "node": "answer"
+      }
+    }
+  }
+}

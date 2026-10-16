@@ -1,0 +1,55 @@
+{
+  "version": "e4-core-decisions/1",
+  "acceptance": {
+    "primary": "component identity in ranked positions 1 through 3; category is not part of acceptance",
+    "secondary": "component identity and category in ranked positions 1 through 3",
+    "internal_lead_count": 5,
+    "canonical_component_identity": "strip surrounding whitespace and casefold; no aliases or workbook-derived identity substitutions",
+    "duplicate_leads": "merge equal canonical component identifiers after deterministic score ordering; retain the highest-scoring role and combine distinct evidence records"
+  },
+  "evidence_combination": {
+    "family_normalization": "Within each eligible family, divide nonnegative diagnostic scores by that family's maximum positive score; family variants share one budget.",
+    "weights": "Use runtime.analysis_weights and divide the weighted sum by one common sum of eligible-family weights for every candidate; a candidate absent from a family contributes zero.",
+    "zero_scores": "Zero or no-evidence candidates do not create normalized ranks and cannot fill answer slots."
+  },
+  "category": {
+    "source_fault_categories": ["CPU fault", "db close", "db connection limit", "network delay", "network loss"],
+    "prediction_policy": "Analysis families (metric, trace error, trace latency, flow, dependency, combined) are not fault categories. Leave category unknown/null unless an evidence-backed fault-category classifier is explicitly implemented; never infer it from evaluator labels."
+  },
+  "metric_app": {
+    "raw_rows": "Preserve every input row and expose repeated (serviceName,startTime) counts.",
+    "stable_series_identity": "(table, serviceName, metric_name, startTime)",
+    "duplicate_key_aggregation": "median of finite values within each repeated service/time/metric key; each distinct minute is then one support unit",
+    "window_summary": "median across per-minute bucket medians; support is the count of distinct observed minute buckets",
+    "evidence": "Include raw row count, distinct bucket count, repeated bucket count, and selected aggregation."
+  },
+  "metric_values": {
+    "invalid_numeric": "Preserve raw text and mark missing/invalid in quality counts; never coerce NaN or infinity into scores.",
+    "other_metric_series_identity": "(table, cmdb_id, name, bomc_id, itemid)",
+    "window_aggregation": "median within duplicate timestamps, then median across distinct timestamps"
+  },
+  "contrasts": {
+    "independent_units": "Metric observations are first collapsed to one finite median per distinct source timestamp, then neighboring timestamps are reduced to configured nonoverlapping minute blocks before permutation tests. minimum_support counts distinct timestamps; minimum_independent_blocks counts the resulting blocks.",
+    "normalized_effect": "delta divided by max(reference MAD scaled to normal, abs(reference center) times runtime.relative_scale_floor, runtime.absolute_scale_floor). The two floors are runtime-visible and written in evidence.",
+    "ranking_strength": "abs(normalized_effect) times -log10(max(permutation p, runtime.permutation_p_score_floor)); this is a diagnostic change score, not root-cause probability."
+  },
+  "conditional_flow": {
+    "adaptation": "Backend adaptation inspired by MoCE Appendix A.1, not a reproduction of its client expert.",
+    "model": "L1 regression of root OSB elapsedTime on same-trace non-root service/container/database elapsedTime features; target is excluded from predictors, fitting uses reference plus alert traces, and collinear features cause abstention.",
+    "eligibility": "runtime.flow_min_r2=0.5 and runtime.flow_min_contribution_fraction=0.2 follow the published MoCE values as cautious applicability gates; they are validated on synthetic additive/missing/collinear cases and may cause abstention on Telecom.",
+    "units": "Only within elapsedTime values; no conversion to metric_app.avg_time or timestamp differences."
+  },
+  "traces": {
+    "span_identity": "(traceId,id); parent pid is resolved only within the same traceId",
+    "success": "Case-insensitive true/false; absent and unrecognized tokens are missing/invalid, never truthy success.",
+    "entity_roles": "Keep executing cmdb_id, logical serviceName and database dsName separately.",
+    "duration": "Preserve elapsedTime and avg_time raw values. Their absolute units are not declared by source; only within-field relative comparisons are permitted until units are established.",
+    "clipping": "Do not read outside the case reference and alert intervals to repair a missing parent; mark a nonempty parent absent from the clip as unresolved/possibly clipped, not definitely clipped. The source audit found 175 unresolved full-day parent references."
+  },
+  "source_gaps": [
+    "Original E4 implementation was not located; operators and seeds are an explicit reconstruction.",
+    "The source query supplies a failure window but no fixed KPI condition; do not claim original KPI-trigger equivalence.",
+    "The prior reference window is coverage-eligible, not guaranteed healthy.",
+    "Telecom contains backend telemetry, not user/client/session/cohort data."
+  ]
+}

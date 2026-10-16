@@ -1,0 +1,26 @@
+{
+  "schema_version": "telecom-dev-kpi-policy/1",
+  "scope": "fixed before any development model diagnosis; label-blind public telemetry only",
+  "minimum_support_per_window": 12,
+  "priority": [
+    {
+      "id": "root_osb_elapsedTime_mean",
+      "selection": "valid root OSB spans (case-insensitive callType OSB, empty parent id) with finite elapsedTime; at least minimum_support distinct traceId values in each window",
+      "summary": "mean, median, empirical q90, and distinct trace support per window",
+      "units": "source elapsedTime units are undeclared; compare this field only"
+    },
+    {
+      "id": "app_avg_time_mean",
+      "selection": "if no supported root OSB elapsedTime, choose serviceName with greatest paired finite avg_time timestamp support; support is at least minimum_support unique timestamps in each window",
+      "summary": "mean, median, empirical q90, and unique timestamp support per window",
+      "units": "source avg_time units are undeclared; compare this field only"
+    },
+    {
+      "id": "root_osb_failure_fraction",
+      "selection": "if neither latency field is supported, valid root OSB success observations with at least minimum_support distinct traceId values in each window",
+      "summary": "failures / valid status observations and denominator per window"
+    }
+  ],
+  "abstention": "If no KPI satisfies paired support, report unsupported and do not invent a KPI.",
+  "prohibitions": ["evaluator gold", "scored incidents", "future labels", "guessed root component"]
+}

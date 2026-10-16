@@ -1,0 +1,16 @@
+{
+  "schema_version": "e4-bank-dev-kpi-policy/1",
+  "minimum_support_per_window": 24,
+  "primary_metric_allowlist": [
+    "metric_app.mrt"
+  ],
+  "family_weights": {
+    "bank_metric": 1.0,
+    "bank_trace_latency": 1.0,
+    "bank_log_volume": 1.0
+  },
+  "selection": "First tier: support-first among metric_app.mrt values by opaque tc identity, requiring at least minimum_support_per_window finite unique timestamps in both windows; ties use canonical tc ID. If unsupported, report no selected primary KPI. No CPU/memory fallback is allowed.",
+  "unit_policy": "mrt is a working mean-response-time-style interpretation from its name; absolute units remain undeclared. The tc value is an opaque application KPI identity and is never mapped to a component.",
+  "unclassified_numeric_fields_are_rankable": false,
+  "selection_provenance": "Reconstructed fixed Bank development rule; the upstream Bank query is window-only and does not specify a KPI."
+}

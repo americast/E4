@@ -1,0 +1,31 @@
+{
+  "dag_depth": 12,
+  "max_nodes": 40,
+  "lead_count": 5,
+  "acceptance_top_k": 3,
+  "seed": 42,
+  "minimum_support": 12,
+  "permutation_resamples": 499,
+  "block_minutes": 5,
+  "tail_quantile": 0.9,
+  "minimum_independent_blocks": 4,
+  "relative_scale_floor": 0.05,
+  "absolute_scale_floor": 1e-9,
+  "permutation_p_score_floor": 0.001,
+  "minimum_normalized_effect": 0.5,
+  "maximum_change_p_value": 0.1,
+  "minimum_request_count": 5,
+  "flow_min_samples": 30,
+  "flow_min_r2": 0.5,
+  "flow_min_contribution_fraction": 0.2,
+  "flow_alpha": 0.01,
+  "trace_propagation_weight": 0.25,
+  "deployment_host_weight": 0.2,
+  "analysis_weights": {
+    "metric": 1.0,
+    "trace_error": 1.0,
+    "trace_latency": 1.0,
+    "flow": 1.0,
+    "dependency": 1.0
+  }
+}

@@ -1,0 +1,176 @@
+{
+  "schema_version": "e4-experimental-model-selection/1",
+  "status": "selected_primary_for_first_development_run",
+  "selected_model": "gemma",
+  "selection_order": [
+    "corrected end-to-end task correctness",
+    "successful operator execution and DAG verification",
+    "latency and memory feasibility"
+  ],
+  "decision": {
+    "basis": "Both candidates were replayed offline from the same captured prompt/response sequences against the corrected v3 suite and checker. Gemma's 20/20 corrected result exceeds Devstral's 13/20, so later criteria do not change the winner. After canonical trace ordering fixed hash-seed-dependent permutation inputs, both unchanged transcripts were rechecked again with identical scores.",
+    "correction": {
+      "task_id": "operator_04_median_window_contrast",
+      "v2_expected_case": {"delta": 1.0, "exceeds": false},
+      "independent_result": {"delta": 2, "exceeds": false},
+      "corrected_v3_expected_case": {"delta": 2, "exceeds": false},
+      "applies_equally_to_both_candidates": true,
+      "offline_oracle_audit_mismatches": 0,
+      "offline_oracle_audit_checks": 19,
+      "note": "The same deterministic median-oracle discrepancy affected both captures. Replay changed the expected answer and reevaluated the unchanged captured payloads; it made zero HTTP requests."
+    },
+    "original_capture_scores_preserved": {
+      "gemma_raw_correct": 19,
+      "devstral_raw_correct": 12,
+      "note": "These are the original v2 checker scores and are retained as captured; corrected v3 replay scores are reported separately."
+    }
+  },
+  "primary": {
+    "model_alias": "e4-gemma-m3",
+    "profile_path": "config/gemma_m3_inference.json",
+    "profile_sha256": "34ca3c7209ff366ebaa1595a52d3dc2c8bccce89e7ef8e26ef5f732f043e5955",
+    "model_manifest_path": "config/model_manifest.json",
+    "model_manifest_sha256": "3a06061551b4f0fe8d5e39ff5d73ef5f27d35f482f12c5aac05c9f85d07e7b65",
+    "model": {
+      "repository": "google/gemma-4-31B-it-qat-q4_0-gguf",
+      "revision": "59dde24573e7e61570dba08b18a2e1fe246955ed",
+      "filename": "gemma-4-31B_q4_0-it.gguf",
+      "size_bytes": 17651001568,
+      "sha256": "179cfb99212709597eae5929112cfca677e1bbf566178b479ae1da0c4772874b"
+    },
+    "inference": {
+      "context_tokens": 32768,
+      "max_generation_tokens": 8192,
+      "parallel_requests": 1,
+      "seed": 42,
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "reasoning_mode": "on",
+      "reasoning_budget": 2048,
+      "minimum_free_vram_mib": 3072
+    }
+  },
+  "comparison": {
+    "suite_id": "m3-synthetic-v3",
+    "corrected_suite_path": "config/m3_synthetic_suite_v3.json",
+    "corrected_suite_sha256": "c38eb6bdfb2d3bce3b18c3faf3d86bcb69831830d04951fdbd95e2c919567183",
+    "corrected_checker_sha256": "c6eaf3c7ae00a139a7a1457a52d882a79b77cc712c300c0eb2f59f66dadb7cef",
+    "pre_determinism_checker_sha256": "16d54254fd32c54d5550b226a2eb78f3795b784551fd56cd41449d92830f2cb8",
+    "capture_suite_id": "m3-synthetic-v2",
+    "capture_suite_sha256": "1e0b7d91e6a8d8e7f7dca673b8361f8fe776d91a178a4b3f2651a0f2ba291cac",
+    "capture_checker_sha256": "aa88d8e49be2bdf7f7f9bdbee5feccf4c393e69271d24245494b57112481c023",
+    "runtime_manifest_path": "config/runtime_manifest.json",
+    "runtime": {
+      "name": "llama.cpp",
+      "revision": "d81235049384534c167caea52b85a694f6103d14",
+      "tree": "a47b4d437e9769fc34c0116371412b5af5de67d1",
+      "cuda_toolkit": "12.3",
+      "cuda_architecture": "70"
+    },
+    "hardware": "Tesla V100 32 GiB; serial offline inference; each formal run retained at least 3072 MiB free VRAM"
+  },
+  "formal_captures": {
+    "gemma": {
+      "run_id": "gemma_m3_suite_v3",
+      "run_dir": "artifacts/m3/model_runs/gemma_m3_suite_v3",
+      "raw_correct": 19,
+      "corrected_replay_correct": 20,
+      "repairs": 0,
+      "capture_seconds": 1205.0341203184798,
+      "input_tokens": 65609,
+      "output_tokens": 33568,
+      "minimum_free_mib": 11090,
+      "summary_sha256": "a0c810674045e6bfd2b0bda5b8844718cecf7ace86fa57b37b3728c936e8c439",
+      "manifest_sha256": "37000c9d659ca03eb988ad4908156f8c843ec762af4efb2b2b80e3e46409d6e7",
+      "task_results_sha256": "2699d9bce127b9363773ce3b09e4a690819eb611f291335eaee461c8104cc68f",
+      "model_calls_sha256": "515ea7f7e1a180354d47399f9d52d2bdeec9c592e82ba776182aa05554b804aa",
+      "launch_sha256": "a3e7db1db82f61a8808f2beae8b4378ea5f8e8e231f1011548c62e1f8a9bac19",
+      "gpu_memory_sha256": "364f41e2ad217c17fa944bef95fd13eb59878bfa2b9ac50ed9583c43e5fd692d"
+    },
+    "devstral": {
+      "run_id": "devstral_m3_suite_v3",
+      "run_dir": "artifacts/m3/model_runs/devstral_m3_suite_v3",
+      "raw_correct": 12,
+      "corrected_replay_correct": 13,
+      "repairs": 2,
+      "capture_seconds": 339.9489936148748,
+      "input_tokens": 75194,
+      "output_tokens": 9410,
+      "minimum_free_mib": 10842,
+      "summary_sha256": "e3f486c8d222615556aaaf7da09d860380a1d6a28ddcfe285b792ed44700bac3",
+      "manifest_sha256": "5ec0b7a7601384cba2a88a5a18cf941718e3a237c04c4d9441fc61f87447a77d",
+      "task_results_sha256": "268658484310ce49787087bba83a7505c188968e7a66ca6b78bf4b9852ea5f58",
+      "model_calls_sha256": "e4a7cae13dba9f093076904ba2a968547b72a1ca8cc53103be845f685068fb3a",
+      "launch_sha256": "35f9558563654b1d54df788773bcca4ca929f5a1708c6792e8433c25d68e8bc8",
+      "gpu_memory_sha256": "6230b2df069e81fedb3f528798ce7c7c6b380ae7eaa44ff3cca2554e9519b086"
+    }
+  },
+  "offline_replays": {
+    "network_requests": 0,
+    "replay_validation_wall_seconds_excluded_from_selection_cost": true,
+    "gemma": {
+      "run_dir": "artifacts/m3/offline_replays/gemma_m3_suite_v3_corrected_v3",
+      "corrected_count": 20,
+      "task_count": 20,
+      "repair_count": 0,
+      "summary_sha256": "29dc170a9a32cf0a925975a1a3e8d85ddafb0eda89d425569bf43df1f2de626a",
+      "manifest_sha256": "5c61b11062df27fff641f9c3ac6f38222105fb013120ee1788b7e773ebafecfe",
+      "task_results_sha256": "48937875a9140942901a40f0d0ae1d87f45f243e95779b3c3737c14f0020b5f7",
+      "replayed_payloads_sha256": "515ea7f7e1a180354d47399f9d52d2bdeec9c592e82ba776182aa05554b804aa",
+      "replay_validation_seconds": 9.73228220641613
+    },
+    "devstral": {
+      "run_dir": "artifacts/m3/offline_replays/devstral_m3_suite_v3_corrected_v3",
+      "corrected_count": 13,
+      "task_count": 20,
+      "repair_count": 2,
+      "summary_sha256": "3c34163415733121409a159758037628c480be5e78658f1fbe5b80500bec2759",
+      "manifest_sha256": "13dd71d6de65bd4a7c82f7737e0cffab25ef674b38a6586c8252aa16e5dc1872",
+      "task_results_sha256": "9198b027b53ccf1ea0e1355aba97008232d9cf58a4ab4fd36baa1e3d10963a36",
+      "replayed_payloads_sha256": "e4a7cae13dba9f093076904ba2a968547b72a1ca8cc53103be845f685068fb3a",
+      "replay_validation_seconds": 9.482999027706683
+    }
+  },
+  "post_determinism_fix_rechecks": {
+    "checker_sha256": "c6eaf3c7ae00a139a7a1457a52d882a79b77cc712c300c0eb2f59f66dadb7cef",
+    "suite_sha256": "c38eb6bdfb2d3bce3b18c3faf3d86bcb69831830d04951fdbd95e2c919567183",
+    "network_requests": 0,
+    "captured_model_calls_unchanged": true,
+    "selection_scores_unchanged": true,
+    "determinism_fix": "Sort traceId set members before constructing ordered reference/alert samples passed to the seeded dependency permutation test.",
+    "synthetic_hash_seed_regression": {
+      "runtime_seed": 42,
+      "python_hash_seeds_checked": [1, 2, 3, 4, 5, 10, 42, 123, 321, 987],
+      "before_fix_observed_score_range": [288739499.84654254, 370774392.8643524],
+      "after_fix_score": 323957751.6576788,
+      "after_fix_all_hash_seeds_equal": true
+    },
+    "gemma": {
+      "run_dir": "artifacts/m3/offline_replays/gemma_m3_suite_v3_final",
+      "corrected_count": 20,
+      "task_count": 20,
+      "repairs": 0,
+      "summary_sha256": "bc1ab2f029bc4abee1803f754817b4df644961aa029137b2a1f7100b79676185",
+      "manifest_sha256": "b56088ef1cb0356fed3024a7d5a5ca51ffd6321334804d0045ccf6c109a29b04",
+      "task_results_sha256": "31c70d4104a6eddc2b82eddeb37b2bec94555f287f834b85c5307cac99775d03",
+      "replayed_payloads_sha256": "515ea7f7e1a180354d47399f9d52d2bdeec9c592e82ba776182aa05554b804aa"
+    },
+    "devstral": {
+      "run_dir": "artifacts/m3/offline_replays/devstral_m3_suite_v3_final",
+      "corrected_count": 13,
+      "task_count": 20,
+      "repairs": 2,
+      "summary_sha256": "6d718c7424d87dae10bf8e455fe53f09bc98d93f73abdf13343532e9f2dc399e",
+      "manifest_sha256": "f346dbcd44516b674e1f3936eb8ed2fb492a198ed2bea3d7ffd5c3e367fe2536",
+      "task_results_sha256": "92d8684200cd6663050c4f8c32ca7b6ec90820978330ddb2eab487407b1eea88",
+      "replayed_payloads_sha256": "e4a7cae13dba9f093076904ba2a968547b72a1ca8cc53103be845f685068fb3a"
+    }
+  },
+  "next_run": {
+    "split": "dev",
+    "case_id": "telecom-20200523T0430-utc8",
+    "profile_path": "config/gemma_m3_inference.json",
+    "profile_must_remain_unchanged": true
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "schema_version": "e4-dag/1",
+  "nodes": [
+    {"id": "data", "operator": "fixture.telemetry", "version": "1", "inputs": {}, "params": {}, "bindings": {}},
+    {"id": "metrics", "operator": "fixture.aggregate", "version": "1", "inputs": {"data": "data"}, "params": {"table": "metric/metric_app.csv", "metric_name": "avg_time", "window": "alert"}, "bindings": {}},
+    {"id": "resources", "operator": "fixture.aggregate", "version": "1", "inputs": {"data": "data"}, "params": {"table": "metric/metric_node.csv", "metric_name": "cpu", "window": "alert"}, "bindings": {}},
+    {"id": "metric_candidates", "operator": "fixture.candidates", "version": "1", "inputs": {"aggregate": "metrics"}, "params": {}, "bindings": {}},
+    {"id": "resource_candidates", "operator": "fixture.candidates", "version": "1", "inputs": {"aggregate": "resources"}, "params": {}, "bindings": {}},
+    {"id": "metric_scores", "operator": "fixture.score", "version": "1", "inputs": {"aggregate": "metrics", "candidates": "metric_candidates"}, "params": {}, "bindings": {}},
+    {"id": "resource_scores", "operator": "fixture.score", "version": "1", "inputs": {"aggregate": "resources", "candidates": "resource_candidates"}, "params": {}, "bindings": {}},
+    {"id": "adjusted_metric_scores", "operator": "fixture.adjust", "version": "1", "inputs": {"scores": "metric_scores"}, "params": {"factor": 0.5}, "bindings": {}},
+    {"id": "rank", "operator": "fixture.rank", "version": "1", "inputs": {"scores": ["adjusted_metric_scores", "resource_scores"]}, "params": {}, "bindings": {}}
+  ],
+  "return": {"node": "rank"}
+}

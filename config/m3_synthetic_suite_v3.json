@@ -1,0 +1,2126 @@
+{
+  "schema_version": "e4-m3-synthetic-suite/3",
+  "suite_id": "m3-synthetic-v3",
+  "repair_limit": 2,
+  "normalization_policy": "single_outer_fence_v1",
+  "tasks": [
+    {
+      "id": "dag_01_metric_and_trace_error",
+      "kind": "dag",
+      "prompt": "Construct a valid E4 DAG for a two-family analysis: robust metric shifts plus per-trace failure-rate contrasts. Create one reference and one alert aggregate for each required source, share one candidate generator across both scoring branches, and combine every terminal scored branch. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_02_metric_and_trace_latency",
+      "kind": "dag",
+      "prompt": "Construct a valid E4 DAG comparing metric shifts with within-elapsedTime per-trace latency contrasts. Create reference and alert aggregates for each contrast family, keep duration comparisons inside that field, share candidates, and rank every terminal scorer. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_03_metric_and_conditional_flow",
+      "kind": "dag",
+      "prompt": "Construct a valid E4 DAG that combines metric contrasts with conditional same-trace root-to-backend flow attribution. Create a reference and alert metric aggregate, use one shared candidate generator and a single final rank node receiving every terminal score. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_04_trace_error_and_dependency",
+      "kind": "dag",
+      "prompt": "Construct a valid E4 DAG combining per-trace failure contrasts with same-trace dependency propagation. Create reference and alert trace aggregates, preserve unresolved parent links as missing evidence, share candidates, and return all terminal score branches in one rank node. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_05_trace_latency_and_flow",
+      "kind": "dag",
+      "prompt": "Construct a valid E4 DAG combining within-field trace latency contrasts and conditional same-trace flow attribution. Create reference and alert trace aggregates, use one candidate generator, and ensure the final rank receives every terminal scored output. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_06_flow_and_dependency",
+      "kind": "dag",
+      "prompt": "Construct a valid E4 DAG combining conditional root-to-backend flow contribution with dependency propagation. Use the same telemetry and candidate set for both scorers; return both terminal score branches. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_07_metric_error_dependency",
+      "kind": "dag",
+      "prompt": "Construct a valid three-family DAG for metric contrasts, trace failure contrasts, and dependency propagation. Create reference and alert aggregates for both metric and trace families, share one candidate set, and combine every terminal score. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "dag_08_runtime_bound_three_family",
+      "kind": "dag",
+      "prompt": "Construct a valid DAG combining metric contrasts, trace latency contrasts, and dependency propagation. Create reference and alert aggregates for metric and latency families. On the final rank node, include both an explicit limit of 3 and the binding limit: runtime.lead_count to demonstrate that the explicit value overrides the binding. Share candidates and return every terminal score. Return one e4-dag/1 JSON object."
+    },
+    {
+      "id": "operator_01_metric_mean_support",
+      "kind": "operator",
+      "output_type": "object",
+      "prompt": "Write `def operator(inputs, params, runtime):` to summarize rows matching `params['entity']` and `params['metric']`. `inputs` and `params` are ordinary JSON mappings; use bracket access. `runtime` is a read-only view and supports attribute or bracket access. Use finite numeric values only. Return exactly `{'mean': number_or_null, 'support': integer}`. If valid support is below `runtime.minimum_support`, mean must be null; otherwise mean is the arithmetic mean. A demonstration input has two matching values 2 and 4 and minimum_support 2, so the result is mean 3 and support 2. The sandbox allows only a narrow built-in and import surface. Return Python source only, optionally in one python fence.",
+      "checks": [
+        {
+          "inputs": {
+            "rows": [
+              {
+                "entity": "api",
+                "metric": "latency",
+                "value": 2
+              },
+              {
+                "entity": "api",
+                "metric": "latency",
+                "value": 4
+              },
+              {
+                "entity": "worker",
+                "metric": "latency",
+                "value": 100
+              },
+              {
+                "entity": "api",
+                "metric": "cpu",
+                "value": 50
+              }
+            ]
+          },
+          "params": {
+            "entity": "api",
+            "metric": "latency"
+          },
+          "runtime": {
+            "minimum_support": 2
+          },
+          "expected": {
+            "mean": 3.0,
+            "support": 2
+          }
+        },
+        {
+          "inputs": {
+            "rows": [
+              {
+                "entity": "api",
+                "metric": "latency",
+                "value": null
+              },
+              {
+                "entity": "api",
+                "metric": "latency",
+                "value": 3
+              },
+              {
+                "entity": "api",
+                "metric": "latency",
+                "value": 5
+              }
+            ]
+          },
+          "params": {
+            "entity": "api",
+            "metric": "latency"
+          },
+          "runtime": {
+            "minimum_support": 2
+          },
+          "expected": {
+            "mean": 4.0,
+            "support": 2
+          }
+        },
+        {
+          "inputs": {
+            "rows": [
+              {
+                "entity": "api",
+                "metric": "latency",
+                "value": 7
+              },
+              {
+                "entity": "api",
+                "metric": "cpu",
+                "value": 99
+              }
+            ]
+          },
+          "params": {
+            "entity": "api",
+            "metric": "latency"
+          },
+          "runtime": {
+            "minimum_support": 2
+          },
+          "expected": {
+            "mean": null,
+            "support": 1
+          }
+        }
+      ],
+      "require_nonconstant": true,
+      "public_contract": {
+        "inputs": {
+          "rows": "array of objects with entity:string, metric:string, value:finite number|null"
+        },
+        "params": {
+          "entity": "string",
+          "metric": "string"
+        },
+        "runtime": {
+          "minimum_support": "integer"
+        },
+        "output": {
+          "mean": "finite number|null",
+          "support": "integer"
+        }
+      }
+    },
+    {
+      "id": "operator_02_trace_failure_denominator",
+      "kind": "operator",
+      "output_type": "object",
+      "prompt": "Write `def operator(inputs, params, runtime):` to compute the failure fraction for `params['component']` from `inputs['spans']`. Inputs and params are ordinary JSON mappings; use bracket access. Count only rows whose success is exactly true or false; null and other values are missing. Return exactly `{'failure_rate': number_or_null, 'failures': integer, 'denominator': integer}`. If denominator is zero, the rate is null. Demonstration: one true and one false span for the selected component gives rate 0.5, failures 1, denominator 2. The sandbox allows only a narrow built-in and import surface. Return Python source only, optionally in one python fence.",
+      "checks": [
+        {
+          "inputs": {
+            "spans": [
+              {
+                "component": "db_1",
+                "success": true
+              },
+              {
+                "component": "db_1",
+                "success": false
+              },
+              {
+                "component": "db_1",
+                "success": null
+              },
+              {
+                "component": "db_2",
+                "success": false
+              }
+            ]
+          },
+          "params": {
+            "component": "db_1"
+          },
+          "runtime": {},
+          "expected": {
+            "failure_rate": 0.5,
+            "failures": 1,
+            "denominator": 2
+          }
+        },
+        {
+          "inputs": {
+            "spans": [
+              {
+                "component": "api",
+                "success": true
+              },
+              {
+                "component": "api",
+                "success": true
+              },
+              {
+                "component": "api",
+                "success": false
+              }
+            ]
+          },
+          "params": {
+            "component": "api"
+          },
+          "runtime": {},
+          "expected": {
+            "failure_rate": 0.3333333333333333,
+            "failures": 1,
+            "denominator": 3
+          }
+        },
+        {
+          "inputs": {
+            "spans": [
+              {
+                "component": "api",
+                "success": null
+              },
+              {
+                "component": "other",
+                "success": false
+              }
+            ]
+          },
+          "params": {
+            "component": "api"
+          },
+          "runtime": {},
+          "expected": {
+            "failure_rate": null,
+            "failures": 0,
+            "denominator": 0
+          }
+        }
+      ],
+      "require_nonconstant": true,
+      "public_contract": {
+        "inputs": {
+          "spans": "array of objects with component:string, success:boolean|null|other JSON scalar"
+        },
+        "params": {
+          "component": "string"
+        },
+        "runtime": {},
+        "output": {
+          "failure_rate": "finite number|null",
+          "failures": "integer",
+          "denominator": "integer"
+        }
+      }
+    },
+    {
+      "id": "operator_03_trace_local_parent_edges",
+      "kind": "operator",
+      "output_type": "object",
+      "prompt": "Write `def operator(inputs, params, runtime):` to count parent links for `params['component']` from `inputs['spans']`. Inputs and params are ordinary JSON mappings; use bracket access. A link is resolved only when a span with the referenced id exists in the SAME trace. Do not connect equal span ids across traces. Return exactly `{'resolved': integer, 'unresolved': integer}`; null/empty parent ids are roots and are not counted. Demonstration includes one same-trace parent and one absent parent, producing resolved 1 and unresolved 1. The sandbox allows only a narrow built-in and import surface. Return Python source only, optionally in one python fence.",
+      "checks": [
+        {
+          "inputs": {
+            "spans": [
+              {
+                "trace_id": "t1",
+                "id": "p",
+                "parent_id": null,
+                "component": "api"
+              },
+              {
+                "trace_id": "t1",
+                "id": "c",
+                "parent_id": "p",
+                "component": "api"
+              },
+              {
+                "trace_id": "t2",
+                "id": "c2",
+                "parent_id": "p",
+                "component": "api"
+              }
+            ]
+          },
+          "params": {
+            "component": "api"
+          },
+          "runtime": {},
+          "expected": {
+            "resolved": 1,
+            "unresolved": 1
+          }
+        },
+        {
+          "inputs": {
+            "spans": [
+              {
+                "trace_id": "x",
+                "id": "a",
+                "parent_id": null,
+                "component": "db"
+              },
+              {
+                "trace_id": "x",
+                "id": "b",
+                "parent_id": "a",
+                "component": "db"
+              },
+              {
+                "trace_id": "x",
+                "id": "c",
+                "parent_id": "b",
+                "component": "db"
+              }
+            ]
+          },
+          "params": {
+            "component": "db"
+          },
+          "runtime": {},
+          "expected": {
+            "resolved": 2,
+            "unresolved": 0
+          }
+        },
+        {
+          "inputs": {
+            "spans": [
+              {
+                "trace_id": "z",
+                "id": "a",
+                "parent_id": "missing",
+                "component": "db"
+              },
+              {
+                "trace_id": "z",
+                "id": "b",
+                "parent_id": "",
+                "component": "db"
+              }
+            ]
+          },
+          "params": {
+            "component": "db"
+          },
+          "runtime": {},
+          "expected": {
+            "resolved": 0,
+            "unresolved": 1
+          }
+        }
+      ],
+      "require_nonconstant": true,
+      "public_contract": {
+        "inputs": {
+          "spans": "array of objects with trace_id:string, id:string, parent_id:string|null (empty string is also a root), component:string"
+        },
+        "params": {
+          "component": "string"
+        },
+        "runtime": {},
+        "output": {
+          "resolved": "integer",
+          "unresolved": "integer"
+        }
+      }
+    },
+    {
+      "id": "operator_04_median_window_contrast",
+      "kind": "operator",
+      "output_type": "object",
+      "prompt": "Write `def operator(inputs, params, runtime):` to compare `inputs['reference']` and `inputs['alert']` using medians. Inputs and params are ordinary JSON mappings; use bracket access. Return exactly `{'delta': median(alert) - median(reference), 'exceeds': bool}` where exceeds is `delta > runtime.delta_threshold` (strictly greater; equality is false). Every supplied reference and alert window is nonempty; behavior for empty windows is outside this task contract. You may import statistics. Demonstration reference [2, 4], alert [5, 9], threshold 3 gives delta 4 and true. Return Python source only, optionally in one python fence.",
+      "checks": [
+        {
+          "inputs": {
+            "reference": [
+              2,
+              4
+            ],
+            "alert": [
+              5,
+              9
+            ]
+          },
+          "params": {},
+          "runtime": {
+            "delta_threshold": 3
+          },
+          "expected": {
+            "delta": 4.0,
+            "exceeds": true
+          }
+        },
+        {
+          "inputs": {
+            "reference": [
+              10,
+              10,
+              12
+            ],
+            "alert": [
+              11,
+              12,
+              13
+            ]
+          },
+          "params": {},
+          "runtime": {
+            "delta_threshold": 2
+          },
+          "expected": {
+            "delta": 2.0,
+            "exceeds": false
+          }
+        },
+        {
+          "inputs": {
+            "reference": [
+              -4,
+              0
+            ],
+            "alert": [
+              2,
+              8
+            ]
+          },
+          "params": {},
+          "runtime": {
+            "delta_threshold": 3
+          },
+          "expected": {
+            "delta": 7.0,
+            "exceeds": true
+          }
+        },
+        {
+          "inputs": {
+            "reference": [
+              0,
+              0
+            ],
+            "alert": [
+              2,
+              2
+            ]
+          },
+          "params": {},
+          "runtime": {
+            "delta_threshold": 2
+          },
+          "expected": {
+            "delta": 2.0,
+            "exceeds": false
+          }
+        }
+      ],
+      "require_nonconstant": true,
+      "public_contract": {
+        "inputs": {
+          "reference": "nonempty array of finite numbers",
+          "alert": "nonempty array of finite numbers"
+        },
+        "params": {},
+        "runtime": {
+          "delta_threshold": "finite number"
+        },
+        "output": {
+          "delta": "finite number",
+          "exceeds": "boolean"
+        }
+      }
+    },
+    {
+      "id": "operator_05_fixed_time_blocks",
+      "kind": "operator",
+      "output_type": "object",
+      "prompt": "Write `def operator(inputs, params, runtime):` to reduce `inputs['samples']` into fixed, half-open time blocks. Inputs and params are ordinary JSON mappings; use bracket access. Each sample has timestamp_ms and value. Block width is `params['block_minutes'] * 60000`; block index is floor((timestamp_ms - runtime.window_start_ms) / width). Return exactly `{'block_indices': sorted integer indices, 'medians': corresponding numeric medians}` and ignore nonfinite/missing values. Demonstration with a zero start, five-minute blocks, and timestamps 0 and 300000 yields indices [0,1]. You may import statistics. The sandbox allows only a narrow built-in and import surface. Return Python source only, optionally in one python fence.",
+      "checks": [
+        {
+          "inputs": {
+            "samples": [
+              {
+                "timestamp_ms": 0,
+                "value": 4
+              },
+              {
+                "timestamp_ms": 1000,
+                "value": 8
+              },
+              {
+                "timestamp_ms": 300000,
+                "value": 2
+              },
+              {
+                "timestamp_ms": 600000,
+                "value": 10
+              }
+            ]
+          },
+          "params": {
+            "block_minutes": 5
+          },
+          "runtime": {
+            "window_start_ms": 0
+          },
+          "expected": {
+            "block_indices": [
+              0,
+              1,
+              2
+            ],
+            "medians": [
+              6.0,
+              2.0,
+              10.0
+            ]
+          }
+        },
+        {
+          "inputs": {
+            "samples": [
+              {
+                "timestamp_ms": 299999,
+                "value": 2
+              },
+              {
+                "timestamp_ms": 300000,
+                "value": 10
+              },
+              {
+                "timestamp_ms": 300001,
+                "value": null
+              }
+            ]
+          },
+          "params": {
+            "block_minutes": 5
+          },
+          "runtime": {
+            "window_start_ms": 0
+          },
+          "expected": {
+            "block_indices": [
+              0,
+              1
+            ],
+            "medians": [
+              2.0,
+              10.0
+            ]
+          }
+        },
+        {
+          "inputs": {
+            "samples": [
+              {
+                "timestamp_ms": 600000,
+                "value": 5
+              }
+            ]
+          },
+          "params": {
+            "block_minutes": 10
+          },
+          "runtime": {
+            "window_start_ms": 120000
+          },
+          "expected": {
+            "block_indices": [
+              0
+            ],
+            "medians": [
+              5.0
+            ]
+          }
+        }
+      ],
+      "require_nonconstant": true,
+      "public_contract": {
+        "inputs": {
+          "samples": "array of objects with timestamp_ms:integer, value:finite number|null"
+        },
+        "params": {
+          "block_minutes": "positive number"
+        },
+        "runtime": {
+          "window_start_ms": "integer"
+        },
+        "output": {
+          "block_indices": "array of integers, sorted ascending",
+          "medians": "array of finite numbers; same length as block_indices"
+        }
+      }
+    },
+    {
+      "id": "operator_06_runtime_view_read_only",
+      "kind": "operator",
+      "output_type": "object",
+      "prompt": "Write `def operator(inputs, params, runtime):` to return `{'scaled_sum': sum(inputs['values']) * params['multiplier'], 'depth': runtime.dag_depth, 'seed': runtime['seed']}`. Inputs and params are ordinary JSON mappings; use bracket access. Runtime is a read-only view and supports both attribute and mapping access. Do not mutate it. The sandbox allows only a narrow built-in and import surface. Return Python source only, optionally in one python fence.",
+      "checks": [
+        {
+          "inputs": {
+            "values": [
+              1,
+              2,
+              3
+            ]
+          },
+          "params": {
+            "multiplier": 4
+          },
+          "runtime": {
+            "dag_depth": 12,
+            "seed": 42
+          },
+          "expected": {
+            "scaled_sum": 24,
+            "depth": 12,
+            "seed": 42
+          }
+        },
+        {
+          "inputs": {
+            "values": [
+              -5,
+              7
+            ]
+          },
+          "params": {
+            "multiplier": 0.5
+          },
+          "runtime": {
+            "dag_depth": 6,
+            "seed": 13
+          },
+          "expected": {
+            "scaled_sum": 1.0,
+            "depth": 6,
+            "seed": 13
+          }
+        },
+        {
+          "inputs": {
+            "values": []
+          },
+          "params": {
+            "multiplier": 9
+          },
+          "runtime": {
+            "dag_depth": 2,
+            "seed": 0
+          },
+          "expected": {
+            "scaled_sum": 0,
+            "depth": 2,
+            "seed": 0
+          }
+        }
+      ],
+      "require_nonconstant": true,
+      "public_contract": {
+        "inputs": {
+          "values": "array of finite numbers"
+        },
+        "params": {
+          "multiplier": "finite number"
+        },
+        "runtime": {
+          "dag_depth": "integer",
+          "seed": "integer"
+        },
+        "output": {
+          "scaled_sum": "finite number",
+          "depth": "integer",
+          "seed": "integer"
+        }
+      }
+    },
+    {
+      "id": "diagnosis_01_db_pool_exhaustion",
+      "kind": "diagnosis",
+      "prompt": "Construct an E4 DAG from the supplied synthetic telemetry to identify and rank the incident's best-supported component. Use the available telemetry evidence. Return JSON with exactly keys `dag` and `category`; category must be one allowed source-fault category or null.",
+      "telemetry": {
+        "case_id": "synthetic-incident-01",
+        "reference_window": [
+          0,
+          1800000
+        ],
+        "alert_window": [
+          1800000,
+          3600000
+        ],
+        "deployment_entities": [
+          "container_app_01",
+          "container_db_02",
+          "db_02",
+          "container_db_09",
+          "db_09",
+          "container_misc_01",
+          "container_misc_02",
+          "container_misc_03",
+          "container_misc_04",
+          "container_misc_05"
+        ],
+        "metric_series": [
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_app_01",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              91,
+              90,
+              92,
+              89,
+              91,
+              90,
+              92,
+              89,
+              91,
+              90,
+              92,
+              89
+            ],
+            "alert": [
+              92,
+              91,
+              93,
+              90,
+              92,
+              91,
+              93,
+              90,
+              92,
+              91,
+              93,
+              90
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_db_02",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              18,
+              19,
+              17,
+              18,
+              19,
+              17,
+              18,
+              19,
+              17,
+              18,
+              19,
+              17
+            ],
+            "alert": [
+              18,
+              19,
+              17,
+              18,
+              19,
+              17,
+              18,
+              19,
+              17,
+              18,
+              19,
+              17
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_01",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29
+            ],
+            "alert": [
+              38,
+              39,
+              37,
+              38,
+              39,
+              37,
+              38,
+              39,
+              37,
+              38,
+              39,
+              37
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_02",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              35,
+              36,
+              34,
+              35,
+              36,
+              34,
+              35,
+              36,
+              34,
+              35,
+              36,
+              34
+            ],
+            "alert": [
+              40,
+              41,
+              39,
+              40,
+              41,
+              39,
+              40,
+              41,
+              39,
+              40,
+              41,
+              39
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_03",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              45,
+              46,
+              44,
+              45,
+              46,
+              44,
+              45,
+              46,
+              44,
+              45,
+              46,
+              44
+            ],
+            "alert": [
+              48,
+              49,
+              47,
+              48,
+              49,
+              47,
+              48,
+              49,
+              47,
+              48,
+              49,
+              47
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_04",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              25,
+              26,
+              24,
+              25,
+              26,
+              24,
+              25,
+              26,
+              24,
+              25,
+              26,
+              24
+            ],
+            "alert": [
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_05",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              50,
+              51,
+              49,
+              50,
+              51,
+              49,
+              50,
+              51,
+              49,
+              50,
+              51,
+              49
+            ],
+            "alert": [
+              54,
+              55,
+              53,
+              54,
+              55,
+              53,
+              54,
+              55,
+              53,
+              54,
+              55,
+              53
+            ]
+          }
+        ],
+        "trace_groups": [
+          {
+            "window": "reference",
+            "count": 30,
+            "trace_prefix": "ref",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_order",
+              "component": "container_app_01",
+              "database": null,
+              "success": true,
+              "elapsed": "120"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_02",
+              "database": "db_02",
+              "success": true,
+              "elapsed": "20"
+            }
+          },
+          {
+            "window": "alert",
+            "count": 30,
+            "trace_prefix": "alert",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_order",
+              "component": "container_app_01",
+              "database": null,
+              "success": false,
+              "elapsed": "1400"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_02",
+              "database": "db_02",
+              "success": false,
+              "elapsed": "900"
+            }
+          },
+          {
+            "window": "reference",
+            "count": 30,
+            "trace_prefix": "ref-noise",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_legacy",
+              "component": "container_db_09",
+              "database": null,
+              "success": true,
+              "elapsed": "150"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_09",
+              "database": "db_09",
+              "success": true,
+              "elapsed": "25"
+            }
+          },
+          {
+            "window": "alert",
+            "count": 30,
+            "trace_prefix": "alert-noise",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_legacy",
+              "component": "container_db_09",
+              "database": null,
+              "fail_first": 12,
+              "success": true,
+              "elapsed": "400"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_09",
+              "database": "db_09",
+              "fail_first": 12,
+              "success": true,
+              "elapsed": "220"
+            }
+          }
+        ]
+      },
+      "check": {
+        "expected_role": "database",
+        "expected_component": "db_02",
+        "expected_category": "db connection limit",
+        "minimum_top_k": 3
+      }
+    },
+    {
+      "id": "diagnosis_02_worker_cpu_saturation",
+      "kind": "diagnosis",
+      "prompt": "Construct an E4 DAG from the supplied synthetic telemetry to identify and rank the incident's best-supported component. Use the available telemetry evidence. Return JSON with exactly keys `dag` and `category`; category must be one allowed source-fault category or null.",
+      "telemetry": {
+        "case_id": "synthetic-incident-02",
+        "reference_window": [
+          0,
+          1800000
+        ],
+        "alert_window": [
+          1800000,
+          3600000
+        ],
+        "deployment_entities": [
+          "container_worker_07",
+          "container_api_01",
+          "container_conf_03"
+        ],
+        "metric_series": [
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_worker_07",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              12,
+              14,
+              13,
+              11,
+              12,
+              13,
+              14,
+              12,
+              11,
+              13,
+              12,
+              14
+            ],
+            "alert": [
+              96,
+              98,
+              97,
+              95,
+              99,
+              96,
+              98,
+              97,
+              95,
+              99,
+              96,
+              98
+            ]
+          },
+          {
+            "table": "metric/metric_app.csv",
+            "entity": "svc_api_01",
+            "entity_role": "service",
+            "metric_name": "avg_time",
+            "bomc_id": "metric_app",
+            "item_id": "avg_time",
+            "reference": [
+              100,
+              102,
+              98,
+              101,
+              103,
+              99,
+              100,
+              98,
+              102,
+              101,
+              99,
+              100
+            ],
+            "alert": [
+              122,
+              124,
+              120,
+              123,
+              125,
+              121,
+              122,
+              120,
+              124,
+              123,
+              121,
+              122
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_conf_03",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              88,
+              90,
+              89,
+              87,
+              91,
+              90,
+              88,
+              89,
+              90,
+              87,
+              91,
+              89
+            ],
+            "alert": [
+              88,
+              89,
+              90,
+              88,
+              89,
+              91,
+              87,
+              90,
+              89,
+              88,
+              90,
+              89
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_01",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              32,
+              33,
+              31,
+              32,
+              33,
+              31,
+              32,
+              33,
+              31,
+              32,
+              33,
+              31
+            ],
+            "alert": [
+              37,
+              38,
+              36,
+              37,
+              38,
+              36,
+              37,
+              38,
+              36,
+              37,
+              38,
+              36
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_02",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              42,
+              43,
+              41,
+              42,
+              43,
+              41,
+              42,
+              43,
+              41,
+              42,
+              43,
+              41
+            ],
+            "alert": [
+              46,
+              47,
+              45,
+              46,
+              47,
+              45,
+              46,
+              47,
+              45,
+              46,
+              47,
+              45
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_03",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              27,
+              28,
+              26,
+              27,
+              28,
+              26,
+              27,
+              28,
+              26,
+              27,
+              28,
+              26
+            ],
+            "alert": [
+              31,
+              32,
+              30,
+              31,
+              32,
+              30,
+              31,
+              32,
+              30,
+              31,
+              32,
+              30
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_04",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              54,
+              55,
+              53,
+              54,
+              55,
+              53,
+              54,
+              55,
+              53,
+              54,
+              55,
+              53
+            ],
+            "alert": [
+              58,
+              59,
+              57,
+              58,
+              59,
+              57,
+              58,
+              59,
+              57,
+              58,
+              59,
+              57
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_05",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              62,
+              63,
+              61,
+              62,
+              63,
+              61,
+              62,
+              63,
+              61,
+              62,
+              63,
+              61
+            ],
+            "alert": [
+              65,
+              66,
+              64,
+              65,
+              66,
+              64,
+              65,
+              66,
+              64,
+              65,
+              66,
+              64
+            ]
+          }
+        ]
+      },
+      "check": {
+        "expected_role": "component",
+        "expected_component": "container_worker_07",
+        "expected_category": "CPU fault",
+        "minimum_top_k": 3
+      }
+    },
+    {
+      "id": "diagnosis_03_network_delay",
+      "kind": "diagnosis",
+      "prompt": "Construct an E4 DAG from the supplied synthetic telemetry to identify and rank the incident's best-supported component. Use the available telemetry evidence. Return JSON with exactly keys `dag` and `category`; category must be one allowed source-fault category or null.",
+      "telemetry": {
+        "case_id": "synthetic-incident-03",
+        "reference_window": [
+          0,
+          1800000
+        ],
+        "alert_window": [
+          1800000,
+          3600000
+        ],
+        "deployment_entities": [
+          "router_04",
+          "container_api_02",
+          "container_misc_01",
+          "container_misc_02",
+          "container_misc_03",
+          "container_misc_04",
+          "container_misc_05",
+          "router_07"
+        ],
+        "metric_series": [
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "router_04",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              4,
+              5,
+              4,
+              6,
+              5,
+              4,
+              5,
+              4,
+              6,
+              5,
+              4,
+              5
+            ],
+            "alert": [
+              140,
+              155,
+              148,
+              162,
+              151,
+              145,
+              158,
+              149,
+              160,
+              152,
+              146,
+              157
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_api_02",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              91,
+              90,
+              92,
+              89,
+              90,
+              91,
+              90,
+              92,
+              89,
+              90,
+              91,
+              90
+            ],
+            "alert": [
+              91,
+              90,
+              92,
+              89,
+              90,
+              91,
+              90,
+              92,
+              89,
+              90,
+              91,
+              90
+            ]
+          },
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "router_07",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              6,
+              7,
+              6,
+              8,
+              7,
+              6,
+              7,
+              6,
+              8,
+              7,
+              6,
+              7
+            ],
+            "alert": [
+              9,
+              10,
+              9,
+              11,
+              10,
+              9,
+              10,
+              9,
+              11,
+              10,
+              9,
+              10
+            ]
+          },
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "container_misc_01",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              5,
+              6,
+              5,
+              7,
+              6,
+              5,
+              6,
+              5,
+              7,
+              6,
+              5,
+              6
+            ],
+            "alert": [
+              7,
+              8,
+              7,
+              9,
+              8,
+              7,
+              8,
+              7,
+              9,
+              8,
+              7,
+              8
+            ]
+          },
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "container_misc_02",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              8,
+              9,
+              8,
+              10,
+              9,
+              8,
+              9,
+              8,
+              10,
+              9,
+              8,
+              9
+            ],
+            "alert": [
+              10,
+              11,
+              10,
+              12,
+              11,
+              10,
+              11,
+              10,
+              12,
+              11,
+              10,
+              11
+            ]
+          },
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "container_misc_03",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              3,
+              4,
+              3,
+              5,
+              4,
+              3,
+              4,
+              3,
+              5,
+              4,
+              3,
+              4
+            ],
+            "alert": [
+              5,
+              6,
+              5,
+              7,
+              6,
+              5,
+              6,
+              5,
+              7,
+              6,
+              5,
+              6
+            ]
+          },
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "container_misc_04",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              9,
+              10,
+              9,
+              11,
+              10,
+              9,
+              10,
+              9,
+              11,
+              10,
+              9,
+              10
+            ],
+            "alert": [
+              11,
+              12,
+              11,
+              13,
+              12,
+              11,
+              12,
+              11,
+              13,
+              12,
+              11,
+              12
+            ]
+          },
+          {
+            "table": "metric/metric_service.csv",
+            "entity": "container_misc_05",
+            "metric_name": "tnsping_result_time",
+            "bomc_id": "service",
+            "item_id": "tnsping",
+            "reference": [
+              7,
+              8,
+              7,
+              9,
+              8,
+              7,
+              8,
+              7,
+              9,
+              8,
+              7,
+              8
+            ],
+            "alert": [
+              9,
+              10,
+              9,
+              11,
+              10,
+              9,
+              10,
+              9,
+              11,
+              10,
+              9,
+              10
+            ]
+          }
+        ]
+      },
+      "check": {
+        "expected_role": "component",
+        "expected_component": "router_04",
+        "expected_category": "network delay",
+        "minimum_top_k": 3
+      }
+    },
+    {
+      "id": "diagnosis_04_database_close",
+      "kind": "diagnosis",
+      "prompt": "Construct an E4 DAG from the supplied synthetic telemetry to identify and rank the incident's best-supported component. Use the available telemetry evidence. Return JSON with exactly keys `dag` and `category`; category must be one allowed source-fault category or null.",
+      "telemetry": {
+        "case_id": "synthetic-incident-04",
+        "reference_window": [
+          0,
+          1800000
+        ],
+        "alert_window": [
+          1800000,
+          3600000
+        ],
+        "deployment_entities": [
+          "container_app_05",
+          "container_db_03",
+          "db_03",
+          "container_db_04",
+          "db_04",
+          "container_misc_01",
+          "container_misc_02",
+          "container_misc_03",
+          "container_misc_04",
+          "container_misc_05"
+        ],
+        "metric_series": [
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_app_05",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29
+            ],
+            "alert": [
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29,
+              30,
+              31,
+              29
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_db_03",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              20,
+              21,
+              19,
+              20,
+              21,
+              19,
+              20,
+              21,
+              19,
+              20,
+              21,
+              19
+            ],
+            "alert": [
+              20,
+              21,
+              19,
+              20,
+              21,
+              19,
+              20,
+              21,
+              19,
+              20,
+              21,
+              19
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_01",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              40,
+              41,
+              39,
+              40,
+              41,
+              39,
+              40,
+              41,
+              39,
+              40,
+              41,
+              39
+            ],
+            "alert": [
+              45,
+              46,
+              44,
+              45,
+              46,
+              44,
+              45,
+              46,
+              44,
+              45,
+              46,
+              44
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_02",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              48,
+              49,
+              47,
+              48,
+              49,
+              47,
+              48,
+              49,
+              47,
+              48,
+              49,
+              47
+            ],
+            "alert": [
+              52,
+              53,
+              51,
+              52,
+              53,
+              51,
+              52,
+              53,
+              51,
+              52,
+              53,
+              51
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_03",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              33,
+              34,
+              32,
+              33,
+              34,
+              32,
+              33,
+              34,
+              32,
+              33,
+              34,
+              32
+            ],
+            "alert": [
+              37,
+              38,
+              36,
+              37,
+              38,
+              36,
+              37,
+              38,
+              36,
+              37,
+              38,
+              36
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_04",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              56,
+              57,
+              55,
+              56,
+              57,
+              55,
+              56,
+              57,
+              55,
+              56,
+              57,
+              55
+            ],
+            "alert": [
+              60,
+              61,
+              59,
+              60,
+              61,
+              59,
+              60,
+              61,
+              59,
+              60,
+              61,
+              59
+            ]
+          },
+          {
+            "table": "metric/metric_node.csv",
+            "entity": "container_misc_05",
+            "metric_name": "CPU_util_pct",
+            "bomc_id": "node",
+            "item_id": "cpu",
+            "reference": [
+              24,
+              25,
+              23,
+              24,
+              25,
+              23,
+              24,
+              25,
+              23,
+              24,
+              25,
+              23
+            ],
+            "alert": [
+              27,
+              28,
+              26,
+              27,
+              28,
+              26,
+              27,
+              28,
+              26,
+              27,
+              28,
+              26
+            ]
+          }
+        ],
+        "trace_groups": [
+          {
+            "window": "reference",
+            "count": 30,
+            "trace_prefix": "ref",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_catalog",
+              "component": "container_app_05",
+              "database": null,
+              "success": true,
+              "elapsed": "90"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_03",
+              "database": "db_03",
+              "success": true,
+              "elapsed": "15"
+            }
+          },
+          {
+            "window": "alert",
+            "count": 30,
+            "trace_prefix": "alert",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_catalog",
+              "component": "container_app_05",
+              "database": null,
+              "success": false,
+              "elapsed": "800"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_03",
+              "database": "db_03",
+              "success": false,
+              "elapsed": "700"
+            }
+          },
+          {
+            "window": "reference",
+            "count": 30,
+            "trace_prefix": "ref-noise",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_ops",
+              "component": "container_db_04",
+              "database": null,
+              "success": true,
+              "elapsed": "100"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_04",
+              "database": "db_04",
+              "success": true,
+              "elapsed": "18"
+            }
+          },
+          {
+            "window": "alert",
+            "count": 30,
+            "trace_prefix": "alert-noise",
+            "root": {
+              "span_id": "root",
+              "parent_id": null,
+              "call_type": "OSB",
+              "service": "svc_ops",
+              "component": "container_db_04",
+              "database": null,
+              "fail_first": 10,
+              "success": true,
+              "elapsed": "260"
+            },
+            "child": {
+              "span_id": "db",
+              "parent_id": "root",
+              "call_type": "JDBC",
+              "service": null,
+              "component": "container_db_04",
+              "database": "db_04",
+              "fail_first": 10,
+              "success": true,
+              "elapsed": "180"
+            }
+          }
+        ]
+      },
+      "check": {
+        "expected_role": "database",
+        "expected_component": "db_03",
+        "expected_category": "db close",
+        "minimum_top_k": 3
+      }
+    },
+    {
+      "id": "schema_01_strict_json_answer",
+      "kind": "schema",
+      "prompt": "Return one strict JSON object with exactly keys `status`, `count`, and `category`. Use status `ok`, integer count 3, and category null. Do not use a Markdown fence or add prose.",
+      "check": {
+        "exact_keys": [
+          "status",
+          "count",
+          "category"
+        ],
+        "expected": {
+          "status": "ok",
+          "count": 3,
+          "category": null
+        },
+        "require_plain_json": true
+      }
+    },
+    {
+      "id": "schema_02_runtime_provenance",
+      "kind": "schema",
+      "prompt": "A rank operator omitted its `limit` argument. The declared binding is runtime.lead_count and the frozen runtime value is 5. Return strict JSON with exactly keys `parameter`, `resolved_value`, and `source`, using parameter `limit`, integer resolved_value 5, and source `runtime.lead_count`. No Markdown fence or prose.",
+      "check": {
+        "exact_keys": [
+          "parameter",
+          "resolved_value",
+          "source"
+        ],
+        "expected": {
+          "parameter": "limit",
+          "resolved_value": 5,
+          "source": "runtime.lead_count"
+        },
+        "require_plain_json": true
+      }
+    }
+  ]
+}

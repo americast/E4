@@ -1,0 +1,80 @@
+{
+  "schema_version": "openrca-bank-source/1",
+  "dataset": "OpenRCA Bank",
+  "official_source": {
+    "repository": "https://github.com/microsoft/OpenRCA",
+    "revision": "c121a483a5a91dbae50708e5942c42a6609098b2",
+    "dataset_archive": "https://drive.google.com/drive/folders/1wGiEnu4OkWrjPxfx5ZTROnU37-5UDoPM?usp=drive_link",
+    "schema_document": "third_party/OpenRCA/rca/baseline/rca_agent/prompt/basic_prompt_Bank.py",
+    "schema_document_sha256": "a702127cd22cde022f7f3975c0ab3203c15d8ceb0e74b3357f2615d1fafef987"
+  },
+  "working_mirror": {
+    "repository": "tracer-cloud/opensre",
+    "revision": "07714872ea2cec77c13f9dec17a688e9df9621d1",
+    "path_prefix": "Bank",
+    "metadata_files": {
+      "record.csv": {
+        "size_bytes": 8668,
+        "git_blob_sha1": "905ca8388fb55b60c4b830077591250cd259112e",
+        "sha256": "eea788a8c6d07d5d9567067d1e740fe71f3221d8357f0e12e1c643c42cbd15f7"
+      },
+      "query.csv": {
+        "size_bytes": 56803,
+        "git_blob_sha1": "c91fe4f6f24e2549c151b0f2e8cc0b32cd57dd0d",
+        "sha256": "605d3b5c863928caf1611d97858379765858595e150efad2f77d2f733774f588"
+      }
+    },
+    "telemetry_dates": ["2021_03_04", "2021_03_05", "2021_03_06", "2021_03_07",
+                        "2021_03_09", "2021_03_10", "2021_03_12", "2021_03_23",
+                        "2021_03_24", "2021_03_25"],
+    "identity_note": "Working mirror used at the pinned revision. Byte-for-byte equality with the official Google Drive archive has not been independently established."
+  },
+  "metadata_schema": {
+    "record.csv": ["level", "component", "timestamp", "datetime", "reason"],
+    "query.csv": ["task_index", "instruction", "scoring_points"]
+  },
+  "telemetry_schema": {
+    "metric/metric_app.csv": ["timestamp", "rr", "sr", "cnt", "mrt", "tc"],
+    "metric/metric_container.csv": ["timestamp", "cmdb_id", "kpi_name", "value"],
+    "trace/trace_span.csv": ["timestamp", "cmdb_id", "parent_id", "span_id", "trace_id", "duration"],
+    "log/log_service.csv": ["log_id", "timestamp", "cmdb_id", "log_name", "value"]
+  },
+  "time_units": {
+    "record.timestamp": "epoch seconds",
+    "record.datetime": "local wall time Asia/Shanghai (UTC+8)",
+    "query.window": "Asia/Shanghai (UTC+8)",
+    "metric/metric_app.csv.timestamp": "epoch seconds",
+    "metric/metric_container.csv.timestamp": "epoch seconds",
+    "trace/trace_span.csv.timestamp": "epoch milliseconds",
+    "log/log_service.csv.timestamp": "epoch seconds"
+  },
+  "empirical_timestamp_units_by_source_date": {
+    "verification_status": "Provisional per-date observations from bounded 4KiB HTTP Range previews. Clipping must validate every row in each selected file before publishing Bank inputs.",
+    "dates": {
+      "2021_03_04": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 13-digit epoch ms", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_06": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 13-digit epoch ms", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_07": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 13-digit epoch ms", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_09": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 13-digit epoch ms", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_10": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 13-digit epoch ms", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_12": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 13-digit epoch ms", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_23": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "seconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 10-digit epoch s; differs from upstream trace-ms declaration", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_24": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "seconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 10-digit epoch s; differs from upstream trace-ms declaration", "log/log_service.csv": "upstream prompt declaration; full scan pending"}},
+      "2021_03_25": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "seconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full source app file audited", "metric/metric_container.csv": "upstream prompt declaration; full scan pending", "trace/trace_span.csv": "bounded 4KiB range preview; first rows are 10-digit epoch s; differs from upstream trace-ms declaration", "log/log_service.csv": "upstream prompt declaration; full scan pending"}}
+    }
+  },
+  "empirical_timestamp_units_by_source_date": {
+    "verification_status": "Provisional per-source-date observations. The four table clips must still be scanned in full and each source file must be homogeneous before any Bank adapter input is published.",
+    "dates": {
+      "2021_03_04": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_06": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_07": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_09": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_10": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_12": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "milliseconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_23": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "seconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_24": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "seconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}},
+      "2021_03_25": {"units": {"metric/metric_app.csv": "seconds", "metric/metric_container.csv": "seconds", "trace/trace_span.csv": "seconds", "log/log_service.csv": "seconds"}, "evidence": {"metric/metric_app.csv": "full-file header/timestamp coverage audit", "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending", "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending", "log/log_service.csv": "upstream prompt declaration; full-file validation pending"}}
+    }
+  },
+  "topology_note": "The pinned upstream Bank prompt lists named pod candidates and states that Bank has pod-level components with horizontal traces only; no vertical deployment relationship is declared. Preserve exact source cmdb_id values and do not infer docker-to-pod aliases."
+}

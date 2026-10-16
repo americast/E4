@@ -1,0 +1,47 @@
+{
+  "version": "telecom-metric-kinds/1",
+  "default_kind": "unknown",
+  "unknown_policy": "Keep raw values and descriptive aggregates, but exclude unknown semantic kinds from inferential ranking. No suffix or value-shape guessing.",
+  "metric_app": {
+    "avg_time": {"kind": "gauge", "provenance": "documented application average-latency field; compare only within this field"},
+    "num": {"kind": "window_count", "provenance": "documented requests per metric_app sample window"},
+    "succee_num": {"kind": "window_count", "provenance": "documented successful requests per metric_app sample window"},
+    "succee_rate": {"kind": "ratio", "provenance": "documented application success ratio"}
+  },
+  "directions": {
+    "metric_app": {"avg_time": "higher_is_worse", "succee_rate": "lower_is_worse", "default": "two_sided"},
+    "container": {"default": "two_sided"},
+    "middleware": {"default": "two_sided"},
+    "node": {"default": "two_sided"},
+    "service": {"default": "two_sided"},
+    "counter_rate": {"default": "two_sided"},
+    "direction_note": "Custom metrics without an explicit source direction use two-sided contrasts; this is a detection choice, not an assumption that every increase/decrease causes faults."
+  },
+  "counters": {
+    "container": ["container_fgc", "container_fgct"],
+    "middleware": ["evicted_keys", "expired_keys", "keyspace_hits", "keyspace_misses", "rejected_connections", "total_commands_processed", "total_connections_received", "used_cpu_sys", "used_cpu_user"],
+    "node": ["CPU_iowait_time", "CPU_system_time", "CPU_user_time", "Disk_rd_ios", "Disk_wr_ios", "Page_pi", "Page_po", "Received_errors_packets", "Received_packets", "Recv_total", "Send_total", "Sent_errors_packets", "Sent_packets", "ss_total"],
+    "service": []
+  },
+  "gauges_and_rates": {
+    "container": ["container_cpu_used", "container_mem_used", "container_session_used", "container_thread_idle", "container_thread_running", "container_thread_total", "container_thread_used_pct"],
+    "middleware": ["Redis_key_count", "blocked_clients", "connected_clients", "instantaneous_input_kbps", "instantaneous_ops_per_sec", "instantaneous_output_kbps", "maxmemory", "mem_fragmentation_ratio", "redis_load", "redis_ping", "used_memory", "used_memory_peak", "used_memory_rss"],
+    "node": ["Agent_ping", "Buffers_used", "CPU_idle_pct", "CPU_util_pct", "Cache_used", "Disk_avgqu_sz", "Disk_await", "Disk_io_util", "Disk_rd_kbs", "Disk_svctm", "Disk_wr_kbs", "FS_max_avail", "FS_max_util", "FS_total_space", "FS_used_pct", "FS_used_space", "ICMP_ping", "Incoming_network_traffic", "Memory_available", "Memory_available_pct", "Memory_free", "Memory_total", "Memory_used", "Memory_used_pct", "Num_of_processes", "Num_of_running_processes", "Outgoing_network_traffic", "Processor_load_15_min", "Processor_load_1_min", "Processor_load_5_min", "Received_queue", "Sent_queue", "Shared_memory", "Swap_used_pct", "System_block_queue_length", "System_wait_queue_length", "Zombie_Process"],
+    "service": ["CPU_Used_Pct", "CPU_free_pct", "Call_Per_Sec", "DFParaWrite_Per_Sec", "Exec_Per_Sec", "LFParaWrite_Per_Sec", "LFSync_Per_Sec", "Logic_Read_Per_Sec", "Login_Per_Sec", "MEM_Total", "MEM_Used", "MEM_Used_Pct", "MEM_real_util", "New_Tbs_Free_Gb", "New_Tbs_Used_Pct", "On_Off_State", "PGA_Used_Pct", "PGA_used_total", "Physical_Read_Per_Sec", "Proc_Used_Pct", "Proc_User_Used_Pct", "Redo_Per_Sec", "Row_Lock", "SEQ_Used_Pct", "SctRead_Per_Sec", "SeqRead_Per_Sec", "Sess_Active", "Sess_Connect", "Sess_Used_Temp", "Sess_Used_Undo", "Session_pct", "TPS_Per_Sec", "Tbs_Free_Gb", "Tbs_Used_Pct", "TempTbs_Pct", "Total_Tbs_Size", "UndoTbs_Pct", "Used_Tbs_Size", "tnsping_result_time"]
+  },
+  "rates": {
+    "middleware": ["instantaneous_input_kbps", "instantaneous_ops_per_sec", "instantaneous_output_kbps"],
+    "node": ["Disk_rd_kbs", "Disk_wr_kbs", "Incoming_network_traffic", "Outgoing_network_traffic"],
+    "service": ["Call_Per_Sec", "DFParaWrite_Per_Sec", "Exec_Per_Sec", "LFParaWrite_Per_Sec", "LFSync_Per_Sec", "Logic_Read_Per_Sec", "Login_Per_Sec", "Physical_Read_Per_Sec", "Redo_Per_Sec", "SctRead_Per_Sec", "SeqRead_Per_Sec", "TPS_Per_Sec"]
+  },
+  "counter_transform": {
+    "name": "reset-aware first difference",
+    "rate_unit": "source counter delta per elapsed minute",
+    "reset_rule": "A negative difference is treated as a reset to zero; use the current value divided by elapsed minutes as the post-reset rate.",
+    "first_sample": "No rate is emitted without a preceding sample inside the case reference+alert view.",
+    "wraparound": "Not inferred; a negative difference is a reset, not a guessed wrap.",
+    "raw_values": "Preserved in MetricPoint and referenced by series/source row counts."
+  },
+  "external_primary_source": {"url": "https://redis.io/docs/latest/commands/info/", "used_for": "The Redis INFO documentation identifies total_commands_processed/total_connections_received as totals, instantaneous_ops_per_sec as commands per second, and used_cpu_sys/user as consumed CPU. Exact Redis mappings are applied only to matching observed names."},
+  "provenance_note": "Explicit names are taken from the public Telecom schema and fixed development clip headers. Redis total/rate distinctions cite the primary Redis INFO documentation. Other custom container/node/service semantics are stated reconstruction assumptions. No classification is selected using scored-case labels; names absent from these lists remain unknown."
+}

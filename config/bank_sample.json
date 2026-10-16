@@ -1,0 +1,549 @@
+{
+  "coverage": {
+    "coverage_audit": "artifacts/data_audit/bank_metric_app_coverage.json",
+    "note": "Coverage eligibility is based on unique public metric_app timestamp buckets only and does not imply a healthy baseline.",
+    "source_table": "metric_app.csv"
+  },
+  "dataset": "OpenRCA Bank",
+  "development_cases": [
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-23 06:30:00 to 2021-03-23 07:00:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-23T07:00:00+08:00",
+      "alert_window_start_local": "2021-03-23T06:30:00+08:00",
+      "incident_id": "bank-20210323T0630-utc8",
+      "telemetry_dates": [
+        "2021_03_23"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-25 15:30:00 to 2021-03-25 16:00:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-25T16:00:00+08:00",
+      "alert_window_start_local": "2021-03-25T15:30:00+08:00",
+      "incident_id": "bank-20210325T1530-utc8",
+      "telemetry_dates": [
+        "2021_03_25"
+      ],
+      "timezone": "Asia/Shanghai"
+    }
+  ],
+  "empirical_timestamp_units_by_source_date": {
+    "dates": {
+      "2021_03_04": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "milliseconds"
+        }
+      },
+      "2021_03_06": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "milliseconds"
+        }
+      },
+      "2021_03_07": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "milliseconds"
+        }
+      },
+      "2021_03_09": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "milliseconds"
+        }
+      },
+      "2021_03_10": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "milliseconds"
+        }
+      },
+      "2021_03_12": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "milliseconds"
+        }
+      },
+      "2021_03_23": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "seconds"
+        }
+      },
+      "2021_03_24": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "seconds"
+        }
+      },
+      "2021_03_25": {
+        "evidence": {
+          "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+          "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+          "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+          "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+        },
+        "units": {
+          "log/log_service.csv": "seconds",
+          "metric/metric_app.csv": "seconds",
+          "metric/metric_container.csv": "seconds",
+          "trace/trace_span.csv": "seconds"
+        }
+      }
+    },
+    "verification_status": "Provisional per-source-date observations. The four table clips must still be scanned in full and each source file must be homogeneous before any Bank adapter input is published."
+  },
+  "prepared_public_manifest_sha256": {
+    "dev": "a63bdb5eeaad5f1acf614eb1984db08f1af5cd5f131994d6153613f2b82d9f3d",
+    "scored": "62bfb45bcb644e1530d43582c845dd7e09712b704c9310646cb1f1eb9fcc6de6"
+  },
+  "public_manifest_paths": {
+    "dev": "data/prepared/bank/dev_incidents.jsonl",
+    "scored": "data/prepared/bank/scored_incidents.jsonl"
+  },
+  "record_epoch_unit": "seconds",
+  "scored_cases": [
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-04 01:00:00 to 2021-03-04 01:30:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-04T01:30:00+08:00",
+      "alert_window_start_local": "2021-03-04T01:00:00+08:00",
+      "incident_id": "bank-20210304T0100-utc8",
+      "telemetry_dates": [
+        "2021_03_04"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-04 18:00:00 to 2021-03-04 18:30:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-04T18:30:00+08:00",
+      "alert_window_start_local": "2021-03-04T18:00:00+08:00",
+      "incident_id": "bank-20210304T1800-utc8",
+      "telemetry_dates": [
+        "2021_03_04"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-06 03:30:00 to 2021-03-06 04:00:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-06T04:00:00+08:00",
+      "alert_window_start_local": "2021-03-06T03:30:00+08:00",
+      "incident_id": "bank-20210306T0330-utc8",
+      "telemetry_dates": [
+        "2021_03_06"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-07 03:00:00 to 2021-03-07 03:30:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-07T03:30:00+08:00",
+      "alert_window_start_local": "2021-03-07T03:00:00+08:00",
+      "incident_id": "bank-20210307T0300-utc8",
+      "telemetry_dates": [
+        "2021_03_07"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-07 03:30:00 to 2021-03-07 04:00:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-07T04:00:00+08:00",
+      "alert_window_start_local": "2021-03-07T03:30:00+08:00",
+      "incident_id": "bank-20210307T0330-utc8",
+      "telemetry_dates": [
+        "2021_03_07"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-09 08:00:00 to 2021-03-09 08:30:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-09T08:30:00+08:00",
+      "alert_window_start_local": "2021-03-09T08:00:00+08:00",
+      "incident_id": "bank-20210309T0800-utc8",
+      "telemetry_dates": [
+        "2021_03_09"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-09 17:30:00 to 2021-03-09 18:00:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-09T18:00:00+08:00",
+      "alert_window_start_local": "2021-03-09T17:30:00+08:00",
+      "incident_id": "bank-20210309T1730-utc8",
+      "telemetry_dates": [
+        "2021_03_09"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-12 20:30:00 to 2021-03-12 21:00:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-12T21:00:00+08:00",
+      "alert_window_start_local": "2021-03-12T20:30:00+08:00",
+      "incident_id": "bank-20210312T2030-utc8",
+      "telemetry_dates": [
+        "2021_03_12"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-24 11:00:00 to 2021-03-24 11:30:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-24T11:30:00+08:00",
+      "alert_window_start_local": "2021-03-24T11:00:00+08:00",
+      "incident_id": "bank-20210324T1100-utc8",
+      "telemetry_dates": [
+        "2021_03_24"
+      ],
+      "timezone": "Asia/Shanghai"
+    },
+    {
+      "alert_text": "A single failure was reported in the Bank system during the interval 2021-03-25 20:00:00 to 2021-03-25 20:30:00 (UTC+8). The exact cause and affected component are unknown. Diagnose using available telemetry.",
+      "alert_window_end_local": "2021-03-25T20:30:00+08:00",
+      "alert_window_start_local": "2021-03-25T20:00:00+08:00",
+      "incident_id": "bank-20210325T2000-utc8",
+      "telemetry_dates": [
+        "2021_03_25"
+      ],
+      "timezone": "Asia/Shanghai"
+    }
+  ],
+  "selection": {
+    "candidate_physical_windows": 127,
+    "coverage_eligible_single_record_windows": 114,
+    "development_count": 2,
+    "development_ids": [
+      "bank-20210323T0630-utc8",
+      "bank-20210325T1530-utc8"
+    ],
+    "private_reason_stratum_count": 8,
+    "scored_count": 10,
+    "scored_ids": [
+      "bank-20210304T0100-utc8",
+      "bank-20210304T1800-utc8",
+      "bank-20210306T0330-utc8",
+      "bank-20210307T0300-utc8",
+      "bank-20210307T0330-utc8",
+      "bank-20210309T0800-utc8",
+      "bank-20210309T1730-utc8",
+      "bank-20210312T2030-utc8",
+      "bank-20210324T1100-utc8",
+      "bank-20210325T2000-utc8"
+    ],
+    "seed": 42,
+    "split_disjointness": "development full input interval [alert_start-30m, alert_end) must not overlap any scored interval; half-open endpoints allowed",
+    "stratification_policy": "Seeded sampling within eligible single-record fault-reason strata. Include every supported reason when at most ten; otherwise choose ten highest-count reasons, tie-break by reason text. Start one scored slot per chosen reason; allocate remaining slots to the most under-allocated supported reason deterministically. Reason labels are private and never written to public manifests."
+  },
+  "source": {
+    "dataset": "OpenRCA Bank",
+    "empirical_timestamp_units_by_source_date": {
+      "dates": {
+        "2021_03_04": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "milliseconds"
+          }
+        },
+        "2021_03_06": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "milliseconds"
+          }
+        },
+        "2021_03_07": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "milliseconds"
+          }
+        },
+        "2021_03_09": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "milliseconds"
+          }
+        },
+        "2021_03_10": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "milliseconds"
+          }
+        },
+        "2021_03_12": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "milliseconds"
+          }
+        },
+        "2021_03_23": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "seconds"
+          }
+        },
+        "2021_03_24": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "seconds"
+          }
+        },
+        "2021_03_25": {
+          "evidence": {
+            "log/log_service.csv": "upstream prompt declaration; full-file validation pending",
+            "metric/metric_app.csv": "full-file header/timestamp coverage audit",
+            "metric/metric_container.csv": "upstream prompt declaration; full-file validation pending",
+            "trace/trace_span.csv": "bounded 4KiB HTTP Range preview; full-file validation pending"
+          },
+          "units": {
+            "log/log_service.csv": "seconds",
+            "metric/metric_app.csv": "seconds",
+            "metric/metric_container.csv": "seconds",
+            "trace/trace_span.csv": "seconds"
+          }
+        }
+      },
+      "verification_status": "Provisional per-source-date observations. The four table clips must still be scanned in full and each source file must be homogeneous before any Bank adapter input is published."
+    },
+    "metadata_audit_sha256": "5100e695ec49eda2c86de9844610e5e4ee425042296ed4ddc50c6e1e0451ed55",
+    "metadata_schema": {
+      "query.csv": [
+        "task_index",
+        "instruction",
+        "scoring_points"
+      ],
+      "record.csv": [
+        "level",
+        "component",
+        "timestamp",
+        "datetime",
+        "reason"
+      ]
+    },
+    "metric_app_coverage_audit_sha256": "245304c5c91eded7b322989f9a93f3c2c3c8322f05affba34965298e00949e72",
+    "metric_app_file_sha256_by_date": {
+      "2021_03_04": "80932766feb1a7611a17ed27a8070b044f429b69138c1ab3cb2e501fa45300c1",
+      "2021_03_06": "883ec49b01c12a464064dc055e6ab7e0dfd2943d55f7f8b1d1fe512961969776",
+      "2021_03_07": "fa12343359c84d96c51ccc4f896ec3cd1afa159e6ecd2a145f27ddbe4cfdb578",
+      "2021_03_09": "7f04d52a1892a04a44ba7ffda0dda6760b4107201bfb16c8fdaac724a9d69dd7",
+      "2021_03_10": "83cdb6ca34b810ae0efe101a812708d9985094dc6386f0d60addd710728a55bb",
+      "2021_03_12": "4e178b90f62d90662e2e9f6d41307b7c46373b2e7adfee6f253e7845f79828c3",
+      "2021_03_23": "133d45187276dd3331ef70a449a64e47f597dfbebdd102d581e19e6d05ea1d7b",
+      "2021_03_24": "1d32a96751d9008539f81b4ec7ea4e4d5f5c0ac5df078c2af366ddd817e9fca6",
+      "2021_03_25": "c4b0a6d42d4434d361aa0f310c8a25dc6227eade626d0f571d01dcd4bf67b11a"
+    },
+    "official_source": {
+      "dataset_archive": "https://drive.google.com/drive/folders/1wGiEnu4OkWrjPxfx5ZTROnU37-5UDoPM?usp=drive_link",
+      "repository": "https://github.com/microsoft/OpenRCA",
+      "revision": "c121a483a5a91dbae50708e5942c42a6609098b2",
+      "schema_document": "third_party/OpenRCA/rca/baseline/rca_agent/prompt/basic_prompt_Bank.py",
+      "schema_document_sha256": "a702127cd22cde022f7f3975c0ab3203c15d8ceb0e74b3357f2615d1fafef987"
+    },
+    "schema_version": "openrca-bank-source/1",
+    "source_config_sha256": "8de59b65c1d1aa919358ca9c23f87400784aa1521aebd6d967f22ef92005673e",
+    "telemetry_schema": {
+      "log/log_service.csv": [
+        "log_id",
+        "timestamp",
+        "cmdb_id",
+        "log_name",
+        "value"
+      ],
+      "metric/metric_app.csv": [
+        "timestamp",
+        "rr",
+        "sr",
+        "cnt",
+        "mrt",
+        "tc"
+      ],
+      "metric/metric_container.csv": [
+        "timestamp",
+        "cmdb_id",
+        "kpi_name",
+        "value"
+      ],
+      "trace/trace_span.csv": [
+        "timestamp",
+        "cmdb_id",
+        "parent_id",
+        "span_id",
+        "trace_id",
+        "duration"
+      ]
+    },
+    "time_units": {
+      "log/log_service.csv.timestamp": "epoch seconds",
+      "metric/metric_app.csv.timestamp": "epoch seconds",
+      "metric/metric_container.csv.timestamp": "epoch seconds",
+      "query.window": "Asia/Shanghai (UTC+8)",
+      "record.datetime": "local wall time Asia/Shanghai (UTC+8)",
+      "record.timestamp": "epoch seconds",
+      "trace/trace_span.csv.timestamp": "epoch milliseconds"
+    },
+    "topology_note": "The pinned upstream Bank prompt lists named pod candidates and states that Bank has pod-level components with horizontal traces only; no vertical deployment relationship is declared. Preserve exact source cmdb_id values and do not infer docker-to-pod aliases.",
+    "working_mirror": {
+      "identity_note": "Working mirror used at the pinned revision. Byte-for-byte equality with the official Google Drive archive has not been independently established.",
+      "metadata_files": {
+        "query.csv": {
+          "git_blob_sha1": "c91fe4f6f24e2549c151b0f2e8cc0b32cd57dd0d",
+          "sha256": "605d3b5c863928caf1611d97858379765858595e150efad2f77d2f733774f588",
+          "size_bytes": 56803
+        },
+        "record.csv": {
+          "git_blob_sha1": "905ca8388fb55b60c4b830077591250cd259112e",
+          "sha256": "eea788a8c6d07d5d9567067d1e740fe71f3221d8357f0e12e1c643c42cbd15f7",
+          "size_bytes": 8668
+        }
+      },
+      "path_prefix": "Bank",
+      "repository": "tracer-cloud/opensre",
+      "revision": "07714872ea2cec77c13f9dec17a688e9df9621d1",
+      "telemetry_dates": [
+        "2021_03_04",
+        "2021_03_05",
+        "2021_03_06",
+        "2021_03_07",
+        "2021_03_09",
+        "2021_03_10",
+        "2021_03_12",
+        "2021_03_23",
+        "2021_03_24",
+        "2021_03_25"
+      ]
+    }
+  },
+  "timezone": "Asia/Shanghai",
+  "upstream_declared_telemetry_time_units": {
+    "log/log_service.csv.timestamp": "epoch seconds",
+    "metric/metric_app.csv.timestamp": "epoch seconds",
+    "metric/metric_container.csv.timestamp": "epoch seconds",
+    "query.window": "Asia/Shanghai (UTC+8)",
+    "record.datetime": "local wall time Asia/Shanghai (UTC+8)",
+    "record.timestamp": "epoch seconds",
+    "trace/trace_span.csv.timestamp": "epoch milliseconds"
+  }
+}

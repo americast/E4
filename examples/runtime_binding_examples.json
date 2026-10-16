@@ -1,0 +1,12 @@
+{
+  "schema_version": "runtime-resolution-examples/1",
+  "runtime_schema": "config/runtime_schema.json",
+  "runtime_schema_extension": {"missing_limit": {"type": "positive_integer", "required": false, "meaning": "Example declared field with no supplied value or default."}},
+  "field": "runtime.dag_depth",
+  "meaning": "Configured maximum operator-node path length, not measured graph depth.",
+  "examples": [
+    {"parameter": "max_path_depth", "parameter_spec": {"type": "positive_integer", "runtime_field": "dag_depth"}, "params": {}, "bindings": {}, "runtime": {"dag_depth": 12}, "resolved": 12, "provenance": "runtime.dag_depth"},
+    {"parameter": "max_path_depth", "parameter_spec": {"type": "positive_integer", "runtime_field": "dag_depth"}, "params": {"max_path_depth": 4}, "bindings": {"max_path_depth": "runtime.dag_depth"}, "runtime": {"dag_depth": 12}, "resolved": 4, "provenance": "explicit_argument"},
+    {"parameter": "required_limit", "parameter_spec": {"type": "positive_integer", "required": true, "runtime_field": "missing_limit"}, "params": {}, "bindings": {}, "runtime": {}, "result": "structured missing_required_runtime_field error; no default is guessed"}
+  ]
+}
