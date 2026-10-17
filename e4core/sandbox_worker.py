@@ -13,6 +13,7 @@ import json
 import math
 import resource
 import sys
+from collections.abc import Mapping
 from types import MappingProxyType
 from pathlib import Path
 
@@ -97,7 +98,7 @@ def _json_value(value, depth=0, seen=None):
         result = [_json_value(item, depth + 1, seen) for item in value]
         seen.remove(ident)
         return result
-    if type(value) is dict:
+    if isinstance(value, Mapping):
         ident = id(value)
         if ident in seen:
             raise ValueError("result contains a cycle")
@@ -113,11 +114,44 @@ def _json_value(value, depth=0, seen=None):
 
 
 def _readonly(value):
-    if type(value) is dict:
+    if isinstance(value, Mapping):
         return MappingProxyType({key: _readonly(item) for key, item in value.items()})
-    if type(value) is list:
+    if type(value) in (list, tuple):
         return tuple(_readonly(item) for item in value)
     return value
+
+
+def _decode_wire_value(value, depth=0):
+    """Decode cache map/tuple envelopes while preserving typed core envelopes."""
+    if depth > 40:
+        raise ValueError("wire value nesting exceeds 40 levels")
+    if type(value) in (list, tuple):
+        return [_decode_wire_value(item, depth + 1) for item in value]
+    if not isinstance(value, Mapping):
+        return value
+    if set(value) == {"$map"}:
+        if not isinstance(value["$map"], Mapping):
+            raise ValueError("malformed mapping wire envelope")
+        return {key: _decode_wire_value(item, depth + 1)
+                for key, item in value["$map"].items()}
+    if set(value) == {"$tuple"}:
+        if type(value["$tuple"]) not in (list, tuple):
+            raise ValueError("malformed tuple wire envelope")
+        return [_decode_wire_value(item, depth + 1) for item in value["$tuple"]]
+    if "$type" in value:
+        if (set(value) != {"$type", "$fields"} or type(value["$type"]) is not str or
+                not isinstance(value["$fields"], Mapping)):
+            raise ValueError("malformed typed wire envelope")
+        return {"$type": value["$type"], "$fields": _decode_wire_value(value["$fields"], depth + 1)}
+    return {key: _decode_wire_value(item, depth + 1) for key, item in value.items()}
+
+
+def contract_fields(value, expected_type):
+    """Read a typed input's public fields as plain read-only worker mappings."""
+    if (not isinstance(value, Mapping) or set(value) != {"$type", "$fields"} or
+            value.get("$type") != expected_type or not isinstance(value.get("$fields"), Mapping)):
+        raise ValueError(f"expected {expected_type} cache wire envelope")
+    return _readonly(_decode_wire_value(value["$fields"]))
 
 
 class RuntimeView:
@@ -209,7 +243,8 @@ def main():
 
     namespace = {"__builtins__": safe_builtins,
                  "read_case_json": read_case_json,
-                 "read_catalog_json": read_catalog_json}
+                 "read_catalog_json": read_catalog_json,
+                 "contract_fields": contract_fields}
     source = request["source"]
     tree = ast.parse(source, mode="exec")
     code = compile(tree, "<generated-operator>", "exec", dont_inherit=True, optimize=2)

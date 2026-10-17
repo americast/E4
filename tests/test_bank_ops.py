@@ -241,6 +241,20 @@ class BankOperatorTests(unittest.TestCase):
         self.assertAlmostEqual(answer.leads[1].score, 0.5)
         self.assertNotIn("podc", {row.entity.canonical_id for row in answer.leads})
 
+    def test_m4_explicit_weight_override_changes_only_versioned_combiner_behavior(self):
+        pod_a, pod_b = EntityRef("component", "PodA"), EntityRef("component", "PodB")
+        metric = ScoredCandidates((scored(pod_a, 2.0, "bank_metric"),
+                                   scored(pod_b, 0.0, "bank_metric", eligible=False)),
+                                  "bank.metric", "ready")
+        trace = ScoredCandidates((scored(pod_a, 0.0, "bank_trace_latency", eligible=False),
+                                  scored(pod_b, 2.0, "bank_trace_latency")),
+                                 "bank.trace", "ready")
+        baseline = combine_bank_scores({"scores": (metric, trace)}, {}, context())
+        m4_weighted = combine_bank_scores({"scores": (metric, trace)}, {}, context(),
+            weights_override={"bank_metric": 5.0, "bank_trace_latency": 0.0})
+        self.assertEqual([row.entity.canonical_id for row in baseline.leads], ["poda", "podb"])
+        self.assertEqual([row.entity.canonical_id for row in m4_weighted.leads], ["poda"])
+
     def test_combiner_serialization_is_stable_across_hash_seeds_and_family_order(self):
         script = r'''import json, sys
 from e4core.bank_ops import combine_bank_scores

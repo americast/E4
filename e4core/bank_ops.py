@@ -486,9 +486,20 @@ def score_bank_log_volume(inputs: Mapping[str, Any], params: Mapping[str, Any],
 
 def combine_bank_scores(inputs: Mapping[str, Any], params: Mapping[str, Any],
                         context: NodeContext, *,
-                        policy_path: Path = KPI_POLICY_PATH) -> RankedAnswer:
+                        policy_path: Path = KPI_POLICY_PATH,
+                        weights_override: Mapping[str, float] | None = None) -> RankedAnswer:
     score_families: tuple[ScoredCandidates, ...] = inputs["scores"]
-    weights = _dev_policy(policy_path).get("family_weights", {})
+    if weights_override is None:
+        # Preserve the frozen M3 Bank behavior exactly unless a versioned M4
+        # wrapper explicitly supplies model-selected runtime weights.
+        weights = _dev_policy(policy_path).get("family_weights", {})
+    else:
+        if (not isinstance(weights_override, Mapping) or any(
+                not isinstance(name, str) or type(value) not in (int, float) or
+                not math.isfinite(float(value)) or float(value) < 0
+                for name, value in weights_override.items())):
+            raise ValueError("Bank M4 family-weight override must be a finite nonnegative JSON mapping")
+        weights = dict(weights_override)
     family_scores: dict[str, dict[str, float]] = defaultdict(dict)
     family_evidence: dict[str, dict[str, list[Evidence]]] = defaultdict(lambda: defaultdict(list))
     family_status: dict[str, bool] = defaultdict(bool)

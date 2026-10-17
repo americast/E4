@@ -1,0 +1,76 @@
+{
+  "schema_version": "e4-m4-runtime-policy/1",
+  "policy_name": "bank-m4-controller-frozen",
+  "selected_profile": "config/gemma_m3_inference.json",
+  "bootstrap": {
+    "maximum_new_operators": 2,
+    "maximum_new_playbooks": 4,
+    "static_repair_limit": 2,
+    "maximum_response_bytes": 1048576,
+    "operator_synthetic_fixture_count": 5,
+    "no_response_is_success": false
+  },
+  "serving": {
+    "maximum_diagnostic_attempts": 3,
+    "maximum_new_operators": 3,
+    "stages": ["select", "compose", "synthesize"],
+    "static_repair_limit_per_attempt": 2,
+    "maximum_nodes": 40,
+    "maximum_depth": 12,
+    "maximum_leads": 5,
+    "acceptance_top_k": 3,
+    "acceptance_contract": "casefolded exact component identity in the frozen top three",
+    "case_wall_seconds": 7200,
+    "model_timeout_seconds": 1800
+  },
+  "protected_runtime_values": {
+    "max_nodes": 40,
+    "dag_depth": 12,
+    "lead_count": 5,
+    "acceptance_top_k": 3,
+    "seed": 42,
+    "permutation_resamples": 499
+  },
+  "model_runtime_overrides": {
+    "minimum_support": {"type": "positive_integer", "minimum": 4, "maximum": 128},
+    "minimum_independent_blocks": {"type": "positive_integer", "minimum": 2, "maximum": 6},
+    "minimum_normalized_effect": {"type": "number", "minimum": 0.1, "maximum": 5.0},
+    "maximum_change_p_value": {"type": "number", "minimum": 0.001, "maximum": 0.25},
+    "relative_scale_floor": {"type": "number", "minimum": 0.01, "maximum": 1.0},
+    "absolute_scale_floor": {"type": "number", "minimum": 0.000000001, "maximum": 1000000.0},
+    "tail_quantile": {"type": "number", "minimum": 0.75, "maximum": 0.99},
+    "block_minutes": {"type": "positive_integer", "choices": [1, 2, 3, 5, 6, 10]},
+    "analysis_weights": {
+      "type": "number_map",
+      "allowed_keys": ["metric", "trace_latency", "log_volume"],
+      "minimum": 0.0,
+      "maximum": 5.0,
+      "default_family_weight": 1.0
+    }
+  },
+  "query_and_generation": {
+    "maximum_operator_input_bytes": 2097152,
+    "generated_operator_wall_seconds": 5,
+    "generated_operator_memory_bytes": 536870912,
+    "maximum_public_query_requests_per_case": 32,
+    "maximum_public_query_rows_per_request": 256,
+    "maximum_public_query_rows_per_case": 2048,
+    "maximum_public_query_bytes_per_request": 524288,
+    "maximum_public_query_bytes_per_case": 2097152,
+    "maximum_public_query_string_bytes": 4096,
+    "maximum_public_query_offset": 100000,
+    "maximum_source_bytes_per_query": 536870912,
+    "maximum_projected_summary_rows_per_request": 256,
+    "maximum_projected_summary_offset": 100000,
+    "maximum_projected_string_bytes": 4096,
+    "maximum_projected_output_bytes": 524288
+  },
+  "library": {
+    "total_operator_cap": 19,
+    "immutable_builtin_operators": true,
+    "protected_seed_playbooks": true,
+    "generated_operator_eviction": "least distinct-case use, then qualified name",
+    "evicted_operator_playbooks": "remove generated playbooks that no longer resolve",
+    "generated_operator_default_analysis_weight": 1.0
+  }
+}

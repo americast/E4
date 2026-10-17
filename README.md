@@ -66,4 +66,4 @@ Use a new run ID for each model run:
   --case-id bank-20210323T0630-utc8
 ```
 
-The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-id>/`; the Bank DAG, calls, and execution records are saved under `development/<case-id>/` within that run directory. The current runner executes individual analysis DAGs; it does not implement a full retrieval, adaptation, and evolution loop.
+The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-id>/`; the Bank DAG, calls, and execution records are saved under `development/<case-id>/` within that run directory. To bootstrap the Bank library or run the three-stage harness, follow the [three-stage harness runbook](docs/M4_RUNBOOK.md).
