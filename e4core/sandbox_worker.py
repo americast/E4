@@ -66,13 +66,15 @@ def validate_source(source: str) -> None:
     allowed_imports = {"math", "statistics", "itertools", "collections"}
     for node in ast.walk(tree):
         if isinstance(node, forbidden_nodes):
-            raise ValueError("source uses a restricted Python construct")
+            location = f" at line {getattr(node, 'lineno', '?')}, column {getattr(node, 'col_offset', '?')}"
+            raise ValueError(f"source uses forbidden AST construct {type(node).__name__}{location}")
         if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
             raise ValueError("private attribute access is restricted")
         if isinstance(node, ast.Name) and (node.id.startswith("__") or node.id in {
                 "open", "eval", "exec", "compile", "globals", "locals", "getattr",
                 "setattr", "delattr", "vars", "input", "breakpoint", "memoryview"}):
-            raise ValueError("source uses a restricted name")
+            location = f" at line {getattr(node, 'lineno', '?')}, column {getattr(node, 'col_offset', '?')}"
+            raise ValueError(f"source uses forbidden name {node.id!r}{location}")
         if isinstance(node, (ast.Import, ast.ImportFrom)):
             names = [alias.name.split(".")[0] for alias in node.names] if isinstance(node, ast.Import) else [node.module or ""]
             if any(name not in allowed_imports for name in names) or getattr(node, "level", 0):

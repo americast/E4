@@ -44,7 +44,7 @@ MAX_CASE_DIGEST_BYTES = 32 * 1024
 MAX_DIGEST_SERIES = 8
 MAX_PROMPT_HISTORY = 3
 M4_SYSTEM_PROMPT = (
-    "Analyze the supplied public Bank development telemetry using only the registered E4 contracts. "
+    "Analyze the supplied public Bank telemetry using only the registered E4 contracts. "
     "Return only the requested JSON artifact. You have no external tools or private-label access."
 )
 
@@ -153,6 +153,7 @@ def typed_contract_wire_schema() -> dict[str, Any]:
         "nested_collections": {"tuple": "{'$tuple':[items...]}",
                                "mapping": "{'$map':{string_key: value,...}}"},
         "finite_json": "numbers must be finite; object details contain JSON values only",
+        "contract_fields": "contract_fields(value, expected_type) accepts a matching {$type, $fields} wire envelope and returns a recursively read-only MappingProxyType/dict-like mapping; nested mappings are read-only and nested lists/tuples are immutable tuples. Do not mutate returned values. The helper unwraps $fields; callers must not access fields through value['$fields'] after calling it.",
         "evidence_requirements": {
             "allowed_native_sources": ["bank/metric_app.csv", "bank/metric_container.csv",
                 "bank/trace_span.csv", "bank/log/log_service.csv",
@@ -688,6 +689,8 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
                   history: list[Mapping[str, Any]], policy: Mapping[str, Any],
                   query_budget: M4QueryBudget, include_case_digest: bool = True,
                   include_history: bool = True) -> str:
+    from e4infra.bank_prep import BANK_OFFICIAL_CANDIDATE_COMPONENTS
+
     query_policy = policy["query_and_generation"]
     query_usage = {"requests_used": query_budget.requests,
         "requests_remaining": max(0, int(query_policy["maximum_public_query_requests_per_case"]) - query_budget.requests),
@@ -696,7 +699,7 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
         "serialized_bytes_returned": query_budget.bytes,
         "bytes_remaining": max(0, int(query_policy["maximum_public_query_bytes_per_case"]) - query_budget.bytes)}
     common = (
-        "You are running one development case in the frozen M4 Bank experiment. Do not infer unsupported "
+        "You are running one Bank case in the frozen M4 experiment. Do not infer unsupported "
         "trace success, root/database roles, aliases, categories, or raw log severity. Bank duration units "
         "are undeclared. Exact observed IDs are case-local; never alias docker IDs to named pods. The app tc "
         "field is opaque and not a component. Use supplied runtime overrides only; do not invent threshold "
@@ -709,6 +712,14 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
         "does not recompute statistics, and is limited to 512 KiB/4096-byte strings. Never omit fields silently. "
         "Native query pages are already bounded and cannot be projected again. Use fresh bank.public.query pages "
         "when an algorithm needs raw row samples or raw log text. No label or prior gold-evaluation data is available."
+    )
+    common += (
+        "\n\nOFFICIAL STATIC BANK CANDIDATE IDENTIFIERS (published schema vocabulary, not observations)\n" +
+        json.dumps(list(BANK_OFFICIAL_CANDIDATE_COMPONENTS), ensure_ascii=False,
+                   separators=(",", ":")) +
+        "\nThese fixed source identifiers are public reference information only. They do not imply that an ID "
+        "was observed in this case, do not provide aliases or mappings, and do not change the case-local observed "
+        "component list or evidence requirements. Only rank exact observed component IDs supported by the selected case."
     )
     if include_case_digest:
         common += "\n\nCURRENT PUBLIC CASE DIGEST\n" + json.dumps(digest, ensure_ascii=False,
@@ -747,17 +758,17 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
     if stage == "synthesize":
         return (common + "\n\nSTAGE 3: propose a focused new operator and compose a DAG that reaches it; prefer one operator, "
             "and propose more only if a distinct additional capability is justified. Three is a hard maximum, not a target. "
-            "Return exactly {operators:[spec],dag:{schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}},runtime_overrides:{}}. "
+            "Return exactly {operators:[spec],dag:{schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}},runtime_overrides:{}}. Every DAG node's inputs, params, and bindings values must be JSON objects/maps (use {} when empty); inputs maps port names to node IDs, params maps declared parameter names to JSON values, and bindings maps declared parameter names to runtime field names. The DAG return node MUST be the trusted versioned bank.answers.combine operator that produces RankedAnswer; return scored candidates from your new operator into that combiner, never return Aggregate, CandidateSet, or ScoredCandidates directly. "
             "Each operator spec has exactly {name,version,description,family,input_ports,output_type,parameters,source}; "
             "names use evolved.<lower_snake>, source defines operator(inputs,params,runtime). Inputs are a plain "
             "port-name mapping whose typed values are cache wire envelopes; use contract_fields(inputs['port'],'Aggregate') "
-            "to read a typed contract's public fields as nested read-only mappings/tuples. Params are plain JSON mapping; "
+            "to read a typed contract's public fields as nested read-only mappings/tuples. contract_fields unwraps the $fields envelope and nested maps/arrays are read-only (maps behave as MappingProxyType, arrays as tuples); do not mutate them. Params are plain JSON mapping; "
             "runtime supports both runtime.field and runtime['field']. Output types are Aggregate, CandidateSet, or "
             "ScoredCandidates; return exact cache wire envelopes with $type/$fields and nested $map/$tuple wrappers. "
             "Example envelope only: {'$type':'CandidateSet','$fields':{'candidates':{'$tuple':[]},'source':'...'}}. "
             "Only builtins abs,all,any,bool,dict,enumerate,float,int,len,list,max,min,range,round,set,sorted,str,sum,tuple,zip,print,Exception,ValueError and imports math/statistics/itertools/collections are available; contract_fields is also available. "
             "read_case_json and read_catalog_json have no mounts for M4 generated operators and will fail if called. "
-            "Filesystem, network, reflection, dynamic imports, classes, exceptions/try, and recursion are forbidden. "
+            "Filesystem, network, reflection, dynamic imports, classes, lambda expressions, try/except, and recursion are forbidden. "
             "Bounded for/while iteration over supplied lists or ranges is permitted and remains subject to worker CPU, wall, memory, and output limits. "
             "Nontrivial numeric constants must be declared parameters/runtime values. Do not encode component names, "
             "incident IDs, or expected outputs into code.\n\nEXACT TYPED OUTPUT ENVELOPES\n"
@@ -999,8 +1010,9 @@ def _verify_and_execute(document: Mapping[str, Any], registry: OperatorRegistry,
 def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                    feedback: Any, profile_path: Path,
                    client: LocalModelClient | None = None,
-                   root: Path = ROOT, policy_path: Path | None = None) -> dict[str, Any]:
-    """Run one three-stage development diagnosis; model sees only public data and feedback bit."""
+                   root: Path = ROOT, policy_path: Path | None = None,
+                   split: str = "dev") -> dict[str, Any]:
+    """Run one three-stage Bank diagnosis; default remains frozen development-only."""
     started = time.perf_counter()
     root = root.resolve(strict=True)
     policy_path = policy_path or root / "config/m4_runtime.json"
@@ -1025,10 +1037,13 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
     stage_rows: list[dict[str, Any]] = []
     try:
         sample = json.loads((root / "config/bank_sample.json").read_text(encoding="utf-8"))
-        allowed_cases = {row["incident_id"] for row in sample.get("development_cases", [])}
+        if split not in {"dev", "scored"}:
+            raise M4ControllerError("case_split", "diagnosis split must be dev or scored")
+        case_key = "development_cases" if split == "dev" else "scored_cases"
+        allowed_cases = {row["incident_id"] for row in sample.get(case_key, [])}
         if case_id not in allowed_cases:
-            raise M4ControllerError("case_not_dev", "M4 controller only accepts frozen development cases")
-        case = load_bank_case(case_id, "dev", root=root)
+            raise M4ControllerError("case_not_in_split", f"controller case is not in the frozen {split} allowlist")
+        case = load_bank_case(case_id, split, root=root)
         digest = public_case_digest(case, root=root)
 
         source_snapshot = snapshot_library(library_root)
@@ -1050,7 +1065,7 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
             base_url=os.environ.get("E4_BASE_URL"),
             request_timeout=float(policy["serving"]["model_timeout_seconds"]))
         run_doc = {"schema_version": "e4-m4-diagnostic-run/1", "case_id": case_id,
-            "split": "dev", "profile_path": str(profile_path),
+            "split": split, "profile_path": str(profile_path),
             "profile_sha256": sha256_file(profile_path), "profile": profile,
             "model_alias": profile.get("model_alias"),
             "implementation_fingerprint": _implementation_fingerprint(),

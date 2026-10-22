@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="520" viewBox="0 0 920 520">
+<rect width="100%" height="100%" fill="#fff"/>
+<style>text{font-family:Arial,sans-serif;fill:#172033}.muted{fill:#5b6475}.grid{stroke:#d9dee8;stroke-width:1}</style>
+<text x="90" y="32" font-size="22" font-weight="700">Accuracy and measured model time</text>
+<line class="grid" x1="90" y1="280.0" x2="878" y2="280.0"/>
+<text class="muted" x="78" y="284.0" text-anchor="end" font-size="12">0%</text>
+<line class="grid" x1="90" y1="238.0" x2="878" y2="238.0"/>
+<text class="muted" x="78" y="242.0" text-anchor="end" font-size="12">20%</text>
+<line class="grid" x1="90" y1="196.0" x2="878" y2="196.0"/>
+<text class="muted" x="78" y="200.0" text-anchor="end" font-size="12">40%</text>
+<line class="grid" x1="90" y1="154.0" x2="878" y2="154.0"/>
+<text class="muted" x="78" y="158.0" text-anchor="end" font-size="12">60%</text>
+<line class="grid" x1="90" y1="112.0" x2="878" y2="112.0"/>
+<text class="muted" x="78" y="116.0" text-anchor="end" font-size="12">80%</text>
+<line class="grid" x1="90" y1="70.0" x2="878" y2="70.0"/>
+<text class="muted" x="78" y="74.0" text-anchor="end" font-size="12">100%</text>
+<text class="muted" x="90.0" y="305.0" text-anchor="middle" font-size="13">Prefix 1</text>
+<text class="muted" x="484.0" y="305.0" text-anchor="middle" font-size="13">Prefix 2</text>
+<text class="muted" x="878.0" y="305.0" text-anchor="middle" font-size="13">Prefix 3</text>
+<text class="muted" x="90" y="56.0" font-size="13">Accuracy across accepted diagnosis slots</text>
+<circle cx="85.0" cy="238.0" r="6" fill="#2563eb"/>
+<text x="85.0" y="224.0" text-anchor="middle" font-size="12" fill="#2563eb">20%</text>
+<circle cx="479.0" cy="238.0" r="6" fill="#2563eb"/>
+<text x="479.0" y="224.0" text-anchor="middle" font-size="12" fill="#2563eb">20%</text>
+<circle cx="873.0" cy="238.0" r="6" fill="#2563eb"/>
+<text x="873.0" y="224.0" text-anchor="middle" font-size="12" fill="#2563eb">20%</text>
+<polyline fill="none" stroke="#2563eb" stroke-width="3" points="85.0,238.0 479.0,238.0 873.0,238.0"/>
+<rect x="90" y="355" width="155.6" height="24" rx="3" fill="#2563eb"/>
+<text x="255.6" y="372" font-size="13" fill="#2563eb">E4 1.55 h</text>
+<polygon points="95.0,232.0 101.0,238.0 95.0,244.0 89.0,238.0" fill="#e66b24"/>
+<text x="95.0" y="261.0" text-anchor="middle" font-size="12" fill="#e66b24">20%</text>
+<polygon points="489.0,190.0 495.0,196.0 489.0,202.0 483.0,196.0" fill="#e66b24"/>
+<text x="489.0" y="182.0" text-anchor="middle" font-size="12" fill="#e66b24">40%</text>
+<polygon points="883.0,190.0 889.0,196.0 883.0,202.0 877.0,196.0" fill="#e66b24"/>
+<text x="883.0" y="182.0" text-anchor="middle" font-size="12" fill="#e66b24">40%</text>
+<polyline fill="none" stroke="#e66b24" stroke-width="3" points="95.0,238.0 489.0,196.0 883.0,196.0"/>
+<rect x="90" y="397" width="567.4" height="24" rx="3" fill="#e66b24"/>
+<text x="667.4" y="414" font-size="13" fill="#e66b24">Terminus-2 5.64 h</text>
+<text class="muted" x="90" y="340" font-size="13">Aggregate model request time (hours; scored run)</text>
+<text class="muted" x="90" y="490" font-size="11">Single seed, ten paired cases; accuracy is descriptive. E4 slots are stages in one controller trace.</text>
+</svg>

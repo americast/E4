@@ -75,18 +75,20 @@ def _safe_case_id(value: str) -> bool:
             Path(value).name == value and value not in {".", ".."} and "/" not in value and "\\" not in value)
 
 
-def _filtered_sample(sample: Mapping[str, Any], case_id: str) -> dict[str, Any]:
-    dev = [item for item in sample.get("development_cases", [])
+def _filtered_sample(sample: Mapping[str, Any], case_id: str, split: str = "dev") -> dict[str, Any]:
+    split_key = "development_cases" if split == "dev" else "scored_cases"
+    selected = [item for item in sample.get(split_key, [])
            if isinstance(item, Mapping) and item.get("incident_id") == case_id]
-    if len(dev) != 1:
-        raise SupervisorError("case is not a unique frozen Bank development case")
-    return {"dataset": sample.get("dataset", "OpenRCA Bank"), "development_cases": [dict(dev[0])]}
+    if len(selected) != 1:
+        raise SupervisorError(f"case is not a unique frozen Bank {split} case")
+    return {"dataset": sample.get("dataset", "OpenRCA Bank"), split_key: [dict(selected[0])]}
 
 
-def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> dict[str, Any]:
-    """Copy one dev case and rewrite public manifests to disclose only that case."""
+def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str,
+                                  split: str = "dev") -> dict[str, Any]:
+    """Copy one split case and rewrite public manifests to disclose only that case."""
     if not _safe_case_id(case_id):
-        raise SupervisorError("case ID is not a single frozen Bank development identifier")
+        raise SupervisorError("case ID is not a single frozen Bank case identifier")
     config_dir = view_root / "config"
     public_src = root / "data/prepared/bank/public"
     bank_src = root / "data/prepared/bank"
@@ -94,13 +96,15 @@ def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> 
     source_manifest_path = root / "config/bank_input_manifest.json"
     source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
     original_sample_path = root / "config/bank_sample.json"
-    original_dev_path = bank_src / "dev_incidents.jsonl"
+    split_filename = "dev_incidents.jsonl" if split == "dev" else "scored_incidents.jsonl"
+    split_hash_key = f"{split}_manifest_sha256"
+    original_dev_path = bank_src / split_filename
     original_clip_path = public_src / "clip_manifest.jsonl"
     original_catalog_path = public_src / "deployment_catalog.json"
     if _sha_file(original_sample_path) != source_manifest.get("sample_config_sha256"):
         raise SupervisorError("original sample config does not match the pinned input manifest")
-    if _sha_file(original_dev_path) != source_manifest.get("dev_manifest_sha256"):
-        raise SupervisorError("original dev manifest does not match the pinned input manifest")
+    if _sha_file(original_dev_path) != source_manifest.get(split_hash_key):
+        raise SupervisorError(f"original {split} manifest does not match the pinned input manifest")
     if _sha_file(original_clip_path) != source_manifest.get("clip_manifest_sha256"):
         raise SupervisorError("original clip manifest does not match the pinned input manifest")
     if _sha_file(original_catalog_path) != source_manifest.get("deployment_catalog_file_sha256"):
@@ -108,14 +112,14 @@ def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> 
     prompt_path = root / "third_party/OpenRCA/rca/baseline/rca_agent/prompt/basic_prompt_Bank.py"
     if _sha_file(prompt_path) != source_manifest.get("deployment_catalog_schema_sha256"):
         raise SupervisorError("original Bank prompt schema does not match the input manifest")
-    sample = _filtered_sample(original_sample, case_id)
+    sample = _filtered_sample(original_sample, case_id, split)
     if case_id not in source_manifest.get("cases", {}):
-        raise SupervisorError("input manifest does not contain the selected dev case")
-    dev_rows = [json.loads(line) for line in
-                (bank_src / "dev_incidents.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
-    selected_dev_rows = [row for row in dev_rows if row.get("incident_id") == case_id]
+        raise SupervisorError("input manifest does not contain the selected case")
+    selected_manifest_rows = [json.loads(line) for line in
+                original_dev_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    selected_dev_rows = [row for row in selected_manifest_rows if row.get("incident_id") == case_id]
     if len(selected_dev_rows) != 1:
-        raise SupervisorError("public dev manifest does not contain exactly one selected case")
+        raise SupervisorError(f"public {split} manifest does not contain exactly one selected case")
     clip_rows = [json.loads(line) for line in
                  (public_src / "clip_manifest.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
     selected_clips = [row for row in clip_rows if row.get("case_id") == case_id]
@@ -158,7 +162,7 @@ def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> 
             raise SupervisorError(f"selected clip row count differs from its original pin: {relative}")
 
     filtered_sample_path = config_dir / "bank_sample.json"
-    filtered_dev_path = view_root / "data/prepared/bank/dev_incidents.jsonl"
+    filtered_dev_path = view_root / "data/prepared/bank" / split_filename
     filtered_clip_path = view_root / "data/prepared/bank/public/clip_manifest.jsonl"
     filtered_sample_path.parent.mkdir(parents=True, exist_ok=True)
     filtered_dev_path.parent.mkdir(parents=True, exist_ok=True)
@@ -172,11 +176,11 @@ def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> 
 
     manifest = dict(source_manifest)
     manifest["sample_config_sha256"] = _sha_file(filtered_sample_path)
-    manifest["dev_manifest_sha256"] = _sha_file(filtered_dev_path)
+    manifest[split_hash_key] = _sha_file(filtered_dev_path)
     manifest["clip_manifest_sha256"] = _sha_file(filtered_clip_path)
     if "candidate_manifest_sha256" in manifest:
         manifest["candidate_manifest_sha256"] = None
-    if "scored_manifest_sha256" in manifest:
+    if "scored_manifest_sha256" in manifest and split != "scored":
         manifest["scored_manifest_sha256"] = None
     manifest["cases"] = {case_id: source_manifest["cases"][case_id]}
     filtered_manifest_path = config_dir / "bank_input_manifest.json"
@@ -205,7 +209,7 @@ def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> 
             "selected_clip_hashes": {relative: doc["sha256"]
                                      for relative, doc in sorted(case_manifest["files"].items())},
             "bank_sample_sha256": _sha_file(filtered_sample_path),
-            "bank_dev_manifest_sha256": _sha_file(filtered_dev_path),
+            f"bank_{split}_manifest_sha256": _sha_file(filtered_dev_path),
             "bank_clip_manifest_sha256": _sha_file(filtered_clip_path),
             "bank_input_manifest_sha256": _sha_file(filtered_manifest_path),
             "bank_catalog_sha256": _sha_file(filtered_catalog_path),
@@ -216,6 +220,7 @@ def _prepare_public_manifest_view(root: Path, view_root: Path, case_id: str) -> 
 
 def create_restricted_project_view(root: Path, view_root: Path, *,
                                    profile_path: Path, case_id: str | None,
+                                   split: str = "dev",
                                    code_root: Path | None = None) -> dict[str, Any]:
     """Create a minimal project tree; no evaluator, scored, other-case, plan, or artifact paths."""
     root = root.resolve(strict=True)
@@ -273,9 +278,9 @@ def create_restricted_project_view(root: Path, view_root: Path, *,
                 "profile_relative_path": profile_relative.as_posix(),
                 "view_kind": "schema_only_bootstrap"}
     else:
-        public_pins = _prepare_public_manifest_view(root, view_root, case_id)
+        public_pins = _prepare_public_manifest_view(root, view_root, case_id, split)
         pins = {**public_pins, "view_profile_sha256": _sha_file(view_root / profile_relative),
-                "profile_relative_path": profile_relative.as_posix(), "view_kind": "one_dev_case"}
+                "profile_relative_path": profile_relative.as_posix(), "view_kind": f"one_{split}_case"}
     inventory: dict[str, dict[str, Any]] = {}
     for path in sorted(view_root.rglob("*")):
         if not path.is_file() or ".venv" in path.relative_to(view_root).parts:
@@ -312,6 +317,7 @@ def fresh_run_directory(path: Path, e4_run_dir: Path) -> tuple[Path, Path]:
 
 def _bwrap_command(*, view_root: Path, run_dir: Path, library_root: Path | None,
                    profile_relative: str, mode: str, case_id: str | None,
+                   split: str = "dev",
                    endpoint: str, feedback_socket: str | None,
                    implementation_fingerprint_value: str,
                    python_executable: str = "/m4project/.venv/bin/python",
@@ -350,6 +356,8 @@ def _bwrap_command(*, view_root: Path, run_dir: Path, library_root: Path | None,
                "--profile", f"/m4project/{profile_relative}"]
     if case_id is not None:
         command += ["--case-id", case_id]
+    if mode == "m5-diagnostic":
+        command += ["--split", split]
     if library_root is not None:
         command += ["--library-root", "/m4library"]
     if feedback_socket is not None:
@@ -471,7 +479,8 @@ def serve_feedback_request(sock: socket.socket, *, case_id: str,
 def _run_with_feedback(command: Sequence[str] | Callable[[str], Sequence[str]], *, case_id: str,
                        evaluator: Any, audit_path: Path,
                        stdout_path: Path, stderr_path: Path,
-                       timeout_seconds: float = 7200) -> int:
+                       timeout_seconds: float = 7200,
+                       status_out: dict[str, Any] | None = None) -> int:
     address = "e4m4-" + secrets.token_hex(16)
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     listener.bind("\0" + address)
@@ -490,6 +499,8 @@ def _run_with_feedback(command: Sequence[str] | Callable[[str], Sequence[str]], 
             while process.poll() is None:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
+                    if status_out is not None:
+                        status_out["case_wall_timeout"] = True
                     process.terminate()
                     feedback_failed = True
                     break
@@ -585,12 +596,15 @@ def _run_inner(args: argparse.Namespace) -> int:
         if args.feedback_socket is None or args.library_root is None or args.case_id is None:
             raise SupervisorError("diagnostic mode requires a library, case, and feedback IPC")
         feedback = BinaryFeedbackProxy(args.feedback_socket)
+        split = args.split if args.mode == "m5-diagnostic" else "dev"
         run_diagnostic(args.case_id, library_root=args.library_root,
-            run_dir=args.run_dir, feedback=feedback, profile_path=profile, root=root)
+            run_dir=args.run_dir, feedback=feedback, profile_path=profile, root=root,
+            split=split)
     return 0
 
 
 def _run_outer(args: argparse.Namespace) -> int:
+    supervisor_started = time.perf_counter()
     root = args.root.resolve(strict=True)
     if root != ROOT.resolve(strict=True):
         raise SupervisorError("outer M4 supervisor root must be this frozen project")
@@ -613,13 +627,40 @@ def _run_outer(args: argparse.Namespace) -> int:
     run_id = run_dir.name
     feedback_path = base / "m4_trusted_feedback" / f"{run_id}.jsonl"
     library_root = args.library_root.resolve(strict=True) if args.library_root else None
-    if args.mode == "diagnostic":
+    # Bootstrap runs do not stage a case view, but the supervisor manifest
+    # shares the same schema with diagnostic runs.
+    staged_task_view_sha: str | None = None
+    if args.mode in {"diagnostic", "m5-diagnostic"}:
         if not args.case_id or not _safe_case_id(args.case_id) or library_root is None:
-            raise SupervisorError("diagnostic mode requires a frozen dev case and immutable library")
+            raise SupervisorError("diagnostic mode requires a frozen Bank case and immutable library")
         sample = json.loads((root / "config/bank_sample.json").read_text(encoding="utf-8"))
-        dev_ids = {row["incident_id"] for row in sample.get("development_cases", [])}
-        if args.case_id not in dev_ids:
-            raise SupervisorError("diagnostic mode accepts frozen development cases only")
+        split = args.split if args.mode == "m5-diagnostic" else "dev"
+        split_key = "development_cases" if split == "dev" else "scored_cases"
+        split_ids = {row["incident_id"] for row in sample.get(split_key, [])}
+        if args.case_id not in split_ids:
+            raise SupervisorError(f"diagnostic mode case is outside the frozen {split} allowlist")
+        if args.mode == "m5-diagnostic" and split == "scored":
+            if not args.experiment_manifest:
+                raise SupervisorError("scored M5 E4 requires a frozen experiment manifest")
+            if not args.trusted_evaluator_socket:
+                raise SupervisorError("scored M5 E4 requires the shared trusted evaluator socket")
+            from e4core.m5_e4 import validate_scored_run
+            validate_scored_run(args.experiment_manifest, root=root, case_id=args.case_id,
+                                library_root=library_root, profile_path=profile)
+        if args.mode == "m5-diagnostic" and split == "scored":
+            if not args.task_view_root:
+                raise SupervisorError("scored M5 E4 requires the orchestrator-staged public task view")
+            if not Path(args.task_view_root).resolve(strict=True).is_relative_to(e4_run_dir):
+                raise SupervisorError("staged M5 public task view must be inside E4_RUN_DIR")
+            raw_socket_path = Path(args.trusted_evaluator_socket)
+            if (raw_socket_path.is_symlink() or not raw_socket_path.is_socket() or
+                    not raw_socket_path.resolve(strict=True).is_relative_to(e4_run_dir)):
+                raise SupervisorError("trusted M5 evaluator socket must be inside E4_RUN_DIR")
+            from e4core.m5_e4 import validate_staged_task_view
+            staged_task_view_sha = validate_staged_task_view(args.task_view_root,
+                root=root, case_id=args.case_id, split=split)
+        else:
+            staged_task_view_sha = None
         from e4core.m4_library import snapshot_library
         library_snapshot = snapshot_library(library_root)
         library_id = library_snapshot.snapshot_id
@@ -630,7 +671,8 @@ def _run_outer(args: argparse.Namespace) -> int:
     view_root = Path(tempfile.mkdtemp(prefix="e4-m4-view-")) / "project"
     try:
         view_pins = create_restricted_project_view(root, view_root,
-            profile_path=profile, case_id=args.case_id if args.mode == "diagnostic" else None)
+            profile_path=profile, case_id=args.case_id if args.mode in {"diagnostic", "m5-diagnostic"} else None,
+            split=args.split if args.mode == "m5-diagnostic" else "dev")
         if implementation_fingerprint() != host_implementation_fingerprint:
             raise SupervisorError("project implementation changed while building the restricted view")
         # The view is copied from the exact frozen source before entering bwrap.
@@ -646,19 +688,35 @@ def _run_outer(args: argparse.Namespace) -> int:
                                            stderr=stderr, check=False)
             exit_code = completed.returncode
         else:
-            from e4core.m4_feedback import DevOnlyFeedbackEvaluator
-            evaluator = DevOnlyFeedbackEvaluator(root=root, allowed_case_ids=[args.case_id])
+            if args.mode == "m5-diagnostic":
+                from e4core.m5_e4 import M5TrustedFeedback
+                evaluator = M5TrustedFeedback(root=root, case_id=args.case_id,
+                    split=args.split, experiment_manifest=args.experiment_manifest,
+                    trusted_evaluator_socket=args.trusted_evaluator_socket)
+            else:
+                from e4core.m4_feedback import DevOnlyFeedbackEvaluator
+                evaluator = DevOnlyFeedbackEvaluator(root=root, allowed_case_ids=[args.case_id])
             def command_for_feedback(address: str) -> Sequence[str]:
                 return _bwrap_command(view_root=view_root, run_dir=run_dir,
                     library_root=library_root, profile_relative=view_pins["profile_relative_path"],
                     mode=args.mode, case_id=args.case_id, endpoint=endpoint, feedback_socket=address,
+                    split=args.split if args.mode == "m5-diagnostic" else "dev",
                     implementation_fingerprint_value=host_implementation_fingerprint)
+            feedback_status: dict[str, Any] = {"case_wall_timeout": False}
             exit_code = _run_with_feedback(command_for_feedback, case_id=args.case_id,
                 evaluator=evaluator, audit_path=feedback_path,
                 stdout_path=run_dir / "inner.stdout.log",
-                stderr_path=run_dir / "inner.stderr.log", timeout_seconds=case_timeout)
+                stderr_path=run_dir / "inner.stderr.log", timeout_seconds=case_timeout,
+                status_out=feedback_status)
+            if args.mode == "m5-diagnostic":
+                attempt_slots = evaluator.write_attempt_slots(run_dir / "diagnostic",
+                    case_timeout=feedback_status["case_wall_timeout"])
+            else:
+                attempt_slots = None
+        if args.mode != "m5-diagnostic":
+            feedback_status = {"case_wall_timeout": False}
         summary = {"schema_version": "e4-m4-supervisor-run/1", "mode": args.mode,
-            "case_id": args.case_id if args.mode == "diagnostic" else None,
+            "case_id": args.case_id if args.mode in {"diagnostic", "m5-diagnostic"} else None,
             "run_id": run_id, "exit_code": exit_code,
             "status": "complete" if exit_code == 0 else "failed",
             "profile_sha256": _sha_file(profile), "library_snapshot_id": library_id,
@@ -666,7 +724,11 @@ def _run_outer(args: argparse.Namespace) -> int:
             "view_pins": view_pins,
             "host_implementation_fingerprint": host_implementation_fingerprint,
             "restricted_view_kind": view_pins["view_kind"],
-            "feedback_audit_path": str(feedback_path) if args.mode == "diagnostic" else None,
+            "feedback_audit_path": str(feedback_path) if args.mode in {"diagnostic", "m5-diagnostic"} else None,
+            "attempt_slots": attempt_slots if args.mode == "m5-diagnostic" else None,
+            "case_wall_timeout": feedback_status["case_wall_timeout"],
+            "supervisor_wall_seconds": time.perf_counter() - supervisor_started,
+            "staged_task_view_sha256": staged_task_view_sha,
             "finished_utc": datetime.now(timezone.utc).isoformat()}
         _write_json(run_dir / "supervisor_manifest.json", summary)
         print(json.dumps(summary, sort_keys=True))
@@ -677,11 +739,15 @@ def _run_outer(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--mode", choices=("bootstrap", "diagnostic"), required=True)
+    parser.add_argument("--mode", choices=("bootstrap", "diagnostic", "m5-diagnostic"), required=True)
     parser.add_argument("--profile", type=Path, default=ROOT / "config/gemma_m3_inference.json")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--case-id")
     parser.add_argument("--library-root", type=Path)
+    parser.add_argument("--split", choices=("dev", "scored"), default="dev")
+    parser.add_argument("--experiment-manifest", type=Path)
+    parser.add_argument("--trusted-evaluator-socket", type=Path)
+    parser.add_argument("--task-view-root", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT, help=argparse.SUPPRESS)
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)
     parser.add_argument("--feedback-socket", help=argparse.SUPPRESS)

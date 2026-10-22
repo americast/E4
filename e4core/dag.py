@@ -99,7 +99,15 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
         params = row["params"]
         bindings = row["bindings"]
         if not isinstance(raw_inputs, dict) or not isinstance(params, dict) or not isinstance(bindings, dict):
-            raise DAGValidationError("node_maps", "inputs, params, and bindings must be objects", node_id)
+            values = {"inputs": raw_inputs, "params": params, "bindings": bindings}
+            bad_types = {name: ("null" if value is None else "array" if isinstance(value, list) else
+                                "boolean" if type(value) is bool else "number" if type(value) in (int, float) else
+                                "string" if isinstance(value, str) else type(value).__name__)
+                         for name, value in values.items() if not isinstance(value, dict)}
+            details = ", ".join(f"{name}={kind}" for name, kind in sorted(bad_types.items()))
+            raise DAGValidationError("node_maps",
+                f"node {node_id} inputs, params, and bindings must each be JSON objects; got {details}",
+                node_id, {"invalid_field_types": bad_types})
         supported_ports = {port.name: port for port in operator.inputs}
         if set(raw_inputs) - set(supported_ports):
             raise DAGValidationError("unknown_input", f"unsupported input port(s): {sorted(set(raw_inputs) - set(supported_ports))}", node_id)

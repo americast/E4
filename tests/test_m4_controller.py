@@ -19,7 +19,7 @@ from e4core.m4_library import (create_library_snapshot, generated_specs_from_sna
     playbook_graph_hash, snapshot_library)
 from e4core.model_client import ModelCall
 from e4core.contracts import EntityRef, Evidence, RankedAnswer, ScoredCandidate, Telemetry
-from e4core.dag import verify_dag
+from e4core.dag import DAGValidationError, verify_dag
 from e4core.runtime import resolve_parameters
 from tests.test_bank_adapter import make_bank_fixture
 from tests.test_m4_bootstrap import _generated_playbook, _typed_scorer_spec
@@ -142,6 +142,19 @@ class FakeFeedback:
 
 
 class M4ControllerTests(unittest.TestCase):
+    def test_dag_map_type_errors_name_each_malformed_json_field(self):
+        registry = make_m4_registry(None, [], root=ROOT)
+        telemetry = next(row for row in registry.signatures() if row["name"] == "case.telemetry")
+        document = {"schema_version": "e4-dag/1", "nodes": [{
+            "id": "input", "operator": telemetry["name"], "version": telemetry["version"],
+            "inputs": None, "params": [], "bindings": {}}], "return": {"node": "input"}}
+        with self.assertRaises(DAGValidationError) as raised:
+            verify_dag(document, registry)
+        self.assertEqual(raised.exception.code, "node_maps")
+        self.assertEqual(raised.exception.node_id, "input")
+        self.assertIn("inputs=null", str(raised.exception))
+        self.assertIn("params=array", str(raised.exception))
+
     def test_stage3_candidate_is_not_executed_when_final_static_validation_then_call_fail(self):
         import e4core.m4_controller as controller
 
@@ -228,6 +241,13 @@ class M4ControllerTests(unittest.TestCase):
             self.assertIn("EXACT CORE CONTRACT FIELD SCHEMA", repair)
             self.assertIn("bank.answers.combine", repair)
             self.assertIn("Nontrivial numeric constants must be declared", repair)
+            self.assertIn("Every DAG node's inputs, params, and bindings values must be JSON objects", repair)
+            self.assertIn("MUST be the trusted versioned bank.answers.combine operator", repair)
+            self.assertIn("contract_fields unwraps the $fields envelope", repair)
+            self.assertIn("nested maps/arrays are read-only", repair)
+            from e4infra.bank_prep import BANK_OFFICIAL_CANDIDATE_COMPONENTS
+            self.assertIn(json.dumps(list(BANK_OFFICIAL_CANDIDATE_COMPONENTS), separators=(",", ":")), repair)
+            self.assertIn("published schema vocabulary, not observations", repair)
 
     def test_static_repair_budget_is_two_then_controller_advances_stage(self):
         with tempfile.TemporaryDirectory() as temp:

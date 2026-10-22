@@ -115,6 +115,15 @@ def generated_spec_contract_schema() -> dict[str, Any]:
             },
         },
         "output_types": sorted(OUTPUT_TYPES),
+        "sandbox": {
+            "forbidden_ast_constructs": ["ClassDef", "AsyncFunctionDef", "Lambda", "Global", "Nonlocal",
+                "With", "AsyncWith", "Try", "Raise", "Delete", "Yield", "YieldFrom", "Await"],
+            "forbidden_names": ["open", "eval", "exec", "compile", "globals", "locals", "getattr",
+                "setattr", "delattr", "vars", "input", "breakpoint", "memoryview", "names beginning __"],
+            "forbidden_attribute_access": "attribute names beginning with underscore",
+            "forbidden_modules": ["all modules except math, statistics, itertools, collections"],
+            "diagnostics": "static source errors identify the AST construct or name and its line and column; errors contain no case data or gold",
+        },
     }
 
 

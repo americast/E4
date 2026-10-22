@@ -19,6 +19,7 @@ from e4core.m4_generated import (GeneratedSpecError, PARAMETER_TYPES, PARAM_FIEL
                                  generated_spec_contract_schema, register_generated_specs,
                                  validate_generated_spec)
 from e4core.registry import OperatorRegistry
+from e4core.sandbox_worker import validate_source as validate_sandbox_source
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,6 +70,15 @@ def spec(source=SOURCE):
 
 
 class M4GeneratedOperatorTests(unittest.TestCase):
+    def test_public_schema_and_sandbox_diagnostics_explain_source_contract(self):
+        sandbox = generated_spec_contract_schema()["sandbox"]
+        self.assertIn("Lambda", sandbox["forbidden_ast_constructs"])
+        self.assertIn("open", sandbox["forbidden_names"])
+        with self.assertRaisesRegex(ValueError, r"Lambda at line 2, column 8"):
+            validate_sandbox_source("def operator(inputs, params, runtime):\n    f = lambda: 1\n    return inputs")
+        with self.assertRaisesRegex(ValueError, r"forbidden name 'open'.*line 2"):
+            validate_sandbox_source("def operator(inputs, params, runtime):\n    return open('x')")
+
     def test_public_schema_matches_validator_and_rejects_port_mapping(self):
         schema = generated_spec_contract_schema()
         self.assertEqual(schema["top_level"]["required_fields"], sorted(SPEC_FIELDS))

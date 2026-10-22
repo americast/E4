@@ -135,6 +135,7 @@ def _prompt(context: Mapping[str, Any]) -> str:
         "as declared parameters or runtime fields; numeric literals other than 0 and 1 are rejected. New operators "
         "must use evolved.<lower_snake> and the sandboxed operator(inputs,params,runtime) entrypoint. For typed inputs, "
         "inputs is a port mapping of cache wire envelopes; read fields with contract_fields(inputs['port'],'Aggregate'). "
+        "contract_fields unwraps $fields and returns recursively read-only mapping values and immutable tuples; do not mutate them. "
         "read_case_json/read_catalog_json have no mount for M4 generated operators and will fail if called. "
         "For typed outputs return exact $type/$fields cache envelopes and nested $map/$tuple markers. Allowed imports "
         "are math, statistics, itertools, collections; allowed builtins are abs,all,any,bool,dict,enumerate,float,int,len,list,max,min,range,round,set,sorted,str,sum,tuple,zip,print,Exception,ValueError and contract_fields. "
@@ -143,7 +144,7 @@ def _prompt(context: Mapping[str, Any]) -> str:
         "Propose only portable schema-specific utility/scoring operators and reusable analysis playbooks. Return exactly "
         "{operators:[operator_spec],playbooks:[{name,dag}]}. Each operator spec has exactly "
         "{name,version,description,family,input_ports,output_type,parameters,source}. Each DAG uses "
-        "{schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}}. "
+        "{schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}}. Every node's inputs, params, and bindings must be JSON objects/maps (use {} when empty); inputs maps ports to node IDs, params maps parameter names to JSON values, bindings maps parameter names to runtime field names. Every playbook DAG must return the trusted versioned bank.answers.combine operator that produces RankedAnswer, never an intermediate Aggregate, CandidateSet, or ScoredCandidates. "
         "Do not include validation outputs, expected answers, fixture IDs, target components, or labels.\n\n"
         "SCHEMA-ONLY BOOTSTRAP CONTEXT\n" +
         json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False))

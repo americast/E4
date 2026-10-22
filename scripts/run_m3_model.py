@@ -224,8 +224,13 @@ def preflight_server(server: Path, env: Mapping[str, str], timeout: float = 15.0
 
 def _tree_hashes(extra_paths: Sequence[Path]) -> dict[str, str]:
     files: set[Path] = {Path(__file__).resolve()}
-    for directory in (ROOT / "e4core", ROOT / "e4infra", ROOT / "scripts", ROOT / "tests"):
+    for directory in (ROOT / "e4core", ROOT / "e4infra", ROOT / "scripts", ROOT / "tests",
+                      ROOT / "e4baseline"):
         files.update(path.resolve() for path in directory.rglob("*.py") if path.is_file())
+    baseline = ROOT / "e4baseline"
+    files.update(path.resolve() for path in baseline.rglob("*")
+                 if path.is_file() and (path.suffix in {".yaml", ".lock"} or
+                                        path.name == "Dockerfile"))
     files.update(path.resolve() for path in (ROOT / "config").glob("*.json") if path.is_file())
     for path in extra_paths:
         if path.is_file():
@@ -348,6 +353,80 @@ def _network_snapshot() -> dict[str, Any]:
     return snapshot
 
 
+def _client_environment(base: Mapping[str, str], *, docker_control: bool,
+                        run_dir: Path | None = None) -> dict[str, str]:
+    """Build the isolated client environment, adding Docker config only when opted in."""
+    environment = dict(base)
+    environment["LITELLM_LOCAL_MODEL_COST_MAP"] = "True"
+    if docker_control:
+        if run_dir is None:
+            raise LaunchError("Docker control client environment requires a writable run directory")
+        environment["DOCKER_CONFIG"] = str(ROOT / "artifacts/m5/runtime/docker-config")
+        environment["BUILDX_CONFIG"] = str(Path(run_dir) / "docker-buildx-config")
+        environment["E4_DOCKER_CONTROL_ENABLED"] = "1"
+    return environment
+
+
+def _docker_control_preflight() -> dict[str, Any]:
+    """Verify the optional trusted Docker control path before starting the model server."""
+    socket_path = Path("/var/run/docker.sock")
+    if not socket_path.is_socket():
+        raise LaunchError("Docker control was enabled but the daemon socket is not mounted")
+    runtime = ROOT / "artifacts/m5/runtime"
+    pin_path = runtime / "docker_compose_plugin_pin.json"
+    image_pin_path = runtime / "terminus_task_image_pin.json"
+    try:
+        plugin_pin = json.loads(pin_path.read_text(encoding="utf-8"))
+        image_pin = json.loads(image_pin_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise LaunchError("Docker control requires pinned Harbor Compose and task-image artifacts") from exc
+    plugin_path = ROOT / str(plugin_pin.get("path", ""))
+    buildx_path = ROOT / str(plugin_pin.get("buildx_path", ""))
+    docker_config_path = ROOT / str(plugin_pin.get("docker_config_path", ""))
+    docker_config_dir = docker_config_path.parent
+    if (not plugin_path.is_file() or sha256_file(plugin_path) != plugin_pin.get("sha256") or
+            not buildx_path.is_file() or
+            sha256_file(buildx_path) != plugin_pin.get("buildx_sha256") or
+            not docker_config_path.is_file() or
+            sha256_file(docker_config_path) != plugin_pin.get("docker_config_sha256") or
+            os.environ.get("DOCKER_CONFIG") != str(docker_config_dir)):
+        raise LaunchError("Docker Compose plugin or DOCKER_CONFIG differs from the pinned runtime")
+    compose = subprocess.run(["docker", "compose", "version"], capture_output=True,
+                             text=True, timeout=20)
+    if compose.returncode or plugin_pin.get("version") not in compose.stdout:
+        raise LaunchError(f"pinned Docker Compose preflight failed: {compose.stderr.strip()}")
+    buildx = subprocess.run(["docker", "buildx", "version"], capture_output=True,
+                            text=True, timeout=20)
+    if buildx.returncode or plugin_pin.get("buildx_version") not in buildx.stdout:
+        raise LaunchError(f"pinned Docker Buildx preflight failed: {buildx.stderr.strip()}")
+    info = subprocess.run(["docker", "info", "--format", "{{.ServerVersion}}"],
+                          capture_output=True, text=True, timeout=20)
+    if info.returncode or not info.stdout.strip():
+        raise LaunchError(f"Docker daemon preflight failed: {info.stderr.strip()}")
+    image_id = image_pin.get("terminus_task_image_id")
+    if (not image_id or image_pin.get("terminus_task_image_digest") != image_id or
+            not image_pin.get("image_archive_sha256")):
+        raise LaunchError("Terminus task image pin is incomplete")
+    image = subprocess.run(["docker", "image", "inspect", image_id,
+                            "--format", "{{.Id}}"], capture_output=True,
+                           text=True, timeout=30)
+    if image.returncode or image.stdout.strip() != image_id:
+        raise LaunchError("pinned Terminus task image is unavailable in Docker")
+    return {
+        "docker_socket_path": str(socket_path),
+        "docker_server_version": info.stdout.strip(),
+        "docker_compose_version": compose.stdout.strip(),
+        "docker_compose_plugin_path": str(plugin_path),
+        "docker_compose_plugin_sha256": plugin_pin["sha256"],
+        "docker_buildx_version": buildx.stdout.strip(),
+        "docker_buildx_plugin_path": str(buildx_path),
+        "docker_buildx_plugin_sha256": plugin_pin["buildx_sha256"],
+        "task_image_id": image_id,
+        "task_image_archive_sha256": image_pin["image_archive_sha256"],
+        "task_image_source_dockerfile_sha256": image_pin.get("dockerfile_sha256"),
+    }
+
+
 def _terminate_group(proc: subprocess.Popen[Any], grace: float = 10.0) -> None:
     try:
         os.killpg(proc.pid, signal.SIGTERM)
@@ -400,6 +479,7 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
     sampler: GpuSampler | None = None
     server_proc: subprocess.Popen[Any] | None = None
     client_proc: subprocess.Popen[Any] | None = None
+    server_load_seconds: float | None = None
     exit_code = 1
     error: str | None = None
     _set_signal_handlers()
@@ -466,6 +546,8 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
         if llama_revision != PINNED_LLAMA_CPP_REVISION:
             raise LaunchError(f"llama.cpp revision is not the pinned {PINNED_LLAMA_CPP_REVISION}: {llama_revision}")
         network_snapshot = _network_snapshot()
+        docker_control_enabled = os.environ.get("E4_DOCKER_CONTROL_ENABLED") == "1"
+        docker_preflight = _docker_control_preflight() if docker_control_enabled else None
         clean_env = {"PATH": f"{ROOT}/.venv/bin:/usr/bin:/bin", "HOME": "/tmp",
                      "LANG": "C.UTF-8", "LC_ALL": "C.UTF-8", "PYTHONIOENCODING": "utf-8",
                      "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
@@ -504,8 +586,13 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
             "minimum_free_vram_mib": reserve_mib,
             "request_timeout_seconds": profile.get("request_timeout_seconds"),
             "network_namespace": "unshared; server and command share localhost",
+            "docker_control_enabled": docker_control_enabled,
+            "docker_socket_path": ("/var/run/docker.sock"
+                                   if docker_control_enabled else None),
+            "docker_control_preflight": docker_preflight,
             "network_snapshot": network_snapshot,
             "base_url": base_url, "server_command": server_cmd,
+            "server_load_seconds": None,
             "benchmark_command": client_args, "source_hashes": source_hashes,
             "repository_revision": _repo_revision(ROOT),
             "server_log": str(run_dir / "llama-server.log"),
@@ -522,6 +609,7 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
 
         server_log_path = run_dir / "llama-server.log"
         with server_log_path.open("w") as server_log:
+            server_launch_started = time.monotonic()
             server_proc = subprocess.Popen(server_cmd, cwd=ROOT, env=server_env,
                                            stdout=server_log, stderr=subprocess.STDOUT,
                                            start_new_session=True)
@@ -536,6 +624,12 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
                 if server_proc.poll() is not None:
                     raise LaunchError(f"llama-server exited during startup with status {server_proc.returncode}")
                 if _health(base_url):
+                    server_load_seconds = time.monotonic() - server_launch_started
+                    launch["server_load_seconds"] = server_load_seconds
+                    launch["server_ready_utc"] = datetime.now(timezone.utc).isoformat()
+                    (run_dir / "launch.json").write_text(
+                        json.dumps(launch, indent=2, sort_keys=True) + "\n"
+                    )
                     sampler.mark_model_loaded()
                     sampler.wait_post_load_sample()
                     break
@@ -543,7 +637,10 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
             else:
                 raise TimeoutError(f"llama-server failed health check after {startup_timeout}s")
 
-            command_env = dict(clean_env)
+            command_env = _client_environment(clean_env, docker_control=docker_control_enabled,
+                                              run_dir=run_dir)
+            if docker_control_enabled:
+                Path(command_env["BUILDX_CONFIG"]).mkdir(parents=True, exist_ok=True)
             command_env.update({
                 "E4_BASE_URL": base_url,
                 "E4_RUN_DIR": str(run_dir),
@@ -601,6 +698,7 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
                    "exit_code": exit_code, "ok": exit_code == 0 and error is None,
                    "error": error, "gpu_memory": gpu_summary,
                    "server_exit_code": server_proc.returncode if server_proc else None,
+                   "server_load_seconds": server_load_seconds,
                    "command_exit_code": client_proc.returncode if client_proc else None}
         run_dir.mkdir(parents=True, exist_ok=True)
         (run_dir / "run.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
@@ -613,7 +711,8 @@ def _inner_run(profile_path: Path, server_arg: str, run_dir: Path,
 def _bwrap_command(profile: Path, server: str, run_dir: Path, run_id: str,
                    port: int | None, context_tokens: int | None, init_timeout: int | None,
                    run_timeout: int | None, server_library_dirs: Sequence[str],
-                   command: Sequence[str]) -> list[str]:
+                   command: Sequence[str], *, docker_control: bool = False,
+                   docker_socket: Path = Path("/var/run/docker.sock")) -> list[str]:
     bwrap = shutil.which("bwrap")
     if not bwrap:
         raise LaunchError("bubblewrap is required for an offline shared server/client namespace")
@@ -637,7 +736,21 @@ def _bwrap_command(profile: Path, server: str, run_dir: Path, run_id: str,
              "--symlink", "/usr/bin", "/bin", "--symlink", "/usr/sbin", "/sbin",
              "--dir", "/raid", "--dir", "/raid/ssinha97",
              "--ro-bind", str(ROOT), str(ROOT), "--bind", str(run_dir), str(run_dir),
-             "--chdir", str(ROOT), "--setenv", "E4_BWRAPPED", "1", "--",
+             ]
+    if docker_control:
+        socket_path = Path(docker_socket)
+        if not socket_path.is_socket():
+            raise LaunchError(f"Docker control requested but socket is unavailable: {socket_path}")
+        docker_config = ROOT / "artifacts/m5/runtime/docker-config"
+        if not (docker_config / "config.json").is_file():
+            raise LaunchError("Docker control requires the pinned Harbor Compose plugin setup")
+        args += ["--dir", "/var", "--dir", "/var/run",
+                 "--bind", str(socket_path.resolve(strict=True)), "/var/run/docker.sock"]
+    args += ["--chdir", str(ROOT), "--setenv", "E4_BWRAPPED", "1",
+             "--setenv", "E4_DOCKER_CONTROL_ENABLED", "1" if docker_control else "0"]
+    if docker_control:
+        args += ["--setenv", "DOCKER_CONFIG", str(ROOT / "artifacts/m5/runtime/docker-config")]
+    args += ["--",
              sys.executable, str(Path(__file__).resolve()), "--inside",
              "--profile", str(profile), "--server", server, "--run-dir", str(run_dir),
              "--run-id", run_id]
@@ -680,7 +793,9 @@ def _outer_run(args: argparse.Namespace) -> int:
     launch_request = {"run_id": run_id, "profile": str(profile), "server": args.server,
                       "port": args.port, "context_tokens_override": args.context_tokens,
                       "init_timeout": args.init_timeout, "run_timeout": args.run_timeout,
-                      "command": command, "requested_utc": datetime.now(timezone.utc).isoformat()}
+                      "command": command, "docker_control_enabled": args.docker_control,
+                      "docker_socket_path": "/var/run/docker.sock" if args.docker_control else None,
+                      "requested_utc": datetime.now(timezone.utc).isoformat()}
     (run_dir / "request.json").write_text(json.dumps(launch_request, indent=2) + "\n")
     server_path = _inside_root(ROOT / args.server, "llama-server")
     llama_revision = _repo_revision(ROOT / "third_party/llama.cpp")
@@ -718,7 +833,7 @@ def _outer_run(args: argparse.Namespace) -> int:
     try:
         wrapper = _bwrap_command(profile, args.server, run_dir, run_id, args.port,
                                  args.context_tokens, args.init_timeout, args.run_timeout,
-                                 library_dirs, command)
+                                 library_dirs, command, docker_control=args.docker_control)
         child = subprocess.Popen(wrapper, cwd=ROOT, env={}, start_new_session=True)
         while child.poll() is None:
             if _received_signal:
@@ -762,6 +877,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--context-tokens", type=int, default=None)
     parser.add_argument("--init-timeout", type=int, default=None)
     parser.add_argument("--run-timeout", type=int, default=None)
+    parser.add_argument("--docker-control", action="store_true",
+                        help="mount the host Docker socket into this trusted controller process only")
     parser.add_argument("--run-dir", type=Path, default=None, help=argparse.SUPPRESS)
     parser.add_argument("--server-lib-dir", action="append", default=[], help=argparse.SUPPRESS)
     parser.add_argument("--inside", action="store_true", help=argparse.SUPPRESS)

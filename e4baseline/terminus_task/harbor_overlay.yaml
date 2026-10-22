@@ -1,0 +1,5 @@
+services:
+  main:
+    network_mode: none
+    tmpfs:
+      - /workspace:rw,size=21474836480,mode=1777

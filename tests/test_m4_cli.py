@@ -9,11 +9,14 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from e4core.contracts import EntityRef, RankedAnswer, ScoredCandidate
+from e4core.bank_adapter import load_bank_case
 from scripts.run_m4_bank import (BinaryFeedbackProxy, SupervisorError,
     _bwrap_command, _validate_feedback_request, create_restricted_project_view,
-    fresh_run_directory, serve_feedback_request, _run_with_feedback)
+    fresh_run_directory, serve_feedback_request, _run_with_feedback, _run_outer)
 from tests.test_bank_adapter import make_bank_fixture
 
 
@@ -39,7 +42,8 @@ class M4BankSupervisorTests(unittest.TestCase):
         profile = config_dir / "gemma_m3_inference.json"
 
         sample = {"dataset": "OpenRCA Bank synthetic test fixture",
-            "development_cases": [{"incident_id": case_id, "alert_text": "synthetic public fixture"}]}
+            "development_cases": [{"incident_id": case_id, "alert_text": "synthetic public fixture"}],
+            "scored_cases": [{"incident_id": case_id, "alert_text": "synthetic public fixture"}]}
         sample_path = config_dir / "bank_sample.json"
         sample_path.write_text(json.dumps(sample, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -49,6 +53,8 @@ class M4BankSupervisorTests(unittest.TestCase):
                  "alert_text": "synthetic unrelated case fixture"}
         dev_path.write_text("".join(json.dumps(row, sort_keys=True) + "\n"
                                     for row in (selected, other)), encoding="utf-8")
+        scored_path = root / "data/prepared/bank/scored_incidents.jsonl"
+        scored_path.write_text(json.dumps(selected, sort_keys=True) + "\n", encoding="utf-8")
         extra_case = root / "data/prepared/bank/public/cases" / other["incident_id"]
         extra_case.mkdir(parents=True)
         (extra_case / "synthetic_secret_marker.txt").write_text("other synthetic case", encoding="utf-8")
@@ -64,6 +70,7 @@ class M4BankSupervisorTests(unittest.TestCase):
         manifest["cases"][other["incident_id"]] = selected_manifest
         manifest["sample_config_sha256"] = _sha(sample_path)
         manifest["dev_manifest_sha256"] = _sha(dev_path)
+        manifest["scored_manifest_sha256"] = _sha(scored_path)
         manifest["clip_manifest_sha256"] = _sha(clip_path)
         manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8")
         catalog_path = root / "data/prepared/bank/public/deployment_catalog.json"
@@ -117,6 +124,20 @@ class M4BankSupervisorTests(unittest.TestCase):
                          (view / "data/prepared/bank/public/clip_manifest.jsonl").read_text().splitlines()]
             self.assertEqual({row["case_id"] for row in clip_rows}, {case_id})
 
+    def test_restricted_scored_view_keeps_single_case_manifest_hash_loadable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            case_id, _other_id, profile = self._source_root(root)
+            view = root / "scored-view"
+            pins = create_restricted_project_view(root, view, profile_path=profile,
+                case_id=case_id, split="scored", code_root=ROOT)
+            manifest = json.loads((view / "config/bank_input_manifest.json").read_text())
+            scored_path = view / "data/prepared/bank/scored_incidents.jsonl"
+            self.assertEqual(manifest["scored_manifest_sha256"], _sha(scored_path))
+            self.assertEqual(pins["view_kind"], "one_scored_case")
+            loaded = load_bank_case(case_id, split="scored", root=view)
+            self.assertEqual(loaded.public_manifest_row["incident_id"], case_id)
+
     def test_manifest_tampering_is_rejected_before_filtered_pins_are_created(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -165,6 +186,34 @@ class M4BankSupervisorTests(unittest.TestCase):
                 fresh_run_directory(root / "escape", base)
             with self.assertRaisesRegex(FileExistsError, "must be fresh"):
                 fresh_run_directory(target, base)
+
+    def test_bootstrap_supervisor_manifest_records_no_staged_task_view(self):
+        with tempfile.TemporaryDirectory() as temp:
+            run_root = Path(temp) / "model-run"
+            run_root.mkdir()
+            profile = ROOT / "config/gemma_m3_inference.json"
+            args = SimpleNamespace(root=ROOT, profile=profile, run_dir=Path("m5_bootstrap"),
+                mode="bootstrap", library_root=None, case_id=None, split="dev",
+                experiment_manifest=None, trusted_evaluator_socket=None, task_view_root=None)
+            view_pins = {"restricted_view_sha256": "a" * 64,
+                         "profile_relative_path": "config/gemma_m3_inference.json",
+                         "view_kind": "schema_only_bootstrap", "view_file_inventory": {}}
+            with patch.dict(os.environ, {"E4_RUN_DIR": str(run_root),
+                    "E4_MODEL_PROFILE": str(profile), "E4_BASE_URL": "http://127.0.0.1:8080"}), \
+                    patch("scripts.run_m4_bank.create_restricted_project_view",
+                          return_value=view_pins), \
+                    patch("scripts.run_m4_bank._bwrap_command", return_value=["mock-bwrap"]), \
+                    patch("scripts.run_m4_bank.subprocess.run",
+                          return_value=SimpleNamespace(returncode=0)) as run_child, \
+                    patch("e4core.cache.implementation_fingerprint", return_value="b" * 64):
+                self.assertEqual(_run_outer(args), 0)
+
+            run_child.assert_called_once()
+            manifest = json.loads((run_root / "m5_bootstrap" /
+                                   "supervisor_manifest.json").read_text(encoding="utf-8"))
+            self.assertEqual(manifest["mode"], "bootstrap")
+            self.assertIsNone(manifest["staged_task_view_sha256"])
+            self.assertIsNone(manifest["attempt_slots"])
 
     def test_binary_feedback_ipc_sends_only_components_and_returns_one_bool(self):
         parent_sock, child_sock = __import__("socket").socketpair()

@@ -8,7 +8,8 @@ import time
 import unittest
 from pathlib import Path
 
-from scripts.run_m3_model import (LaunchError, _bwrap_command, _terminate_group, build_server_command,
+from scripts.run_m3_model import (LaunchError, _bwrap_command, _client_environment,
+                                  _terminate_group, build_server_command,
                                   preflight_server, resolve_server_libraries, verify_model)
 
 
@@ -16,6 +17,21 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class M3LauncherTests(unittest.TestCase):
+    def test_client_docker_config_is_present_only_in_opt_in_mode(self):
+        ordinary = _client_environment({"PATH": "/usr/bin"}, docker_control=False)
+        self.assertNotIn("DOCKER_CONFIG", ordinary)
+        self.assertNotIn("BUILDX_CONFIG", ordinary)
+        self.assertNotIn("E4_DOCKER_CONTROL_ENABLED", ordinary)
+        self.assertEqual(ordinary["LITELLM_LOCAL_MODEL_COST_MAP"], "True")
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as directory:
+            enabled = _client_environment({"PATH": "/usr/bin"}, docker_control=True,
+                                          run_dir=Path(directory))
+        self.assertEqual(enabled["DOCKER_CONFIG"],
+                         str(ROOT / "artifacts/m5/runtime/docker-config"))
+        self.assertEqual(enabled["BUILDX_CONFIG"],
+                         str(Path(directory) / "docker-buildx-config"))
+        self.assertEqual(enabled["E4_DOCKER_CONTROL_ENABLED"], "1")
+
     def test_model_file_must_match_pinned_manifest(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as tmp:
             model = Path(tmp) / "fixture.gguf"
@@ -59,6 +75,41 @@ class M3LauncherTests(unittest.TestCase):
         self.assertIn("E4_BWRAPPED", command)
         self.assertIn("--", command)
         self.assertEqual(command[-3:], ["/usr/bin/true", "--case", "independent"])
+
+    def test_docker_control_is_opt_in_and_host_daemon_is_reachable_inside_bwrap(self):
+        docker_socket = Path("/var/run/docker.sock")
+        docker_cli = shutil.which("docker")
+        bwrap = shutil.which("bwrap")
+        if not docker_socket.is_socket() or not docker_cli or not bwrap:
+            self.skipTest("Docker socket, CLI, or bubblewrap is unavailable")
+        with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as tmp:
+            run_dir = Path(tmp).resolve()
+            ordinary = _bwrap_command(
+                ROOT / "config/inference.json", "/usr/bin/true", run_dir,
+                "docker-control-disabled", None, None, None, None, [], ["/usr/bin/true"],
+            )
+            self.assertNotIn("/var/run/docker.sock", ordinary)
+            wrapper = _bwrap_command(
+                ROOT / "config/inference.json", "/usr/bin/true", run_dir,
+                "docker-control-smoke", None, None, None, None, [], ["/usr/bin/true"],
+                docker_control=True,
+            )
+            separator = wrapper.index("--")
+            namespace_command = [
+                str(ROOT / ".venv/bin/python"), "-c",
+                "import pathlib,subprocess,sys; "
+                "sock=pathlib.Path('/var/run/docker.sock'); "
+                "assert sock.is_socket(), 'Docker socket missing in trusted namespace'; "
+                "compose=subprocess.run(['docker','compose','version'],capture_output=True,text=True,timeout=20); "
+                "assert compose.returncode == 0, compose.stderr; "
+                "info=subprocess.run(['docker','info','--format','{{.ServerVersion}}'],capture_output=True,text=True,timeout=20); "
+                "assert info.returncode == 0, info.stderr; "
+                "print(compose.stdout.strip()); print('docker_server=' + info.stdout.strip())",
+            ]
+            result = subprocess.run(wrapper[:separator + 1] + namespace_command,
+                                    capture_output=True, text=True, timeout=45, env={})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("docker_server=", result.stdout)
 
     def test_timeout_cleanup_terminates_exact_process_group(self):
         child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
