@@ -1,7 +1,5 @@
 # E4
 
-E4 lets you define, validate, execute, and replay telemetry-analysis DAGs using typed operators, cached computations, and isolated local model runs.
-
 ## Setup
 
 Use Python 3.10. Create a virtual environment and install the pinned runtime and test dependencies:
@@ -22,7 +20,7 @@ Worker tests expect `/usr/bin/python3.10` and a Linux host where bubblewrap user
 
 ## Bank data
 
-Prepare and verify the Bank dataset before running the Bank commands below. The [Bank runbook](docs/BANK_RUNBOOK.md) documents source provenance, timestamp units, preparation, clip verification, and supported operator families. The [Bank results](docs/BANK_RESULTS.md) records the current development observations.
+Prepare and verify the Bank dataset using the commands in the [Bank runbook](docs/BANK_RUNBOOK.md) before running the commands below.
 
 To run the four CPU-only seed controls, set `E4_RUN_DIR` to a fresh, existing, writable directory. For example:
 
@@ -35,27 +33,15 @@ E4_RUN_DIR=artifacts/bank_controls/local_firstdev \
 
 The controls read the prepared public clips and make no model requests. The case output is written beneath `$E4_RUN_DIR/development/<case-id>/controls`. Use a fresh `E4_RUN_DIR` for each repeated run.
 
-## Current Bank results
+## Starter library
 
-The R5 ten-incident revision audit is in progress on the V100 and Wingtip GPUs. Across its first two incidents, retrieval is **0/2**, and adaptation is **0/2**. Both evolution proposals authored typed operators, but their gap records failed static schema validation after the repair allowance, so no third diagnosis was submitted. The other eight incidents remain to be evaluated. These interim counts are not the final ten-case score. Terminus-2's historical result on the same ten incidents is **4/10** after up to three diagnoses. R5 artifacts are under `artifacts/m3/model_runs/e4v13bank10localr5/` and `artifacts/m3/model_runs/e4v13bank10wingr5/`; the frozen audit manifest is `artifacts/e4_improvement/genuine_ir_v13_bank10_r5/audit_manifest.json`.
+Create a validated starter-library snapshot:
 
-The R5 starter library contains eleven registered operators:
+```bash
+.venv/bin/python scripts/freeze_paper_starter.py
+```
 
-| Operator | Purpose |
-|---|---|
-| `case.telemetry` | Supplies the hash-pinned public telemetry for the selected Bank case. |
-| `bank.candidates.generate` | Lists exact component IDs observed in that case; it does not infer aliases or topology. |
-| `bank.metrics.aggregate` | Builds per-window native metric summaries and derived per-minute log counts. |
-| `bank.metrics.contrast` | Scores supported, explicitly allowlisted metric changes between reference and alert windows. |
-| `bank.traces.aggregate` | Summarizes native trace durations per trace and component. |
-| `bank.traces.latency_contrast` | Scores per-trace duration changes; the source duration unit is undeclared. |
-| `bank.logs.volume_contrast` | Scores per-minute log-volume changes; this is not an error-rate measure. |
-| `bank.public.query` | Reads a bounded, hash-checked page of native columns from one case window. |
-| `bank.public.project` | Selects rows from existing summaries while reporting omitted detail and coverage. |
-| `evolved.log_pattern_scorer` | Counts a selected text pattern in alert-window log values. |
-| `bank.answers.combine` | Combines eligible evidence families with the configured weights and normalization. |
-
-The five starter playbooks are `combined_shared_candidates`, `log_depth_analysis`, `native_metric_contrast`, `per_minute_log_volume`, and `per_trace_native_duration`.
+The command prints the new artifact directory containing `bank_library/` and `freeze_manifest.json`.
 
 ## Local Gemma inference
 
@@ -89,3 +75,16 @@ Use a new run ID for each model run:
 ```
 
 The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-id>/`; the Bank DAG, calls, and execution records are saved under `development/<case-id>/` within that run directory. To bootstrap the Bank library or run the three-stage harness, follow the [three-stage harness runbook](docs/M4_RUNBOOK.md).
+
+## Current results
+
+Accuracy is ground truth in the top three on ten Bank incidents. E4 rows are cumulative prefixes of the latest run; T2 is the existing baseline. Cost is online input plus output tokens, including repairs, relative to T2 (100%).
+
+| Method | Accuracy | Token cost (% of T2) |
+|---|---:|---:|
+| E4: retrieval | 30.0% | 5.8% |
+| E4: retrieval + adaptation | 30.0% | 9.5% |
+| E4: retrieval + adaptation + evolution | 40.0% | 16.8% |
+| T2: up to three diagnoses | 40.0% | 100.0% |
+
+Sources: [E4 results](docs/PAPER_STARTER_BANK_RESULTS_20261024T090946Z-49d25e18.md), [T2 results](docs/M5_M6_RESULTS.md). These are exploratory results on reused incidents.
