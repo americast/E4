@@ -78,13 +78,15 @@ The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-i
 
 ## Current results
 
-Accuracy is ground truth in the top three on ten Bank incidents. E4 rows are cumulative prefixes of the latest run; T2 is the existing baseline. Cost is online input plus output tokens, including repairs, relative to T2 (100%).
+Accuracy measures ground-truth inclusion in the top three, averaged across decoding seeds 42, 43 and 44 on the same ten Bank incidents. E4 rows are cumulative stage prefixes. Token cost is the mean same-seed input-plus-output token ratio relative to T2 (100%), including repairs and recovery calls.
 
-| Method | Accuracy | Token cost (% of T2) |
+| Method | Mean accuracy | Mean token cost (% of T2) |
 |---|---:|---:|
-| E4: retrieval | 30.0% | 5.8% |
-| E4: retrieval + adaptation | 30.0% | 9.5% |
-| E4: retrieval + adaptation + evolution | 40.0% | 16.8% |
-| T2: up to three diagnoses | 40.0% | 100.0% |
+| E4: retrieval | 30.0% | 5.6% |
+| E4: retrieval + adaptation | 43.3% | 9.3% |
+| E4: retrieval + adaptation + evolution | 46.7% | 15.5% |
+| T2: up to three diagnoses | 36.7% | 100.0% |
 
-Sources: [E4 results](docs/PAPER_STARTER_BANK_RESULTS_20261024T090946Z-49d25e18.md), [T2 results](docs/M5_M6_RESULTS.md). These are exploratory results on reused incidents.
+Accuracy covers all three seeds. Cost covers seeds 42 and 44 only; T2 seed43 token usage is incomplete. These exploratory results use ten distinct incidents and do not establish statistical significance.
+
+The local report is `artifacts/seed_variability/reports/pilot_20261025_s43_s44_v2/seed_variability_report.md`.
