@@ -148,9 +148,12 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
                                              f"{node_id}.{port.name} expects {port.value_type}, got {actual_type}",
                                              node_id, {"reference": ref})
                 legal_inputs = {
-                    "Aggregate": {"Telemetry", "Aggregate"},
-                    "CandidateSet": {"Telemetry", "Aggregate", "CandidateSet"},
-                    "ScoredCandidates": {"Telemetry", "Aggregate", "CandidateSet", "ScoredCandidates"},
+                    "TelemetryWindows": {"Case"},
+                    "Aggregate": {"Telemetry", "Case", "TelemetryWindows", "Aggregate"},
+                    "CandidateSet": {"Telemetry", "Case", "TelemetryWindows", "Aggregate",
+                                     "CandidateSet"},
+                    "ScoredCandidates": {"Telemetry", "Case", "TelemetryWindows", "Aggregate",
+                                         "CandidateSet", "ScoredCandidates"},
                     "RankedAnswer": {"ScoredCandidates"},
                 }
                 if actual_type not in legal_inputs.get(operator.output_type, set()):

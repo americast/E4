@@ -1,0 +1,39 @@
+{
+  "schema_version": "e4-cyber-seed-library/1",
+  "playbooks": {
+    "actions_with_errors": {
+      "schema_version": "e4-dag/1",
+      "nodes": [
+        {"id": "case", "operator": "case", "version": "1", "inputs": {}, "params": {}, "bindings": {}},
+        {"id": "anomaly", "operator": "case.select", "version": "1",
+         "inputs": {"case": "case"}, "params": {"window": "anomaly"}, "bindings": {}},
+        {"id": "candidates", "operator": "case.candidates", "version": "1",
+         "inputs": {"case": "case"}, "params": {}, "bindings": {}},
+        {"id": "matched", "operator": "cyber.logs.match", "version": "1",
+         "inputs": {"windows": "anomaly", "candidates": "candidates"},
+         "params": {"field": "stderr", "pattern": "\\S"},
+         "bindings": {}},
+        {"id": "answer", "operator": "cyber.answers.combine", "version": "1",
+         "inputs": {"scores": ["matched"]}, "params": {}, "bindings": {}}
+      ],
+      "return": {"node": "answer"}
+    },
+    "high_level_actions": {
+      "schema_version": "e4-dag/1",
+      "nodes": [
+        {"id": "case", "operator": "case", "version": "1", "inputs": {}, "params": {}, "bindings": {}},
+        {"id": "anomaly", "operator": "case.select", "version": "1",
+         "inputs": {"case": "case"}, "params": {"window": "anomaly"}, "bindings": {}},
+        {"id": "candidates", "operator": "case.candidates", "version": "1",
+         "inputs": {"case": "case"}, "params": {}, "bindings": {}},
+        {"id": "matched", "operator": "cyber.logs.match", "version": "1",
+         "inputs": {"windows": "anomaly", "candidates": "candidates"},
+         "params": {"field": "type", "pattern": "^HighLevelAction$"},
+         "bindings": {}},
+        {"id": "answer", "operator": "cyber.answers.combine", "version": "1",
+         "inputs": {"scores": ["matched"]}, "params": {}, "bindings": {}}
+      ],
+      "return": {"node": "answer"}
+    }
+  }
+}

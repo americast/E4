@@ -737,6 +737,11 @@ def _bwrap_command(profile: Path, server: str, run_dir: Path, run_id: str,
              "--dir", "/raid", "--dir", "/raid/ssinha97",
              "--ro-bind", str(ROOT), str(ROOT), "--bind", str(run_dir), str(run_dir),
              ]
+    # data/cyber links to the attacker runs outside the project; mount its target read-only too
+    cyber_runs = ROOT / "data/cyber"
+    if cyber_runs.is_symlink():
+        target = str(cyber_runs.resolve(strict=True))
+        args += ["--ro-bind", target, target]
     if docker_control:
         socket_path = Path(docker_socket)
         if not socket_path.is_socket():

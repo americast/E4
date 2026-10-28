@@ -1970,12 +1970,12 @@
       }
     }
   },
-  "clip_manifest_sha256": "49ca7f43cc8bab322b6df86826653983b9489a73985ccd2c068643cca4fe8225",
+  "clip_manifest_sha256": "d7485760ccefd480ef222db153a7ce9b562d70823dd593b2cf9a705cc9921319",
   "deployment_catalog_file_sha256": "0f98a2880a0dc6284aaf9de30ad113ffa29cc0c9416f13c720d1e18dfaae90a1",
   "deployment_catalog_schema_sha256": "a702127cd22cde022f7f3975c0ab3203c15d8ceb0e74b3357f2615d1fafef987",
   "deployment_mapping_source_sha256": "a702127cd22cde022f7f3975c0ab3203c15d8ceb0e74b3357f2615d1fafef987",
   "dev_manifest_sha256": "a63bdb5eeaad5f1acf614eb1984db08f1af5cd5f131994d6153613f2b82d9f3d",
-  "sample_config_sha256": "329acdc980afc0faa7bdeaf3c6a5ff6d1fca3c1b2e167b0d391674fdb28b7d52",
+  "sample_config_sha256": "2415b3b0cb3df583b5bf6456f866d091ae0de13ac14f800a1f9dcdd77215cd87",
   "schema_version": "e4-bank-input-manifest/1",
   "scored_manifest_sha256": "62bfb45bcb644e1530d43582c845dd7e09712b704c9310646cb1f1eb9fcc6de6"
 }

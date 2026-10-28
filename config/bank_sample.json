@@ -428,7 +428,7 @@
       },
       "verification_status": "Provisional per-source-date observations. The four table clips must still be scanned in full and each source file must be homogeneous before any Bank adapter input is published."
     },
-    "metadata_audit_sha256": "5100e695ec49eda2c86de9844610e5e4ee425042296ed4ddc50c6e1e0451ed55",
+    "metadata_audit_sha256": "bb8c3553e8d1c09ceb9d6ee80b3bd7fa81843ed9f15fe0ed904cd25ea780f983",
     "metadata_schema": {
       "query.csv": [
         "task_index",
@@ -443,7 +443,7 @@
         "reason"
       ]
     },
-    "metric_app_coverage_audit_sha256": "245304c5c91eded7b322989f9a93f3c2c3c8322f05affba34965298e00949e72",
+    "metric_app_coverage_audit_sha256": "a7581e82fc2e37b5760ec9d3b5640726a182501f9563f028dce59bcf921e9712",
     "metric_app_file_sha256_by_date": {
       "2021_03_04": "80932766feb1a7611a17ed27a8070b044f429b69138c1ab3cb2e501fa45300c1",
       "2021_03_06": "883ec49b01c12a464064dc055e6ab7e0dfd2943d55f7f8b1d1fe512961969776",

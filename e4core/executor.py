@@ -12,9 +12,28 @@ from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
 from .cache import CacheStore, digest_value, implementation_fingerprint
-from .contracts import (Aggregate, CandidateSet, ExecutionResult, NodeRecord,
+from .contracts import (Aggregate, CandidateSet, Case, ExecutionResult, NodeRecord,
                         RankedAnswer, RuntimeSnapshot, ScoredCandidates,
-                        Telemetry, Window)
+                        Telemetry, TelemetryWindows, Window)
+
+# Raw data types: hashed from their source hashes rather than serialized, and never cached.
+RAW_DATA_TYPES = ("Telemetry", "Case", "TelemetryWindows")
+
+
+def _data_digest(value: Any) -> str:
+    """A digest for any value. Raw data is identified by its telemetry's source hashes and its
+    windows' bounds, so the full record set is never serialized just to hash it."""
+    def window_identity(window):
+        return [window.window_id, window.telemetry.data_sha256, window.start_ms, window.end_ms]
+    if isinstance(value, Telemetry):
+        return value.data_sha256
+    if isinstance(value, Case):
+        return digest_value({"case_id": value.case_id, "anomaly": value.anomaly,
+                             "components": [[c.role, c.identifier] for c in value.components],
+                             "windows": [window_identity(w) for w in value.windows]})
+    if isinstance(value, TelemetryWindows):
+        return digest_value([window_identity(w) for w in value.windows])
+    return digest_value(value)
 from .dag import DAGValidationError, VerifiedDAG, verify_dag
 from .registry import OperatorRegistry
 from .runtime import RuntimeContext, RuntimeResolutionError, _jsonable, _freeze, resolve_parameters
@@ -98,12 +117,13 @@ class SerialExecutor:
                 {"code": "external_override_forbidden", "node_id": invalid_external[0],
                  "node_ids": sorted(invalid_external)})
         telemetry = next((value for value in external_values.values() if isinstance(value, Telemetry)), None)
-        external_fingerprints = {
-            key: (value.data_sha256 if isinstance(value, Telemetry) else digest_value(value))
-            for key, value in external_values.items()}
+        external_fingerprints = {key: _data_digest(value) for key, value in external_values.items()}
         if telemetry:
             case_id = case_id or telemetry.case_id
             file_sha256 = file_sha256 or telemetry.file_sha256
+        case = next((value for value in external_values.values() if isinstance(value, Case)), None)
+        if case:
+            case_id = case_id or case.case_id
         case_id = case_id or "synthetic"
         if not data_sha256:
             data_sha256 = (telemetry.data_sha256 if telemetry and len(external_fingerprints) == 1
@@ -162,7 +182,7 @@ class SerialExecutor:
                     runtime_snapshot=runtime_json, operator=spec.name, operator_version=spec.version,
                     parameters=resolved.values, parameter_provenance=resolved.provenance,
                     input_digests=input_digests, implementation_hash=source_fingerprint)
-                can_cache_output = spec.cacheable and spec.output_type != "Telemetry"
+                can_cache_output = spec.cacheable and spec.output_type not in RAW_DATA_TYPES
                 cached, cached_digest, cache_status = effective_cache.get(cache_key, spec.output_type) if can_cache_output else (None, None, "not_cacheable")
                 if cache_status == "hit":
                     output, rows_processed, bytes_processed = cached, 0, 0
@@ -186,7 +206,7 @@ class SerialExecutor:
                     else:
                         output, rows_processed, bytes_processed = raw_result, _row_count(raw_result), 0
                     _validate_output(spec.output_type, output, node.node_id)
-                    output_digest = output.data_sha256 if isinstance(output, Telemetry) else digest_value(output)
+                    output_digest = _data_digest(output)
                     if can_cache_output:
                         stored = effective_cache.put(cache_key, spec.output_type, output)
                         if stored == "disabled":
@@ -196,7 +216,7 @@ class SerialExecutor:
                         else:
                             cache_status = "miss_stored" if cache_status == "miss" else cache_status
                     else:
-                        cache_status = "not_cacheable" if spec.cacheable is False or spec.output_type == "Telemetry" else cache_status
+                        cache_status = "not_cacheable" if spec.cacheable is False or spec.output_type in RAW_DATA_TYPES else cache_status
                 values[node.node_id] = output
                 digests[node.node_id] = output_digest
                 records.append(NodeRecord(
@@ -238,9 +258,9 @@ class SerialExecutor:
 
 
 def _validate_output(output_type: str, value: Any, node_id: str) -> None:
-    expected = {"Telemetry": Telemetry, "Aggregate": Aggregate,
-                "CandidateSet": CandidateSet, "ScoredCandidates": ScoredCandidates,
-                "RankedAnswer": RankedAnswer}.get(output_type)
+    expected = {"Telemetry": Telemetry, "Case": Case, "TelemetryWindows": TelemetryWindows,
+                "Aggregate": Aggregate, "CandidateSet": CandidateSet,
+                "ScoredCandidates": ScoredCandidates, "RankedAnswer": RankedAnswer}.get(output_type)
     if expected is None or not isinstance(value, expected):
         raise RuntimeResolutionError("operator_output_type",
                                      f"node {node_id} must return {output_type}", node_id)
@@ -248,7 +268,7 @@ def _validate_output(output_type: str, value: Any, node_id: str) -> None:
 
 def _row_count(value: Any) -> int:
     if isinstance(value, Telemetry):
-        return len(value.metrics) + len(value.spans)
+        return len(value.metrics) + len(value.spans) + len(value.logs)
     if isinstance(value, Aggregate):
         return sum(item.support for item in value.rows)
     if isinstance(value, CandidateSet):
@@ -270,6 +290,8 @@ def _reference_only(telemetry: Telemetry | None) -> Any:
                           if telemetry.reference_window.contains(point.timestamp_ms_utc)),
         "spans": tuple(span for span in telemetry.spans
                         if telemetry.reference_window.contains(span.start_ms_utc)),
+        "logs": tuple(record for record in telemetry.logs
+                       if telemetry.reference_window.contains(record.timestamp_ms_utc)),
     })
 
 

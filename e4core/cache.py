@@ -10,21 +10,22 @@ import os
 import platform
 import tempfile
 import types
-from dataclasses import fields, is_dataclass
+from dataclasses import MISSING, fields, is_dataclass
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping, Union, get_args, get_origin, get_type_hints
 
-from .contracts import (Aggregate, AggregateRow, Candidate, CandidateSet, EntityRef, Evidence,
-                        ExecutionResult, MetricPoint, NodeRecord, RankedAnswer,
-                        RuntimeSnapshot, ScoredCandidate, ScoredCandidates, Span,
-                        Telemetry, Window)
+from .contracts import (Aggregate, AggregateRow, Candidate, CandidateSet, Case, EntityRef,
+                        Evidence, ExecutionResult, LogRecord, MetricPoint, NodeRecord,
+                        RankedAnswer, RuntimeSnapshot, ScoredCandidate, ScoredCandidates, Span,
+                        Telemetry, TelemetryWindow, TelemetryWindows, Window, TelemetryWindowRef)
 
 
 _CONTRACT_TYPES = {item.__name__: item for item in
-                   (Aggregate, AggregateRow, Candidate, CandidateSet, EntityRef, Evidence,
-                    ExecutionResult, MetricPoint, NodeRecord, RankedAnswer, RuntimeSnapshot,
-                    ScoredCandidate, ScoredCandidates, Span, Telemetry, Window)}
+                   (Aggregate, AggregateRow, Candidate, CandidateSet, Case, EntityRef, Evidence,
+                    ExecutionResult, LogRecord, MetricPoint, NodeRecord, RankedAnswer,
+                    RuntimeSnapshot, ScoredCandidate, ScoredCandidates, Span, Telemetry,
+                    TelemetryWindow, TelemetryWindows, Window, TelemetryWindowRef)}
 
 
 def deserialize_contract_json(value: Any, expected_type: str) -> Any:
@@ -39,7 +40,7 @@ def deserialize_contract_json(value: Any, expected_type: str) -> Any:
     if (not isinstance(value, dict) or value.get("$type") != expected_type
             or set(value) != {"$type", "$fields"}
             or not isinstance(value.get("$fields"), dict)
-            or set(value["$fields"]) != {field.name for field in fields(expected)}):
+            or not _fields_match(value["$fields"], expected)):
         raise ValueError(f"malformed serialized {expected_type} contract")
     _validate_wire_envelopes(value)
     decoded = _decode(value)
@@ -47,6 +48,15 @@ def deserialize_contract_json(value: Any, expected_type: str) -> Any:
         raise TypeError(f"decoded value is not {expected_type}")
     _validate_annotation(decoded, expected)
     return decoded
+
+
+def _fields_match(given: Mapping[str, Any], contract: type) -> bool:
+    """Every field without a default is present, and nothing else is; defaulted fields may be
+    omitted, so envelopes written before a defaulted field was added still decode."""
+    names = {field.name for field in fields(contract)}
+    required = {field.name for field in fields(contract)
+                if field.default is MISSING and field.default_factory is MISSING}
+    return required <= set(given) <= names
 
 
 def _validate_wire_envelopes(value: Any) -> None:
@@ -61,7 +71,7 @@ def _validate_wire_envelopes(value: Any) -> None:
         contract = _CONTRACT_TYPES.get(type_name) if isinstance(type_name, str) else None
         if (contract is None or set(value) != {"$type", "$fields"}
                 or not isinstance(value.get("$fields"), dict)
-                or set(value["$fields"]) != {field.name for field in fields(contract)}):
+                or not _fields_match(value["$fields"], contract)):
             raise ValueError("malformed nested core contract envelope")
         for item in value["$fields"].values():
             _validate_wire_envelopes(item)

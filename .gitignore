@@ -9,3 +9,5 @@ data/raw/
 data/prepared/
 __pycache__/
 *.py[cod]
+data/cyber
+docs/paper/

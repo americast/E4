@@ -92,10 +92,30 @@ class Span:
 
 
 @dataclass(frozen=True, slots=True)
+class LogRecord:
+    """One log record kept whole: its parsed fields (any JSON value) and its raw text."""
+
+    table: str
+    timestamp_ms_utc: int
+    entity: EntityRef
+    kind: str
+    fields: Mapping[str, Any]
+    text: str
+    row_key: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "fields", _freeze_mapping(self.fields))
+        if type(self.timestamp_ms_utc) is not int:
+            raise ValueError("log record timestamp must be UTC milliseconds")
+
+
+@dataclass(frozen=True, slots=True)
 class Telemetry:
+    """One experiment's data and its time span. The reference/alert windows are the older,
+    Bank-style way of windowing; telemetry built for a Case leaves them None."""
     case_id: str
-    reference_window: Window
-    alert_window: Window
+    reference_window: Window | None
+    alert_window: Window | None
     metrics: tuple[MetricPoint, ...]
     spans: tuple[Span, ...]
     deployment_catalog: Mapping[str, Mapping[str, Any]]
@@ -105,26 +125,142 @@ class Telemetry:
     quality_counts: Mapping[str, int]
     adapter_version: str
     file_bytes: Mapping[str, int] = field(default_factory=dict)
+    logs: tuple[LogRecord, ...] = ()
+    telemetry_id: str = ""
+    start_ms: int | None = None       # the experiment's span, half-open: [start_ms, end_ms)
+    end_ms: int | None = None
+    params: Mapping[str, Any] = field(default_factory=dict)   # e.g. name, model, harness, environment
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "metrics", tuple(self.metrics))
         object.__setattr__(self, "spans", tuple(self.spans))
+        object.__setattr__(self, "logs", tuple(self.logs))
         object.__setattr__(self, "deployment_catalog", _freeze_mapping(self.deployment_catalog))
         object.__setattr__(self, "file_sha256", _freeze_mapping(self.file_sha256))
         object.__setattr__(self, "file_bytes", _freeze_mapping(self.file_bytes))
         object.__setattr__(self, "duplicate_counts", _freeze_mapping(self.duplicate_counts))
         object.__setattr__(self, "quality_counts", _freeze_mapping(self.quality_counts))
-        if self.reference_window.name != "reference" or self.alert_window.name != "alert":
+        object.__setattr__(self, "params", _freeze_mapping(self.params))
+        if self.reference_window is not None and self.reference_window.name != "reference":
             raise ValueError("telemetry windows have incorrect roles")
-        if self.reference_window.end_ms_utc != self.alert_window.start_ms_utc:
-            raise ValueError("reference and alert windows must be adjacent half-open intervals")
+        if self.alert_window is not None and self.alert_window.name != "alert":
+            raise ValueError("telemetry windows have incorrect roles")
+        if (self.start_ms is None) != (self.end_ms is None):
+            raise ValueError("telemetry start_ms and end_ms must be given together")
+        if self.start_ms is not None and self.end_ms <= self.start_ms:
+            raise ValueError("telemetry must have positive half-open duration")
+
+
+@dataclass(frozen=True, slots=True)
+class TelemetryWindow:
+    """A time range [start_ms, end_ms) laid over one Telemetry, inside that Telemetry's span."""
+    window_id: str
+    telemetry: Telemetry
+    start_ms: int
+    end_ms: int
+
+    def __post_init__(self) -> None:
+        if not self.window_id:
+            raise ValueError("telemetry window needs an id")
+        if self.telemetry.start_ms is None:
+            raise ValueError("telemetry window needs telemetry with start_ms and end_ms")
+        if self.end_ms <= self.start_ms:
+            raise ValueError("telemetry window must have positive half-open duration")
+        if self.start_ms < self.telemetry.start_ms or self.end_ms > self.telemetry.end_ms:
+            raise ValueError("telemetry window must lie inside its telemetry's span")
+
+    def contains(self, timestamp_ms: int) -> bool:
+        return self.start_ms <= timestamp_ms < self.end_ms
+
+    @property
+    def metrics(self) -> tuple[MetricPoint, ...]:
+        return tuple(p for p in self.telemetry.metrics if self.contains(p.timestamp_ms_utc))
+
+    @property
+    def spans(self) -> tuple[Span, ...]:
+        return tuple(s for s in self.telemetry.spans if self.contains(s.start_ms_utc))
+
+    @property
+    def logs(self) -> tuple[LogRecord, ...]:
+        return tuple(r for r in self.telemetry.logs if self.contains(r.timestamp_ms_utc))
+
+    @property
+    def ref(self) -> "TelemetryWindowRef":
+        return TelemetryWindowRef(self.window_id, self.telemetry.telemetry_id, self.start_ms, self.end_ms)
+
+
+@dataclass(frozen=True, slots=True, order=True)
+class TelemetryWindowRef:
+    """Names a TelemetryWindow without carrying its telemetry; it resolves through the Case."""
+    window_id: str
+    telemetry_id: str
+    start_ms: int
+    end_ms: int
+
+    def __post_init__(self) -> None:
+        if not self.window_id:
+            raise ValueError("window reference needs a window id")
+        if type(self.start_ms) is not int or type(self.end_ms) is not int:
+            raise ValueError("window reference bounds must be integer milliseconds")
+        if self.end_ms <= self.start_ms:
+            raise ValueError("window reference must have positive half-open duration")
+
+
+@dataclass(frozen=True, slots=True)
+class Case:
+    """What to diagnose: some telemetry windows, one of them anomalous, all others baselines,
+    and the components a diagnosis may name."""
+    case_id: str
+    windows: tuple[TelemetryWindow, ...]
+    anomaly: str                      # window_id of the anomalous window
+    components: tuple[EntityRef, ...] = ()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "windows", tuple(self.windows))
+        object.__setattr__(self, "components", tuple(self.components))
+        ids = [window.window_id for window in self.windows]
+        if len(ids) != len(set(ids)):
+            raise ValueError("case window ids must be unique")
+        if self.anomaly not in ids:
+            raise ValueError("case anomaly must name one of its windows")
+        if len(ids) < 2:
+            raise ValueError("case needs an anomalous window and at least one baseline")
+
+    def anomalous(self) -> TelemetryWindow:
+        for window in self.windows:
+            if window.window_id == self.anomaly:
+                return window
+        raise AssertionError("unreachable: anomaly is checked on construction")
+
+    def baselines(self, ids: tuple[str, ...] | None = None) -> tuple[TelemetryWindow, ...]:
+        """Every baseline window, or only those named in `ids`."""
+        chosen = []
+        for window in self.windows:
+            if window.window_id == self.anomaly:
+                continue
+            if ids is None or window.window_id in ids:
+                chosen.append(window)
+        if ids is not None and len(chosen) != len(set(ids)):
+            raise ValueError("ids must name baseline windows of this case")
+        return tuple(chosen)
+
+
+@dataclass(frozen=True, slots=True)
+class TelemetryWindows:
+    """Some of a Case's windows, as selected by a DAG node."""
+    windows: tuple[TelemetryWindow, ...]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "windows", tuple(self.windows))
+        if not self.windows:
+            raise ValueError("a window selection must hold at least one window")
 
 
 @dataclass(frozen=True, slots=True)
 class AggregateRow:
     entity: EntityRef
     metric_key: str
-    window: Window
+    window: Window | TelemetryWindowRef
     statistic: str
     value: float | None
     support: int
@@ -145,7 +281,7 @@ class AggregateRow:
 @dataclass(frozen=True, slots=True)
 class Aggregate:
     """One cached envelope for all entity/metric rows in a window."""
-    window: Window
+    window: Window | TelemetryWindowRef
     rows: tuple[AggregateRow, ...]
     source_tables: tuple[str, ...]
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -157,7 +293,7 @@ class Aggregate:
         if any(row.window != self.window for row in self.rows):
             raise ValueError("aggregate rows must match the envelope's single window")
         identities = [(row.entity.role, row.entity.canonical_id, row.metric_key,
-                       row.window.name, row.statistic)
+                       row.window, row.statistic)
                       for row in self.rows]
         if len(set(identities)) != len(identities):
             raise ValueError("aggregate envelope rows must have unique entity/metric/statistic keys")
@@ -166,7 +302,7 @@ class Aggregate:
 @dataclass(frozen=True, slots=True)
 class Evidence:
     source: str
-    window: Window
+    window: Window | TelemetryWindowRef
     statistic: str
     value: float | str | bool | None
     contributing_entities: tuple[EntityRef, ...]
@@ -207,9 +343,16 @@ class ScoredCandidate:
     category: str | None
     evidence: tuple[Evidence, ...]
     analysis_family: str | None = None
+    # When to look: (start_ms, end_ms) spans in the anomalous run; None when time isn't answered.
+    intervals: tuple[tuple[int, int], ...] | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "evidence", tuple(self.evidence))
+        if self.intervals is not None:
+            object.__setattr__(self, "intervals", tuple(tuple(span) for span in self.intervals))
+            for start, end in self.intervals:
+                if type(start) is not int or type(end) is not int or end <= start:
+                    raise ValueError("candidate intervals must be integer (start_ms, end_ms) with end > start")
         if not math.isfinite(self.score):
             raise ValueError("candidate score must be finite")
         if self.category not in {None, "CPU fault", "db close", "db connection limit",
@@ -242,8 +385,8 @@ class RankedAnswer:
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "leads", tuple(self.leads))
-        if self.acceptance_contract != "component_identity_top3":
-            raise ValueError("primary acceptance contract is frozen to component identity in top 3")
+        if self.acceptance_contract not in {"component_identity_top3", "component_time_top3"}:
+            raise ValueError("acceptance contract must be component_identity_top3 or component_time_top3")
         identities = [item.entity.canonical_id for item in self.leads]
         if len(set(identities)) != len(identities):
             raise ValueError("ranked answer has duplicate entity leads")
