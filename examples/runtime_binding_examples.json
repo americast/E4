@@ -1,6 +1,6 @@
 {
   "schema_version": "runtime-resolution-examples/1",
-  "runtime_schema": "config/runtime_schema.json",
+  "runtime_schema": "config/runtime/schema.json",
   "runtime_schema_extension": {"missing_limit": {"type": "positive_integer", "required": false, "meaning": "Example declared field with no supplied value or default."}},
   "field": "runtime.dag_depth",
   "meaning": "Configured maximum operator-node path length, not measured graph depth.",

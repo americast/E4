@@ -6,28 +6,28 @@ Use Python 3.10. Create a virtual environment and install the pinned runtime and
 
 ```bash
 python3.10 -m venv .venv
-.venv/bin/python -m pip install -r requirements-m3.lock
+.venv/bin/python -m pip install -r requirements.lock
 .venv/bin/python -m pip check
 ```
 
 Run the test suite with Python's built-in unittest discovery:
 
 ```bash
-.venv/bin/python -m unittest discover -s tests -v
+.venv/bin/python -m unittest discover -s tests -t . -v
 ```
 
 Worker tests expect `/usr/bin/python3.10` and a Linux host where bubblewrap user and network namespaces work.
 
 ## Bank data
 
-Prepare and verify the Bank dataset using the commands in the [Bank runbook](docs/BANK_RUNBOOK.md) before running the commands below.
+Prepare and verify the Bank dataset using the commands in the [Bank runbook](docs/bank/runbook.md) before running the commands below.
 
 To run the four CPU-only seed controls, set `E4_RUN_DIR` to a fresh, existing, writable directory. For example:
 
 ```bash
 mkdir -p artifacts/bank_controls/local_firstdev
 E4_RUN_DIR=artifacts/bank_controls/local_firstdev \
-  .venv/bin/python scripts/run_bank_development.py \
+  .venv/bin/python scripts/bank/develop.py \
   --case-id bank-20210323T0630-utc8 --controls
 ```
 
@@ -45,12 +45,12 @@ The command prints the new artifact directory containing `bank_library/` and `fr
 
 ## Local Gemma inference
 
-The selected model is Gemma; see `config/experimental_model.json`. Its inference settings are in `config/gemma_m3_inference.json`, which uses the pinned `config/model_manifest.json`.
+The selected model is Gemma; see `config/records/model_selection.json`. Its inference settings are in `config/models/gemma.json`, which uses the pinned `config/models/gemma_manifest.json`.
 
 First download the manifest-pinned model and build the pinned llama.cpp server. The downloader verifies the configured commit, file size, and SHA-256. Running it with no arguments uses the existing pin; `--resolve` changes that pin.
 
 ```bash
-.venv/bin/python scripts/fetch_model.py
+.venv/bin/python scripts/model/fetch.py
 
 git clone --no-checkout https://github.com/ggml-org/llama.cpp third_party/llama.cpp
 git -C third_party/llama.cpp checkout d81235049384534c167caea52b85a694f6103d14
@@ -67,14 +67,14 @@ Inference requires a CUDA-capable GPU, CUDA 12.3 and CMake 3.22 or newer for the
 Use a new run ID for each model run:
 
 ```bash
-.venv/bin/python scripts/run_m3_model.py \
-  --profile config/gemma_m3_inference.json \
+.venv/bin/python scripts/model/launch.py \
+  --profile config/models/gemma.json \
   --run-id bank_firstdev_local_01 -- \
-  .venv/bin/python scripts/run_bank_development.py \
+  .venv/bin/python scripts/bank/develop.py \
   --case-id bank-20210323T0630-utc8
 ```
 
-The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-id>/`; the Bank DAG, calls, and execution records are saved under `development/<case-id>/` within that run directory. To bootstrap the Bank library or run the three-stage harness, follow the [three-stage harness runbook](docs/M4_RUNBOOK.md).
+The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-id>/`; the Bank DAG, calls, and execution records are saved under `development/<case-id>/` within that run directory. To bootstrap the Bank library or run the three-stage harness, follow the [three-stage harness runbook](docs/bank/controller_runbook.md).
 
 ## Current results
 
