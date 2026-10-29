@@ -33,7 +33,8 @@ from e4.agent.library import (LibrarySnapshot, admit_after_accepted,
                               canonicalize_playbook_graph, generated_specs_from_snapshot,
                               playbook_graph_hash, record_library_invocation,
                               snapshot_library)
-from e4.agent.model_client import LocalModelClient
+from e4.models.analysis_model import AnalysisModel
+from e4.models.client import ModelClient
 from e4.dsl.registry import OperatorRegistry
 from e4.dsl.runtime import RuntimeContext, build_case_runtime
 from e4.paths import ROOT
@@ -58,7 +59,7 @@ class M4ControllerError(RuntimeError):
         return {"code": self.code, "message": str(self), "static": self.static}
 
 
-class M4ModelClient(LocalModelClient):
+class M4ModelClient(ModelClient):
     """Use M4-specific system wording without changing the frozen model payload."""
 
     def make_payload(self, prompt: str, *, max_tokens: int | None = None) -> dict[str, Any]:
@@ -1008,8 +1009,8 @@ def _verify_and_execute(document: Mapping[str, Any], registry: OperatorRegistry,
 
 
 def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
-                   feedback: Any, profile_path: Path,
-                   client: LocalModelClient | None = None,
+                   feedback: Any, model: AnalysisModel,
+                   client: ModelClient | None = None,
                    root: Path = ROOT, policy_path: Path | None = None,
                    split: str = "dev") -> dict[str, Any]:
     """Run one three-stage Bank diagnosis; default remains frozen development-only."""
@@ -1057,12 +1058,11 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
         registry = make_m4_registry(case, specs, root=root, audit_dir=run_dir / "audit",
                                     shared_query_budget=query_budget)
         assert_library_registry_compatible(snapshot, registry)
-        profile_path = profile_path.resolve(strict=True)
+        profile_path = model.path.resolve(strict=True)
         if not profile_path.is_relative_to(root):
-            raise M4ControllerError("profile_path", "M4 model profile must remain inside project root")
-        profile = json.loads(profile_path.read_text(encoding="utf-8"))
-        model = client or M4ModelClient(profile,
-            base_url=os.environ.get("E4_BASE_URL"),
+            raise M4ControllerError("profile_path", "M4 model file must remain inside project root")
+        profile = model.document
+        model_client = client or M4ModelClient(model,
             request_timeout=float(policy["serving"]["model_timeout_seconds"]))
         run_doc = {"schema_version": "e4-m4-diagnostic-run/1", "case_id": case_id,
             "split": split, "profile_path": str(profile_path),
@@ -1084,7 +1084,7 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
             "started_utc": datetime.now(timezone.utc).isoformat()}
         _write_json(run_dir / "diagnostic_manifest.json", run_doc)
         _write_json(run_dir / "public_case_digest.json", digest)
-        if model is None:
+        if model_client is None:
             raise M4ControllerError("model_unavailable", "M4 model client is unavailable")
 
         stage_names = policy["serving"]["stages"]
@@ -1126,7 +1126,7 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                     call_attempt = repair_count + 1
                 prompt_path = run_dir / "prompts" / f"{stage_name}_call{call_attempt}.txt"
                 prompt_path.write_text(prompt, encoding="utf-8")
-                call = model.complete(prompt, task_id=f"m4_{case_id}_{stage_name}",
+                call = model_client.complete(prompt, task_id=f"m4_{case_id}_{stage_name}",
                                       attempt=call_attempt)
                 call_doc = call.as_dict()
                 call_doc["m4_stage"] = stage_name

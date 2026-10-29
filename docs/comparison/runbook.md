@@ -40,8 +40,8 @@ The suite of 270 source tests (5 environment skips) passed before the frozen pas
 The completed scored invocation was:
 
 ```sh
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id bankm6i2 --run-timeout 86400 --docker-control -- \
   .venv/bin/python scripts/comparison/run.py --split scored --execute \
     --experiment-manifest artifacts/m5/experiments/bank_m6_initial_20261017_02/frozen_manifest.json \
@@ -67,8 +67,8 @@ The scorer verifies source/configuration pins and the fixed scored inputs before
 Run the paired comparison under the pinned local model launcher, using a new run ID and a fresh child run directory:
 
 ```sh
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id <new-run-id> --run-timeout 86400 --docker-control -- \
   .venv/bin/python scripts/comparison/run.py --split scored --execute \
     --experiment-manifest artifacts/m5/experiments/<frozen-run>/frozen_manifest.json \
@@ -82,8 +82,8 @@ The launcher allocates the model server run directory; the comparison defaults t
 Resume only when the checkpoint and new run use the same frozen manifest, code, model profile, task image, and library lineage. Give the launcher a fresh run ID so it preserves prior server logs; point `--resume-from` to the prior comparison directory:
 
 ```sh
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id <resume-run-id> --run-timeout 86400 --docker-control -- \
   .venv/bin/python scripts/comparison/run.py --split scored --execute \
     --experiment-manifest artifacts/m5/experiments/<frozen-run>/frozen_manifest.json \

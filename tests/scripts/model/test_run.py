@@ -8,9 +8,10 @@ import time
 import unittest
 from pathlib import Path
 
-from scripts.model.launch import (LaunchError, _bwrap_command, _client_environment,
-                                  _terminate_group, build_server_command,
-                                  preflight_server, resolve_server_libraries, verify_model)
+from e4.launch.llama_server import (LaunchError, build_server_command, preflight_server,
+                                    resolve_server_libraries, verify_model)
+from e4.models.analysis_model import model_from_document
+from scripts.model.run import _bwrap_command, _client_environment, _terminate_group
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -37,39 +38,49 @@ class M3LauncherTests(unittest.TestCase):
             model = Path(tmp) / "fixture.gguf"
             model.write_bytes(b"pinned fixture model")
             digest = hashlib.sha256(model.read_bytes()).hexdigest()
-            profile = {"model_path": str(model.relative_to(ROOT))}
+            model_path = str(model.relative_to(ROOT))
             manifest = {"filename": model.name, "revision": "abc123", "sha256": digest,
                         "size_bytes": model.stat().st_size}
-            verified, actual = verify_model(profile, manifest)
+            verified, actual = verify_model(model_path, manifest)
             self.assertEqual(verified, model.resolve())
             self.assertEqual(actual, digest)
             with self.assertRaisesRegex(LaunchError, "SHA-256 mismatch"):
-                verify_model(profile, {**manifest, "sha256": "0" * 64})
+                verify_model(model_path, {**manifest, "sha256": "0" * 64})
 
-    def test_server_command_uses_profile_context_and_reasoning(self):
-        profile = {"model_alias": "fixture", "reasoning_mode": "on",
-                   "reasoning_format": "deepseek", "reasoning_budget": 2048}
+    def test_server_command_uses_model_port_context_and_reasoning(self):
+        def fixture(reasoning_mode, server):
+            return model_from_document("fixture", {
+                "base_url": "http://127.0.0.1:9080", "model_alias": "fixture",
+                "context_tokens": 32768, "max_generation_tokens": 128,
+                "reasoning_mode": reasoning_mode,
+                "local_server": {"model_path": "m.gguf", "model_manifest_path": "m.json", **server}})
         command = build_server_command(Path("/bin/llama-server"), Path("/models/m.gguf"),
-                                       profile, 9080, 32768)
+                                       fixture("on", {"reasoning_format": "deepseek",
+                                                      "reasoning_budget": 2048}))
         self.assertIn("32768", command)
+        self.assertEqual(command[command.index("--port") + 1], "9080")
         self.assertEqual(command[command.index("--reasoning") + 1], "on")
         self.assertEqual(command[command.index("--reasoning-format") + 1], "deepseek")
         self.assertEqual(command[command.index("--reasoning-budget") + 1], "2048")
         self.assertIn("--offline", command)
 
         off = build_server_command(Path("/bin/llama-server"), Path("/models/m.gguf"),
-                                   {"model_alias": "fixture", "reasoning_mode": "off"},
-                                   9080, 32768)
+                                   fixture("off", {}))
         self.assertEqual(off[off.index("--reasoning") + 1], "off")
 
     def test_client_and_server_share_network_private_namespace(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as tmp:
             run_dir = Path(tmp)
-            command = _bwrap_command(ROOT / "config/models/smoke.json", "/usr/bin/true",
-                                     run_dir, "fixture-run", 9080, 32768, 60, 120,
+            command = _bwrap_command("smoke", "/usr/bin/true",
+                                     run_dir, "fixture-run", 60, 120,
                                      ["/usr/lib/x86_64-linux-gnu"],
-                                     ["/usr/bin/true", "--case", "independent"])
+                                     ["/usr/bin/true", "--case", "independent"], local=True)
+            remote = _bwrap_command("remote-fixture", "/usr/bin/true", run_dir, "fixture-run",
+                                    None, None, [], ["/usr/bin/true"], local=False)
         self.assertIn("--unshare-net", command)
+        self.assertNotIn("--unshare-net", remote)
+        self.assertIn("--unshare-pid", remote)
+        self.assertEqual(remote[remote.index("--model") + 1], "remote-fixture")
         self.assertIn("--unshare-pid", command)
         self.assertIn("--die-with-parent", command)
         self.assertIn("E4_BWRAPPED", command)
@@ -85,13 +96,13 @@ class M3LauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as tmp:
             run_dir = Path(tmp).resolve()
             ordinary = _bwrap_command(
-                ROOT / "config/models/smoke.json", "/usr/bin/true", run_dir,
-                "docker-control-disabled", None, None, None, None, [], ["/usr/bin/true"],
+                "smoke", "/usr/bin/true", run_dir,
+                "docker-control-disabled", None, None, [], ["/usr/bin/true"], local=True,
             )
             self.assertNotIn("/var/run/docker.sock", ordinary)
             wrapper = _bwrap_command(
-                ROOT / "config/models/smoke.json", "/usr/bin/true", run_dir,
-                "docker-control-smoke", None, None, None, None, [], ["/usr/bin/true"],
+                "smoke", "/usr/bin/true", run_dir,
+                "docker-control-smoke", None, None, [], ["/usr/bin/true"], local=True,
                 docker_control=True,
             )
             separator = wrapper.index("--")
@@ -210,11 +221,11 @@ class M3LauncherTests(unittest.TestCase):
             self.skipTest("pinned llama-server build is not present")
         directories, _, _ = resolve_server_libraries(server)
         with tempfile.TemporaryDirectory(dir=ROOT / "artifacts") as tmp:
-            wrapper = _bwrap_command(ROOT / "config/models/smoke.json",
+            wrapper = _bwrap_command("smoke",
                                      "third_party/llama.cpp/build-v100/bin/llama-server",
-                                     Path(tmp), "dependency-preflight", None, None, None, None,
+                                     Path(tmp), "dependency-preflight", None, None,
                                      directories,
-                                     ["/usr/bin/true"])
+                                     ["/usr/bin/true"], local=True)
             separator = wrapper.index("--")
             wrapper[separator:separator] = ["--setenv", "LD_LIBRARY_PATH",
                                              os.pathsep.join(directories)]

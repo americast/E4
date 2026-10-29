@@ -16,6 +16,7 @@ from unittest.mock import patch
 from e4.synthetic.benchmark import REPAIR_LIMIT, run_task, runtime_context
 from e4.contracts import EntityRef, MetricPoint, Span, Telemetry, Window
 from e4.agent.telecom.develop import run_development_dag, select_primary_kpi
+from e4.models.analysis_model import model_from_document
 from e4.operators.telecom.operators import metric_seed_dag
 
 
@@ -123,16 +124,18 @@ class DevelopmentRunTests(unittest.TestCase):
         catalog_path = root / "data/prepared/telecom/public/deployment_catalog.json"
         catalog_path.parent.mkdir(parents=True, exist_ok=True)
         catalog_path.write_text(json.dumps({"entities": {"node_app_01": {"identifier": "node_app_01"}}}))
+        profile = {"base_url": "http://127.0.0.1:8080", "model_alias": "fake",
+                   "context_tokens": 8192, "max_generation_tokens": 512}
         profile_path = base / "profile.json"
-        profile_path.write_text(json.dumps({"model_alias": "fake"}))
-        return root, profile_path
+        profile_path.write_text(json.dumps(profile))
+        return root, model_from_document("fake", profile, profile_path)
 
     def test_cli_help_is_available_from_project_root(self):
         result = subprocess.run([sys.executable, str(SCRIPT), "--help"], cwd=ROOT,
                                  capture_output=True, text=True, timeout=10)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("--case-id", result.stdout)
-        self.assertIn("--profile", result.stdout)
+        self.assertIn("--run-id", result.stdout)
 
     def test_existing_e4_run_dir_uses_unique_development_child(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -145,15 +148,15 @@ class DevelopmentRunTests(unittest.TestCase):
             module_spec.loader.exec_module(module)
             captured = {}
 
-            def fake_run(case_id, split, *, profile_path, run_dir, root):
-                captured.update(case_id=case_id, split=split, profile_path=profile_path,
+            def fake_run(case_id, split, *, model, run_dir, root):
+                captured.update(case_id=case_id, split=split, model=model,
                                 run_dir=run_dir, root=root)
                 return {"selected_kpi": {"kpi_id": None}, "cache_hits_warm": 4,
                         "wall_seconds_including_load_and_model_call": 0.1}
 
-            with patch.dict(os.environ, {"E4_RUN_DIR": str(parent)}), \
+            with patch.dict(os.environ, {"E4_RUN_DIR": str(parent), "E4_MODEL": "gemma"}), \
                     patch.object(sys, "argv", [str(SCRIPT), "--case-id", "dev-synthetic",
-                        "--profile", str(base / "profile.json"), "--run-id", "unique-1"]), \
+                        "--run-id", "unique-1"]), \
                     patch.object(module, "run_development_dag", fake_run):
                 self.assertEqual(module.main(), 0)
             self.assertEqual(captured["run_dir"], parent / "development")
@@ -162,7 +165,7 @@ class DevelopmentRunTests(unittest.TestCase):
     def test_development_run_discovers_arbitrary_external_source_and_replays_same_telemetry(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
-            root, profile_path = self._fixture_root(base)
+            root, model = self._fixture_root(base)
             run_dir = base / "run"
             telemetry = _telemetry()
             output = json.dumps(_rename_source(metric_seed_dag(), "telemetry_input"))
@@ -175,8 +178,8 @@ class DevelopmentRunTests(unittest.TestCase):
 
             with patch("e4.agent.telecom.develop.load_case", side_effect=load), \
                     patch("e4.agent.telecom.develop.build_case_runtime", return_value=runtime_context()), \
-                    patch("e4.agent.telecom.develop.LocalModelClient", return_value=client):
-                result = run_development_dag("dev-synthetic", "dev", profile_path=profile_path,
+                    patch("e4.agent.telecom.develop.ModelClient", return_value=client):
+                result = run_development_dag("dev-synthetic", "dev", model=model,
                                              run_dir=run_dir, root=root)
             self.assertEqual(calls["loader"], 1)
             self.assertEqual(result["cold_execution"]["answer"], result["warm_execution"]["answer"])
@@ -193,7 +196,7 @@ class DevelopmentRunTests(unittest.TestCase):
     def test_failed_model_call_keeps_manifest_call_and_structured_failure(self):
         with tempfile.TemporaryDirectory() as temporary:
             base = Path(temporary)
-            root, profile_path = self._fixture_root(base)
+            root, model = self._fixture_root(base)
             run_dir = base / "run"
             telemetry = _telemetry()
             call = FakeCall(error={"code": "transport_error", "message": "offline fixture"})
@@ -205,9 +208,9 @@ class DevelopmentRunTests(unittest.TestCase):
             client = SimpleNamespace(complete=fail_after_manifest)
             with patch("e4.agent.telecom.develop.load_case", return_value=telemetry), \
                     patch("e4.agent.telecom.develop.build_case_runtime", return_value=runtime_context()), \
-                    patch("e4.agent.telecom.develop.LocalModelClient", return_value=client):
+                    patch("e4.agent.telecom.develop.ModelClient", return_value=client):
                 with self.assertRaisesRegex(RuntimeError, "model request failed"):
-                    run_development_dag("dev-synthetic", "dev", profile_path=profile_path,
+                    run_development_dag("dev-synthetic", "dev", model=model,
                                         run_dir=run_dir, root=root)
             manifest = json.loads((run_dir / "dev_manifest.json").read_text())
             self.assertEqual(manifest["telemetry_load"]["data_sha256"], telemetry.data_sha256)

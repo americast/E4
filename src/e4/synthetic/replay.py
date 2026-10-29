@@ -17,7 +17,8 @@ from unittest.mock import patch
 
 from e4.synthetic.benchmark import (ROOT, checker_sha256, run_task, runtime_context, sha256_file,
                                     summarize_outcomes, validate_suite)
-from e4.agent.model_client import LocalModelClient, ModelCall
+from e4.models.analysis_model import model_from_document
+from e4.models.client import ModelCall, ModelClient
 from e4.operators.telecom.operators import telecom_registry
 
 
@@ -150,9 +151,10 @@ class TranscriptClient:
                  base_url: str, context_tokens: int, max_generation_tokens: int):
         self.rows = list(rows)
         self.position = 0
-        self.model_client = LocalModelClient(profile, base_url=base_url,
-                                             context_tokens=context_tokens)
-        self.model_client.max_generation_tokens = int(max_generation_tokens)
+        # the captured profile, with the endpoint and token limits the capture ran with
+        captured = {**profile, "base_url": base_url, "context_tokens": int(context_tokens),
+                    "max_generation_tokens": int(max_generation_tokens)}
+        self.model_client = ModelClient(model_from_document("captured", captured))
         self.verified_prompts = 0
         self.verified_payloads = 0
 

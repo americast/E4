@@ -20,7 +20,7 @@ from e4.agent.cyber.prompts import (SYSTEM_PROMPT, common_prompt, compose_prompt
 from e4.dsl.verifier import DAGValidationError, VerifiedDAG, verify_dag
 from e4.agent.bank.controller import M4ControllerError, _resolve_generated_versions
 from e4.operators.generated import validate_generated_spec
-from e4.agent.model_client import LocalModelClient
+from e4.models.client import ModelClient
 from e4.dsl.registry import OperatorRegistry
 from e4.dsl.runtime import RuntimeContext
 
@@ -35,7 +35,7 @@ class StaticError(ValueError):
     """A model response that fails a check before anything runs; the model may repair it."""
 
 
-class CyberModelClient(LocalModelClient):
+class CyberModelClient(ModelClient):
     def make_payload(self, prompt: str, *, max_tokens: int | None = None) -> dict[str, Any]:
         payload = super().make_payload(prompt, max_tokens=max_tokens)
         payload["messages"][0]["content"] = SYSTEM_PROMPT
@@ -159,7 +159,7 @@ def stage_response(stage: str, response: Mapping[str, Any], playbooks: Mapping[s
 
 
 def run_cyber_diagnostic(cases: Mapping[str, Case], truth: GroundTruth, run_dir: Path,
-                         client: LocalModelClient) -> dict[str, Any]:
+                         client: ModelClient) -> dict[str, Any]:
     """Select, compose, then synthesize until the judge accepts one stage's playbook."""
     started = time.perf_counter()
     run_dir.mkdir(parents=True, exist_ok=False)

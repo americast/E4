@@ -17,11 +17,10 @@ Use `bank.public.project` after a built-in aggregate when full-window summary de
 Run schema-only bootstrap once with a fresh outer run ID. The v4 bootstrap completed as `m4_schema_bootstrap_v4`; its command and artifact layout are:
 
 ```bash
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id m4_schema_bootstrap_v4 -- \
   .venv/bin/python scripts/bank/bootstrap.py \
-  --profile config/models/gemma.json \
   --run-dir m4_bootstrap
 ```
 
@@ -47,7 +46,7 @@ For the recorded v2 store only, do not point diagnostics directly at its old-fin
   --bootstrap-artifact-dir artifacts/m3/model_runs/m4_schema_bootstrap_v2/m4_bootstrap/bootstrap \
   --expected-snapshot-id 3e194f3e816a9446b70fe59042ce688a5afdb4e860d709117d0604091dcc8c45 \
   --output-dir artifacts/m4/verification/revalidated_initial_v3 \
-  --profile config/models/gemma.json \
+  --model gemma \
   --policy config/bank/controller_policy.json \
   --reason "Revalidate the pristine seed-only bootstrap after the frozen implementation-only repair"
 ```
@@ -59,12 +58,11 @@ The frozen v3 run passed this check: all 20 fixed synthetic seed checks passed, 
 Use a fresh launcher run ID and output directory for each case. The two frozen development cases are `bank-20210323T0630-utc8` and `bank-20210325T1530-utc8`.
 
 ```bash
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id m4_firstdev_v4 -- \
   .venv/bin/python scripts/bank/diagnose.py \
   --mode diagnostic \
-  --profile config/models/gemma.json \
   --run-dir m4/firstdev \
   --case-id bank-20210323T0630-utc8 \
   --library-root artifacts/m3/model_runs/m4_schema_bootstrap_v4/m4_bootstrap/bootstrap/library
@@ -85,12 +83,11 @@ The outer `supervisor_manifest.json` is alongside the `diagnostic/` directory. T
 For the second frozen development case, use a new launcher run ID and case one's resulting library:
 
 ```bash
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id m4_seconddev_v4 -- \
   .venv/bin/python scripts/bank/diagnose.py \
   --mode diagnostic \
-  --profile config/models/gemma.json \
   --run-dir m4/seconddev \
   --case-id bank-20210325T1530-utc8 \
   --library-root artifacts/m3/model_runs/m4_firstdev_v4/m4/firstdev/diagnostic/library

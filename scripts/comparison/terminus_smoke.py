@@ -124,7 +124,7 @@ async def _run_smoke(run_dir: Path) -> dict[str, object]:
 def main() -> int:
     launcher_run_dir = os.environ.get("E4_RUN_DIR")
     if not launcher_run_dir:
-        print("Gemma smoke must run inside scripts/model/launch.py", file=sys.stderr)
+        print("Gemma smoke must run inside scripts/model/run.py", file=sys.stderr)
         return 2
     run_dir = Path(launcher_run_dir) / "terminus_native_smoke"
     try:

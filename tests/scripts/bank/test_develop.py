@@ -12,12 +12,21 @@ from e4.dsl.verifier import verify_dag
 from e4.dsl.executor import ExecutionFailure, SerialExecutor
 from e4.dsl.cache import CacheStore
 from e4.dsl.runtime import build_case_runtime
-from e4.agent.model_client import ModelCall
+from e4.models.analysis_model import AnalysisModel, model_from_document
+from e4.models.client import ModelCall
 from scripts.bank import develop as runner
 from tests.adapters.test_bank import make_bank_fixture
 
 
 ROOT = Path(__file__).resolve().parents[3]
+
+
+def _test_model(path: Path) -> AnalysisModel:
+    profile = {"base_url": "http://127.0.0.1:8080", "model_alias": "bank-test", "temperature": 0,
+        "top_p": 1, "top_k": 1, "seed": 42, "max_generation_tokens": 128,
+        "context_tokens": 32768, "reasoning_mode": "off"}
+    path.write_text(json.dumps(profile), encoding="utf-8")
+    return model_from_document("bank-test", profile, path)
 
 
 class BankDevelopmentRunnerTests(unittest.TestCase):
@@ -50,27 +59,23 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
         from e4.adapters.bank import sha256_file
         manifest["sample_config_sha256"] = sha256_file(sample_path)
         manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
-        profile_path = root / "config/test_profile.json"
-        profile_path.write_text(json.dumps({"model_alias": "bank-test", "temperature": 0,
-            "top_p": 1, "top_k": 1, "seed": 42, "max_generation_tokens": 128,
-            "context_tokens": 32768, "reasoning_mode": "off"}), encoding="utf-8")
+        model = _test_model(root / "config/test_profile.json")
         (root / "config/bank/seed_playbooks.json").write_bytes(
             (ROOT / "config/bank/seed_playbooks.json").read_bytes())
         (root / "config/runtime").mkdir(exist_ok=True)
         (root / "config/runtime/schema.json").write_bytes(
             (ROOT / "config/runtime/schema.json").read_bytes())
-        return case_id, profile_path
+        return case_id, model
 
     @staticmethod
-    def _launcher_env(outer, profile):
-        # Match the sanitized command environment built by run_m3_model.py.
-        return {"E4_BASE_URL": "http://127.0.0.1:8080",
-                "E4_RUN_DIR": str(outer), "E4_MODEL_PROFILE": str(profile)}
+    def _launcher_env(outer):
+        # Match the run directory scripts/model/run.py exports to the command.
+        return {"E4_RUN_DIR": str(outer)}
 
     def test_fake_client_static_repair_executes_and_records_cold_warm_disabled_parity(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = self._fixture_root(root)
+            case_id, model = self._fixture_root(root)
             registry = bank_registry(root=root)
             seed_doc = json.loads((ROOT / "config/bank/seed_playbooks.json").read_text())
             graph = runner.materialize_bank_seed_examples(seed_doc, registry)["combined_shared_candidates"]
@@ -78,8 +83,8 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
             outer = root / "launcher-existing"
             outer.mkdir()
             (outer / "launcher-owned.json").write_text("keep", encoding="utf-8")
-            with patch.dict(os.environ, self._launcher_env(outer, profile)):
-                result = runner.run_bank_development(case_id, profile_path=profile,
+            with patch.dict(os.environ, self._launcher_env(outer)):
+                result = runner.run_bank_development(case_id, model=model,
                     root=root, client=client)
 
             self.assertEqual(len(client.prompts), 2)
@@ -122,7 +127,7 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
     def test_runtime_execution_error_is_retained_without_semantic_repair(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = self._fixture_root(root)
+            case_id, model = self._fixture_root(root)
             registry = bank_registry(root=root)
             seeds = runner.materialize_bank_seed_examples(
                 json.loads((ROOT / "config/bank/seed_playbooks.json").read_text()), registry)
@@ -134,9 +139,9 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
                                       json.dumps(seeds["combined_shared_candidates"], sort_keys=True)])
             outer = root / "existing-run-mount"
             outer.mkdir()
-            with patch.dict(os.environ, self._launcher_env(outer, profile)):
+            with patch.dict(os.environ, self._launcher_env(outer)):
                 with self.assertRaises(ExecutionFailure):
-                    runner.run_bank_development(case_id, profile_path=profile,
+                    runner.run_bank_development(case_id, model=model,
                         root=root, client=client)
             child = outer / "development" / case_id
             self.assertEqual(len(client.prompts), 1)
@@ -149,7 +154,7 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
     def test_cli_entrypoint_passes_explicit_child_and_uses_returned_run_path(self):
         fake_result = {"run_dir": "/tmp/fake-run", "development_run": {
             "cache_parity_passed": True, "static_repairs": 0}}
-        with patch.dict(os.environ, {"E4_RUN_DIR": "/tmp/outer"}), \
+        with patch.dict(os.environ, {"E4_RUN_DIR": "/tmp/outer", "E4_MODEL": "gemma"}), \
                 patch.object(runner, "run_bank_development", return_value=fake_result) as run:
             with patch("builtins.print") as printed:
                 status = runner.main(["--case-id", "bank-20210323T0630-utc8"])
@@ -202,18 +207,17 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
             outer.mkdir()
             marker = outer / "launcher_manifest.json"
             marker.write_text('{"owned":"by launcher"}', encoding="utf-8")
-            profile = root / "profile.json"
-            profile.write_text("{}", encoding="utf-8")
+            model = _test_model(root / "profile.json")
             (root / "config/bank").mkdir(parents=True)
             (root / "config/bank/sample.json").write_text(json.dumps({
                 "development_cases": [{"incident_id": "bank-20210323T0630-utc8"}]
             }), encoding="utf-8")
 
-            with patch.dict(os.environ, self._launcher_env(outer, profile)), \
+            with patch.dict(os.environ, self._launcher_env(outer)), \
                     patch.object(runner, "load_bank_case", side_effect=RuntimeError("fixture input unavailable")) as load_case:
                 with self.assertRaisesRegex(RuntimeError, "fixture input unavailable"):
                     runner.run_bank_development(
-                        "bank-20210323T0630-utc8", profile_path=profile, root=root)
+                        "bank-20210323T0630-utc8", model=model, root=root)
 
             child = outer / "development/bank-20210323T0630-utc8"
             self.assertTrue((child / "phase_status.json").is_file())
@@ -229,47 +233,12 @@ class BankDevelopmentRunnerTests(unittest.TestCase):
             root = Path(temp)
             outer = root / "outer"
             outer.mkdir()
-            profile = root / "profile.json"
-            profile.write_text("{}", encoding="utf-8")
-            with patch.dict(os.environ, self._launcher_env(outer, profile)):
+            model = _test_model(root / "profile.json")
+            with patch.dict(os.environ, self._launcher_env(outer)):
                 with self.assertRaisesRegex(runner.BankDevelopmentError, "inside a child"):
                     runner.run_bank_development("bank-20210323T0630-utc8",
-                        profile_path=profile, run_dir=root / "escaped",
+                        model=model, run_dir=root / "escaped",
                         root=root)
-
-    def test_launcher_contract_rejects_missing_or_mismatched_profile(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            outer = root / "outer"
-            outer.mkdir()
-            profile = root / "profile.json"
-            profile.write_text("{}", encoding="utf-8")
-            other_profile = root / "other-profile.json"
-            other_profile.write_text("{}", encoding="utf-8")
-            env = self._launcher_env(outer, profile)
-            with patch.dict(os.environ, {"E4_BASE_URL": env["E4_BASE_URL"],
-                    "E4_RUN_DIR": env["E4_RUN_DIR"]}, clear=True):
-                with self.assertRaisesRegex(runner.BankDevelopmentError, "E4_MODEL_PROFILE"):
-                    runner.run_bank_development("bank-20210323T0630-utc8",
-                        profile_path=profile, root=root)
-            with patch.dict(os.environ, self._launcher_env(outer, other_profile), clear=True):
-                with self.assertRaisesRegex(runner.BankDevelopmentError, "must match E4_MODEL_PROFILE"):
-                    runner.run_bank_development("bank-20210323T0630-utc8",
-                        profile_path=profile, root=root)
-
-    def test_launcher_contract_rejects_nonlocal_model_endpoint(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            outer = root / "outer"
-            outer.mkdir()
-            profile = root / "profile.json"
-            profile.write_text("{}", encoding="utf-8")
-            env = self._launcher_env(outer, profile)
-            env["E4_BASE_URL"] = "https://models.example.test:8080"
-            with patch.dict(os.environ, env, clear=True):
-                with self.assertRaisesRegex(runner.BankDevelopmentError, "local endpoint"):
-                    runner.run_bank_development("bank-20210323T0630-utc8",
-                        profile_path=profile, root=root)
 
 
 if __name__ == "__main__":

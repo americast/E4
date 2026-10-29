@@ -1,13 +1,10 @@
 #!/usr/bin/env python3
-"""One completion from the launched local model, to check it answers.
+"""One completion from the run's model, to check it answers.
 
-    .venv/bin/python scripts/model/launch.py --profile config/models/gemma_3090.json -- \
-        .venv/bin/python scripts/model/check.py
+    .venv/bin/python scripts/model/run.py --model gemma_3090 -- .venv/bin/python scripts/model/check.py
 """
 from __future__ import annotations
 
-import json
-import os
 import sys
 from pathlib import Path
 
@@ -15,12 +12,12 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "src") not in sys.path:
     sys.path.insert(0, str(ROOT / "src"))
 
-from e4.agent.model_client import LocalModelClient
+from e4.models.analysis_model import model_from_environment
+from e4.models.client import ModelClient
 
 
 def main() -> int:
-    profile = json.loads(Path(os.environ["E4_MODEL_PROFILE"]).read_text())
-    client = LocalModelClient(profile, base_url=os.environ["E4_BASE_URL"])
+    client = ModelClient(model_from_environment())
     call = client.complete("Reply with exactly: OK", task_id="check_model", attempt=1, max_tokens=256)
     print(f"content: {call.content!r}")
     print(f"error: {call.error}")

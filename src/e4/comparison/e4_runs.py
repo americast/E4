@@ -13,11 +13,12 @@ from e4.comparison.evaluator import (EvaluationSession, load_development_truth_i
                                      load_scored_truth_ids)
 from e4.comparison.manifest import ROOT, validate_frozen_manifest
 from e4.comparison.tasks import load_bank_case_view
+from e4.models.analysis_model import AnalysisModel
 
 
 def validate_scored_run(manifest_path: Path, *, root: Path = ROOT, case_id: str,
-                        library_root: Path, profile_path: Path) -> dict[str, Any]:
-    """Check frozen source, profile, public-input and pristine-library pins before scored setup."""
+                        library_root: Path, model: AnalysisModel) -> dict[str, Any]:
+    """Check frozen source, model, public-input and pristine-library pins before scored setup."""
     # The scored manifest pins the pristine initial snapshot. Later cases may
     # use descendants that contain only sequential usage/admission updates.
     root = Path(root).resolve(strict=True)
@@ -55,8 +56,8 @@ def validate_scored_run(manifest_path: Path, *, root: Path = ROOT, case_id: str,
             raise ValueError("evolving E4 library is not descended from the frozen initial snapshot")
         seen.add(current.snapshot_id)
         current = load_library_snapshot(current.root / f"{current.parent_snapshot_id}.json")
-    if profile_path.resolve() != (root / "config/models/gemma.json").resolve():
-        raise ValueError("scored M5 E4 profile must be the frozen Gemma profile")
+    if model.path.resolve() != (root / "config/models/gemma.json").resolve():
+        raise ValueError("scored M5 E4 model must be the frozen Gemma model file")
     return manifest
 
 

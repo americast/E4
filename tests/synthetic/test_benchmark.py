@@ -10,7 +10,8 @@ from e4.synthetic.benchmark import (ALLOWED_CATEGORIES, DEFAULT_SUITE, SemanticT
                                     telemetry_from_spec, task_prompt, validate_operator_source, _validate_operator_task,
                                     _operator_output_matches,
                                     validate_suite)
-from e4.agent.model_client import LocalModelClient, ModelCall
+from e4.models.analysis_model import model_from_document
+from e4.models.client import ModelCall, ModelClient
 from e4.operators.telecom.operators import telecom_registry
 
 
@@ -231,8 +232,8 @@ class M3BenchmarkTests(unittest.TestCase):
                 "finish_reason": "stop"}], "usage": {"prompt_tokens": 20,
                 "completion_tokens": 3}}),
         ]
-        with patch("e4.agent.model_client.urllib.request.urlopen", side_effect=outputs) as request:
-            client = LocalModelClient(self.profile())
+        with patch("e4.models.client.urllib.request.urlopen", side_effect=outputs) as request:
+            client = ModelClient(model_from_document("fixture", self.profile()))
             call = client.complete("full prompt", task_id="test", attempt=1)
         self.assertIsNone(call.error)
         self.assertEqual(call.prompt_token_count, 20)
@@ -246,8 +247,8 @@ class M3BenchmarkTests(unittest.TestCase):
     def test_context_overflow_fails_before_generation(self):
         outputs = [FakeResponse(200, {"prompt": "rendered"}),
                    FakeResponse(200, {"tokens": list(range(21))})]
-        with patch("e4.agent.model_client.urllib.request.urlopen", side_effect=outputs) as request:
-            call = LocalModelClient(self.profile()).complete("large prompt", task_id="test", attempt=1)
+        with patch("e4.models.client.urllib.request.urlopen", side_effect=outputs) as request:
+            call = ModelClient(model_from_document("fixture", self.profile())).complete("large prompt", task_id="test", attempt=1)
         self.assertEqual(call.error["code"], "context_budget_exceeded")
         self.assertEqual(call.prompt_token_count, 21)
         self.assertEqual(request.call_count, 2)
@@ -257,7 +258,7 @@ class M3BenchmarkTests(unittest.TestCase):
         for url in ("http://127.0.0.1.evil:8080", "http://127.0.0.1@evil.test:8080",
                     "http://127.0.0.1:8080/path"):
             with self.assertRaises(ValueError):
-                LocalModelClient(self.profile(), base_url=url)
+                model_from_document("fixture", {**self.profile(), "base_url": url})
 
     def test_static_repair_and_semantic_mismatch_have_distinct_policies(self):
         schema_task = next(task for task in validate_suite(json.loads(
@@ -291,7 +292,7 @@ class M3BenchmarkTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "run"
             summary = run_suite(ROOT / "config/synthetic/suite_v3.json", run_dir,
-                                {"model_alias": "fake"}, client=fake,
+                                model_from_document("fixture", self.profile()), client=fake,
                                 task_ids={task_id})
             self.assertEqual(summary["task_count"], 1)
             call_rows = [json.loads(line) for line in
@@ -304,7 +305,7 @@ class M3BenchmarkTests(unittest.TestCase):
             old = (run_dir / "m3_benchmark_summary.json").read_bytes()
             with self.assertRaises(FileExistsError):
                 run_suite(ROOT / "config/synthetic/suite_v3.json", run_dir,
-                          {"model_alias": "fake"}, client=FakeClient([]),
+                          model_from_document("fixture", self.profile()), client=FakeClient([]),
                           task_ids={task_id})
             self.assertEqual((run_dir / "m3_benchmark_summary.json").read_bytes(), old)
 

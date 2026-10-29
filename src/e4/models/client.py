@@ -1,17 +1,17 @@
-"""Local OpenAI-compatible chat client with complete call provenance."""
+"""OpenAI-compatible chat client for one AnalysisModel, with complete call provenance."""
 
 from __future__ import annotations
 
 import json
-import os
 import time
 import urllib.error
 import urllib.request
 import uuid
-from urllib.parse import urlsplit
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from typing import Any, Mapping
+
+from e4.models.analysis_model import AnalysisModel, api_key
 
 
 SYSTEM_PROMPT = (
@@ -52,35 +52,15 @@ class ModelCall:
         return value
 
 
-class LocalModelClient:
-    """Serial local chat client; each call retains exact request and response data."""
+class ModelClient:
+    """Serial chat client for one model; each call retains exact request and response data."""
 
-    def __init__(self, profile: Mapping[str, Any], *, base_url: str | None = None,
-                 request_timeout: float | None = None,
-                 context_tokens: int | None = None):
-        self.profile = dict(profile)
-        self.base_url = str(base_url or self.profile.get("base_url", "http://127.0.0.1:8080")).rstrip("/")
-        self.request_timeout = float(request_timeout or os.environ.get(
-            "E4_REQUEST_TIMEOUT_SECONDS", self.profile.get("request_timeout_seconds", 600)))
-        required = ("model_alias", "temperature", "top_p", "top_k", "seed", "max_generation_tokens")
-        missing = [name for name in required if name not in self.profile]
-        if missing:
-            raise ValueError(f"model profile is missing fields: {', '.join(missing)}")
-        parsed_url = urlsplit(self.base_url)
-        if (parsed_url.scheme != "http" or parsed_url.hostname != "127.0.0.1" or
-                parsed_url.username is not None or parsed_url.password is not None or
-                parsed_url.path not in {"", "/"} or parsed_url.query or parsed_url.fragment or
-                parsed_url.port is None):
-            raise ValueError("model client must use a plain local 127.0.0.1 HTTP endpoint")
-        self.base_url = f"http://127.0.0.1:{parsed_url.port}"
-        self.context_tokens = int(context_tokens or os.environ.get(
-            "E4_CONTEXT_TOKENS", self.profile.get("context_tokens", 0)))
-        self.max_generation_tokens = int(os.environ.get(
-            "E4_MAX_GENERATION_TOKENS", self.profile["max_generation_tokens"]))
-        if self.context_tokens <= 0:
-            raise ValueError("model profile must declare a positive context_tokens budget")
-        if self.max_generation_tokens <= 0:
-            raise ValueError("model profile must declare a positive max_generation_tokens budget")
+    def __init__(self, model: AnalysisModel, *, request_timeout: float | None = None):
+        self.model = model
+        self.base_url = model.base_url
+        self.request_timeout = float(request_timeout or model.request_timeout_seconds)
+        self.context_tokens = model.context_tokens
+        self.max_generation_tokens = model.max_generation_tokens
         if self.request_timeout <= 0:
             raise ValueError("request timeout must be positive")
 
@@ -88,21 +68,27 @@ class LocalModelClient:
         generation_limit = int(max_tokens if max_tokens is not None else self.max_generation_tokens)
         if generation_limit <= 0 or generation_limit > self.max_generation_tokens:
             raise ValueError("per-call generation limit must be positive and within the frozen profile budget")
-        mode = self.profile.get("reasoning_mode")
         payload: dict[str, Any] = {
-            "model": self.profile["model_alias"],
+            "model": self.model.model_alias,
             "messages": [{"role": "system", "content": SYSTEM_PROMPT},
                          {"role": "user", "content": prompt}],
-            "temperature": self.profile["temperature"],
-            "top_p": self.profile["top_p"],
-            "top_k": self.profile["top_k"],
-            "max_tokens": generation_limit,
-            "seed": self.profile["seed"],
         }
+        # sampling fields the model file leaves null are left out of the request
+        for name, value in (("temperature", self.model.temperature), ("top_p", self.model.top_p),
+                            ("top_k", self.model.top_k), ("max_tokens", generation_limit),
+                            ("seed", self.model.seed)):
+            if value is not None:
+                payload[name] = value
         # Preserve each model's frozen reasoning mode. `auto` leaves its native template alone.
-        if mode in {"on", "off"}:
-            payload["chat_template_kwargs"] = {"enable_thinking": mode == "on"}
+        if self.model.reasoning_mode in {"on", "off"}:
+            payload["chat_template_kwargs"] = {"enable_thinking": self.model.reasoning_mode == "on"}
         return payload
+
+    def _headers(self) -> dict[str, str]:
+        headers = {"Content-Type": "application/json", "Accept": "application/json"}
+        if self.model.api_key_env is not None:
+            headers["Authorization"] = f"Bearer {api_key(self.model)}"
+        return headers
 
     def complete(self, prompt: str, *, task_id: str, attempt: int,
                  max_tokens: int | None = None) -> ModelCall:
@@ -113,8 +99,7 @@ class LocalModelClient:
         payload = self.make_payload(prompt, max_tokens=max_tokens)
         body = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
         request = urllib.request.Request(
-            self.base_url + "/v1/chat/completions", data=body,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
+            self.base_url + "/v1/chat/completions", data=body, headers=self._headers(),
             method="POST")
         call_id = f"{task_id}-a{attempt}-{uuid.uuid4().hex[:12]}"
         started_utc = datetime.now(timezone.utc).isoformat()
@@ -132,39 +117,8 @@ class LocalModelClient:
         error: Mapping[str, Any] | None = None
         try:
             preflight_started = time.perf_counter()
-            apply_request = dict(payload)
-            apply_status, apply_body, apply_response, apply_error = self._post_json(
-                "/apply-template", apply_request)
-            preflight_calls.append({"endpoint": "/apply-template", "request": apply_request,
-                                    "http_status": apply_status, "raw_body": apply_body,
-                                    "raw_response": apply_response, "error": apply_error})
-            if apply_error:
-                error = {"code": "context_preflight_error", "stage": "apply_template",
-                         "details": apply_error}
-            elif not isinstance(apply_response, dict) or not isinstance(apply_response.get("prompt"), str):
-                error = {"code": "context_preflight_error", "stage": "apply_template",
-                         "message": "server returned no rendered chat prompt"}
-            if error is None:
-                tokenize_request = {"content": apply_response["prompt"],
-                                    "add_special": True, "parse_special": True}
-                token_status, token_body, token_response, token_error = self._post_json(
-                    "/tokenize", tokenize_request)
-                preflight_calls.append({"endpoint": "/tokenize", "request": tokenize_request,
-                                        "http_status": token_status, "raw_body": token_body,
-                                        "raw_response": token_response, "error": token_error})
-                tokens = token_response.get("tokens") if isinstance(token_response, dict) else None
-                if token_error or not isinstance(tokens, list) or any(type(item) is not int for item in tokens):
-                    error = {"code": "context_preflight_error", "stage": "tokenize",
-                             "details": token_error or {"message": "server returned invalid token list"}}
-                else:
-                    prompt_token_count = len(tokens)
-                    requested_generation = int(payload["max_tokens"])
-                    if prompt_token_count + requested_generation > self.context_tokens:
-                        error = {"code": "context_budget_exceeded",
-                                 "prompt_tokens": prompt_token_count,
-                                 "max_generation_tokens": requested_generation,
-                                 "context_tokens": self.context_tokens,
-                                 "message": "rendered prompt plus generation budget exceeds model context"}
+            if self.model.token_counting == "llama_server":
+                prompt_token_count, error = self._count_prompt_tokens(payload, preflight_calls)
             preflight_elapsed = time.perf_counter() - preflight_started
             if error is not None:
                 elapsed = time.perf_counter() - started
@@ -230,6 +184,47 @@ class LocalModelClient:
                          prompt_token_count, self.context_tokens, tuple(preflight_calls),
                          payload, prompt_hash, status, raw_body, raw_response,
                          content, reasoning, usage, metadata, error)
+
+    def _count_prompt_tokens(self, payload: Mapping[str, Any],
+                             preflight_calls: list[Mapping[str, Any]]) -> tuple[int | None, Mapping[str, Any] | None]:
+        """llama-server renders the chat template and tokenizes it, so the exact prompt size is
+        checked against the context budget before generating."""
+        prompt_token_count: int | None = None
+        error: Mapping[str, Any] | None = None
+        apply_request = dict(payload)
+        apply_status, apply_body, apply_response, apply_error = self._post_json(
+            "/apply-template", apply_request)
+        preflight_calls.append({"endpoint": "/apply-template", "request": apply_request,
+                                "http_status": apply_status, "raw_body": apply_body,
+                                "raw_response": apply_response, "error": apply_error})
+        if apply_error:
+            error = {"code": "context_preflight_error", "stage": "apply_template",
+                     "details": apply_error}
+        elif not isinstance(apply_response, dict) or not isinstance(apply_response.get("prompt"), str):
+            error = {"code": "context_preflight_error", "stage": "apply_template",
+                     "message": "server returned no rendered chat prompt"}
+        if error is None:
+            tokenize_request = {"content": apply_response["prompt"],
+                                "add_special": True, "parse_special": True}
+            token_status, token_body, token_response, token_error = self._post_json(
+                "/tokenize", tokenize_request)
+            preflight_calls.append({"endpoint": "/tokenize", "request": tokenize_request,
+                                    "http_status": token_status, "raw_body": token_body,
+                                    "raw_response": token_response, "error": token_error})
+            tokens = token_response.get("tokens") if isinstance(token_response, dict) else None
+            if token_error or not isinstance(tokens, list) or any(type(item) is not int for item in tokens):
+                error = {"code": "context_preflight_error", "stage": "tokenize",
+                         "details": token_error or {"message": "server returned invalid token list"}}
+            else:
+                prompt_token_count = len(tokens)
+                requested_generation = int(payload["max_tokens"])
+                if prompt_token_count + requested_generation > self.context_tokens:
+                    error = {"code": "context_budget_exceeded",
+                             "prompt_tokens": prompt_token_count,
+                             "max_generation_tokens": requested_generation,
+                             "context_tokens": self.context_tokens,
+                             "message": "rendered prompt plus generation budget exceeds model context"}
+        return prompt_token_count, error
 
     def _post_json(self, path: str, payload: Mapping[str, Any]):
         request = urllib.request.Request(

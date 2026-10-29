@@ -17,9 +17,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from e4.models.analysis_model import model_from_environment
 from e4.paths import ROOT
 
-CONFIG = ROOT / "config/models/smoke.json"
 SYSTEM = "Return only the requested result. Do not include markdown fences."
 JSON_PROMPT = ('Return one JSON object with keys "status" and "count". Use values '
                '"ok" and 3, respectively.')
@@ -30,10 +30,8 @@ OPERATOR_PROMPT = (
 
 
 def read_config() -> dict[str, Any]:
-    cfg = json.loads(CONFIG.read_text())
-    if os.environ.get("E4_BASE_URL"):
-        cfg["base_url"] = os.environ["E4_BASE_URL"]
-    return cfg
+    """The run's model file, as scripts/model/run.py names it in E4_MODEL."""
+    return model_from_environment().document
 
 
 def request_json(url: str, payload: dict[str, Any] | None = None, timeout: int = 10) -> Any:
@@ -174,7 +172,7 @@ class GpuSampler:
 
 def run(artifact: Path, timeout: int) -> int:
     cfg = read_config()
-    manifest = json.loads((ROOT / "config/models/gemma_manifest.json").read_text())
+    manifest = json.loads((ROOT / cfg["local_server"]["model_manifest_path"]).read_text())
     started = datetime.now(timezone.utc).isoformat()
     try:
         health = request_json(cfg["base_url"].rstrip("/") + "/health", timeout=10)
@@ -182,7 +180,7 @@ def run(artifact: Path, timeout: int) -> int:
         print(f"llama-server unavailable at {cfg['base_url']}: {exc}", file=sys.stderr)
         return 2
     base = {"started_utc": started, "model_alias": cfg["model_alias"],
-            "model_path": cfg["model_path"], "context_tokens": cfg["context_tokens"],
+            "model_path": cfg["local_server"]["model_path"], "context_tokens": cfg["context_tokens"],
             "model_repository": manifest.get("repository"),
             "model_revision": manifest.get("revision"), "model_sha256": manifest.get("sha256"),
             "server_health": health}
@@ -234,13 +232,14 @@ def run(artifact: Path, timeout: int) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--artifact", type=Path,
-                        default=ROOT / "artifacts/smoke/smoke.jsonl")
+    parser.add_argument("--artifact", type=Path, default=None,
+                        help="defaults to smoke.jsonl in the run directory")
     parser.add_argument("--timeout", type=int, default=None,
                         help="per-request timeout in seconds (defaults to config)")
     args = parser.parse_args()
     cfg = read_config()
-    return run(args.artifact, args.timeout or cfg["request_timeout_seconds"])
+    artifact = args.artifact or Path(os.environ["E4_RUN_DIR"]) / "smoke.jsonl"
+    return run(artifact, args.timeout or cfg["request_timeout_seconds"])
 
 
 if __name__ == "__main__":

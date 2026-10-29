@@ -6,7 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from e4.synthetic.benchmark import ROOT, validate_suite
-from e4.agent.model_client import LocalModelClient, ModelCall
+from e4.models.analysis_model import model_from_document
+from e4.models.client import ModelCall, ModelClient
 from e4.synthetic.replay import (ReplayError, TranscriptClient, audit_operator_oracles)
 
 
@@ -45,7 +46,7 @@ class M3OfflineReplayTests(unittest.TestCase):
 
     def _call_row(self, prompt):
         profile = self._profile()
-        client = LocalModelClient(profile, base_url="http://127.0.0.1:8099")
+        client = ModelClient(model_from_document("fixture", {**profile, "base_url": "http://127.0.0.1:8099"}))
         payload = client.make_payload(prompt)
         call = ModelCall(
             call_id="fixture-a1", task_id="schema_01", attempt=1,

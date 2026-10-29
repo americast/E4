@@ -21,6 +21,7 @@ from e4.agent.bank.bootstrap import _execute_synthetic_playbook
 from e4.agent.bank.controller import _materialize_seeds_for_registry
 from e4.operators.bank.query import make_m4_registry
 from e4.agent.bank.fixtures import fixture_expected_top_component
+from e4.models.analysis_model import model_path
 from e4.agent.library import (LibraryError, LibraryIntegrityError,
                               assert_library_registry_compatible, create_library_metadata_child,
                               generated_specs_from_snapshot, load_library_snapshot, playbook_graph_hash,
@@ -256,13 +257,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--bootstrap-artifact-dir", required=True, type=Path)
     parser.add_argument("--expected-snapshot-id", required=True)
     parser.add_argument("--output-dir", required=True, type=Path)
-    parser.add_argument("--profile", type=Path, default=ROOT / "config/models/gemma.json")
+    parser.add_argument("--model", default="gemma",
+                        help="model the library was bootstrapped with: config/models/<name>.json")
     parser.add_argument("--policy", type=Path, default=ROOT / "config/bank/controller_policy.json")
     parser.add_argument("--reason", required=True)
     args = parser.parse_args(argv)
     try:
         result = revalidate_seed_only_library(source_library=args.source_library,
-            output_dir=args.output_dir, profile_path=args.profile,
+            output_dir=args.output_dir, profile_path=model_path(args.model),
             bootstrap_artifact_dir=args.bootstrap_artifact_dir,
             expected_snapshot_id=args.expected_snapshot_id, reason=args.reason,
             root=ROOT, policy_path=args.policy)

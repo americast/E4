@@ -6,7 +6,6 @@ import ast
 import hashlib
 import json
 import math
-import os
 import statistics
 import time
 from collections import Counter, defaultdict
@@ -19,7 +18,8 @@ from e4.dsl.cache import CacheStore, digest_value
 from e4.contracts import EntityRef, MetricPoint, Span, Telemetry, Window
 from e4.dsl.verifier import DAGValidationError, verify_dag
 from e4.dsl.executor import (ExecutionFailure, NodeContext, SerialExecutor)
-from e4.agent.model_client import LocalModelClient, ModelCall
+from e4.models.analysis_model import AnalysisModel
+from e4.models.client import ModelCall, ModelClient
 from e4.dsl.registry import OperatorRegistry
 from e4.dsl.runtime import RuntimeContext, RuntimeSchema
 from e4.sandbox.runner import run_generated_operator
@@ -40,7 +40,7 @@ _ALLOWED_IMPORTS = {"math", "statistics", "itertools", "collections"}
 _RESTRICTED_NAMES = {"open", "eval", "exec", "compile", "globals", "locals", "getattr",
                      "setattr", "delattr", "vars", "input", "breakpoint", "memoryview"}
 _CHECKER_FILES = (
-    "src/e4/synthetic/benchmark.py", "src/e4/agent/model_client.py", "src/e4/sandbox/runner.py",
+    "src/e4/synthetic/benchmark.py", "src/e4/models/client.py", "src/e4/sandbox/runner.py",
     "src/e4/sandbox/worker.py", "src/e4/dsl/verifier.py", "src/e4/dsl/executor.py",
     "src/e4/operators/telecom/operators.py", "src/e4/operators/numerics.py", "src/e4/contracts.py",
     "src/e4/dsl/runtime.py", "src/e4/dsl/registry.py", "src/e4/dsl/cache.py",
@@ -705,7 +705,7 @@ def _repair_prompt(original_prompt: str, previous_content: str,
 
 
 def run_task(task: Mapping[str, Any], *, registry: OperatorRegistry,
-             runtime: RuntimeContext, client: LocalModelClient,
+             runtime: RuntimeContext, client: ModelClient,
              run_dir: Path, response_limit: int | None = None,
              on_call: Callable[[ModelCall], None] | None = None) -> TaskOutcome:
     start = time.perf_counter()
@@ -791,8 +791,8 @@ def _usage_count(usage: Mapping[str, Any], primary: str, alternate: str) -> int:
     return int(value) if type(value) in (int, float) and value >= 0 else 0
 
 
-def run_suite(suite_path: Path, run_dir: Path, profile: Mapping[str, Any], *,
-              client: LocalModelClient | None = None,
+def run_suite(suite_path: Path, run_dir: Path, model: AnalysisModel, *,
+              client: ModelClient | None = None,
               task_ids: set[str] | None = None) -> dict[str, Any]:
     suite = json.loads(suite_path.read_text())
     all_tasks = validate_suite(suite)
@@ -803,7 +803,8 @@ def run_suite(suite_path: Path, run_dir: Path, profile: Mapping[str, Any], *,
     runtime = runtime_context()
     from e4.operators.telecom.operators import telecom_registry
     registry = telecom_registry()
-    model_client = client or LocalModelClient(profile, base_url=os.environ.get("E4_BASE_URL"))
+    profile = model.document
+    model_client = client or ModelClient(model)
     suite_hash = sha256_file(suite_path)
     check_hash, checker_files = checker_sha256()
     call_path = run_dir / "m3_model_calls.jsonl"
@@ -855,14 +856,15 @@ def run_suite(suite_path: Path, run_dir: Path, profile: Mapping[str, Any], *,
     return summary
 
 
-def run_calibration(run_dir: Path, profile: Mapping[str, Any], *,
-                    client: LocalModelClient | None = None) -> dict[str, Any]:
+def run_calibration(run_dir: Path, model: AnalysisModel, *,
+                    client: ModelClient | None = None) -> dict[str, Any]:
     """One separate full-library prompt call; not part of the frozen 20 tasks."""
     run_dir.mkdir(parents=True, exist_ok=True)
     runtime = runtime_context()
     from e4.operators.telecom.operators import telecom_registry
     registry = telecom_registry()
-    model_client = client or LocalModelClient(profile, base_url=os.environ.get("E4_BASE_URL"))
+    profile = model.document
+    model_client = client or ModelClient(model)
     path = run_dir / "m3_prompt_context_calibration.json"
     if path.exists():
         raise FileExistsError(f"refusing to overwrite existing calibration artifact: {path}")

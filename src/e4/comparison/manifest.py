@@ -48,7 +48,7 @@ def _e4_runtime_pin() -> dict[str, Any]:
 
 
 def _llama_runtime_pin(root: Path) -> dict[str, Any]:
-    launcher = (root / "scripts/model/launch.py").read_text(encoding="utf-8")
+    launcher = (root / "src/e4/launch/llama_server.py").read_text(encoding="utf-8")
     revision_match = re.search(r'PINNED_LLAMA_CPP_REVISION\s*=\s*["\']([^"\']+)', launcher)
     server_match = re.search(r'DEFAULT_SERVER\s*=\s*["\']([^"\']+)', launcher)
     if not revision_match or not server_match:
@@ -605,7 +605,7 @@ def build_frozen_manifest(*, root: Path = ROOT, run_id: str,
     model_relative = Path("data/models") / str(model_doc.get("filename", ""))
     model_checkpoint = (root / model_relative).resolve(strict=True)
     profile_doc = _json(profile_path)
-    declared_model = Path(str(profile_doc.get("model_path", "")))
+    declared_model = Path(str(profile_doc.get("local_server", {}).get("model_path", "")))
     if declared_model.is_absolute() or declared_model.parts[:2] != ("data", "models") or declared_model.name != model_doc.get("filename"):
         raise FrozenManifestError("Gemma profile checkpoint path differs from the pinned model manifest")
     if root not in model_checkpoint.parents or not model_checkpoint.is_file():
@@ -688,7 +688,9 @@ def build_frozen_manifest(*, root: Path = ROOT, run_id: str,
                       "reasoning_budget": "reasoning_budget_per_call",
                       "temperature": "temperature", "top_p": "top_p", "top_k": "top_k",
                       "seed": "seed", "reasoning_mode": "reasoning_mode"}
-    if any(profile.get(field) != profile_contract.get(contract_field)
+    # the reasoning budget is a server setting, kept in the model file's local_server block
+    profile_values = {**profile, "reasoning_budget": profile.get("local_server", {}).get("reasoning_budget")}
+    if any(profile_values.get(field) != profile_contract.get(contract_field)
            for field, contract_field in profile_fields.items()):
         raise FrozenManifestError("Gemma per-call profile differs from frozen M5 settings")
     if (experiment.get("max_diagnosis_submissions") != 3 or

@@ -689,7 +689,7 @@ def main() -> int:
     mode.add_argument("--preflight-only", action="store_true",
                       help="verify manifest pins and fixed public cases before model startup")
     mode.add_argument("--execute", action="store_true",
-                      help="run the paired dev readiness or scored M6 pass under scripts/model/launch.py")
+                      help="run the paired dev readiness or scored M6 pass under scripts/model/run.py")
     parser.add_argument("--run-dir", type=Path,
                         help="fresh child of E4_RUN_DIR for the paired execution")
     parser.add_argument("--resume-from", type=Path,
@@ -728,7 +728,7 @@ def main() -> int:
             return 0
         launcher_dir = Path(os.environ.get("E4_RUN_DIR", "")).resolve()
         if not launcher_dir.is_dir():
-            parser.error("--execute must run under scripts/model/launch.py with E4_RUN_DIR set")
+            parser.error("--execute must run under scripts/model/run.py with E4_RUN_DIR set")
         if args.preflight_receipt is None:
             parser.error("--execute requires the successful preflight receipt")
         run_dir = args.run_dir or (launcher_dir / ("m6_comparison" if args.split == "scored"

@@ -21,7 +21,6 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
-from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT / "src") not in sys.path:
@@ -302,15 +301,6 @@ def create_restricted_project_view(root: Path, view_root: Path, *,
             "restricted_view_file_count": len(inventory), "view_file_inventory": inventory}
 
 
-def _validate_local_endpoint(value: str | None) -> str:
-    parsed = urlsplit(value or "")
-    if (parsed.scheme not in {"http", "https"} or
-            parsed.hostname not in {"localhost", "127.0.0.1", "::1"} or
-            parsed.port is None):
-        raise SupervisorError("E4_BASE_URL must be a local HTTP(S) endpoint with an explicit port")
-    return value
-
-
 def fresh_run_directory(path: Path, e4_run_dir: Path) -> tuple[Path, Path]:
     base = e4_run_dir.resolve(strict=True)
     target = path if path.is_absolute() else base / path
@@ -325,9 +315,9 @@ def fresh_run_directory(path: Path, e4_run_dir: Path) -> tuple[Path, Path]:
 
 
 def _bwrap_command(*, view_root: Path, run_dir: Path, library_root: Path | None,
-                   profile_relative: str, mode: str, case_id: str | None,
-                   split: str = "dev",
-                   endpoint: str, feedback_socket: str | None,
+                   model_name: str, mode: str, case_id: str | None,
+                   split: str = "dev", remote: bool = False,
+                   feedback_socket: str | None,
                    implementation_fingerprint_value: str,
                    python_executable: str = "/m4project/.venv/bin/python",
                    command_override: Sequence[str] | None = None) -> list[str]:
@@ -342,18 +332,23 @@ def _bwrap_command(*, view_root: Path, run_dir: Path, library_root: Path | None,
         "--setenv", "PYTHONNOUSERSITE", "1", "--setenv", "E4_M4_INNER", "1",
         "--setenv", "PYTHONDONTWRITEBYTECODE", "1",
         "--setenv", "E4_M4_IMPLEMENTATION_FINGERPRINT", implementation_fingerprint_value,
-        "--setenv", "E4_BASE_URL", endpoint,
         "--setenv", "E4_RUN_DIR", "/m4run",
-        "--setenv", "E4_MODEL_PROFILE", f"/m4project/{profile_relative}",
+        "--setenv", "E4_MODEL", model_name,
         "--ro-bind", "/usr", "/usr", "--ro-bind", "/lib", "/lib"]
     if Path("/lib64").exists():
         args += ["--ro-bind", "/lib64", "/lib64"]
     if Path("/etc/ld.so.cache").exists():
         args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
+    if remote:
+        from e4.launch.network import remote_network_binds
+        args += remote_network_binds()
     args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
              "--ro-bind", str(view_root), "/m4project",
              "--ro-bind", str(ROOT / ".venv"), "/m4project/.venv",
              "--bind", str(run_dir), "/m4run", "--chdir", "/m4project"]
+    if remote and (ROOT / ".env").is_file():
+        # a remote model's key; the view never holds a copy of it
+        args += ["--ro-bind", str(ROOT / ".env"), "/m4project/.env"]
     if library_root is not None:
         args += ["--ro-bind", str(library_root.resolve(strict=True)), "/m4library"]
     args += ["--"]
@@ -361,8 +356,7 @@ def _bwrap_command(*, view_root: Path, run_dir: Path, library_root: Path | None,
         return args + list(command_override)
     command = [python_executable, "/m4project/scripts/bank/diagnose.py", "--inside",
                "--mode", mode, "--root", "/m4project", "--run-dir",
-               "/m4run/bootstrap" if mode == "bootstrap" else "/m4run/diagnostic",
-               "--profile", f"/m4project/{profile_relative}"]
+               "/m4run/bootstrap" if mode == "bootstrap" else "/m4run/diagnostic"]
     if case_id is not None:
         command += ["--case-id", case_id]
     if mode == "m5-diagnostic":
@@ -594,12 +588,13 @@ def _run_inner(args: argparse.Namespace) -> int:
     if os.environ.get("E4_M4_INNER") != "1":
         raise SupervisorError("internal mode must run inside the restricted M4 namespace")
     root = args.root.resolve(strict=True)
-    profile = args.profile.resolve(strict=True)
-    if not profile.is_relative_to(root):
-        raise SupervisorError("inner model profile must stay inside the restricted project view")
+    from e4.models.analysis_model import model_from_environment
+    model = model_from_environment()
+    if not model.path.resolve(strict=True).is_relative_to(root):
+        raise SupervisorError("inner model file must stay inside the restricted project view")
     if args.mode == "bootstrap":
         from e4.agent.bank.bootstrap import run_bootstrap
-        run_bootstrap(profile_path=profile, run_dir=args.run_dir, root=root)
+        run_bootstrap(model=model, run_dir=args.run_dir, root=root)
     else:
         from e4.agent.bank.controller import run_diagnostic
         if args.feedback_socket is None or args.library_root is None or args.case_id is None:
@@ -607,7 +602,7 @@ def _run_inner(args: argparse.Namespace) -> int:
         feedback = BinaryFeedbackProxy(args.feedback_socket)
         split = args.split if args.mode == "m5-diagnostic" else "dev"
         run_diagnostic(args.case_id, library_root=args.library_root,
-            run_dir=args.run_dir, feedback=feedback, profile_path=profile, root=root,
+            run_dir=args.run_dir, feedback=feedback, model=model, root=root,
             split=split)
     return 0
 
@@ -617,19 +612,15 @@ def _run_outer(args: argparse.Namespace) -> int:
     root = args.root.resolve(strict=True)
     if root != ROOT.resolve(strict=True):
         raise SupervisorError("outer M4 supervisor root must be this frozen project")
-    endpoint = _validate_local_endpoint(os.environ.get("E4_BASE_URL"))
+    from e4.models.analysis_model import model_from_environment
+    model = model_from_environment()
     configured_run_dir = os.environ.get("E4_RUN_DIR")
     if not configured_run_dir:
-        raise SupervisorError("E4_RUN_DIR from the approved local model launcher is required")
+        raise SupervisorError("E4_RUN_DIR from scripts/model/run.py is required")
     e4_run_dir = Path(configured_run_dir).resolve(strict=True)
-    profile = args.profile.resolve(strict=True)
+    profile = model.path.resolve(strict=True)
     if not profile.is_relative_to(root):
-        raise SupervisorError("model profile must resolve inside the project")
-    configured_profile = os.environ.get("E4_MODEL_PROFILE")
-    if not configured_profile:
-        raise SupervisorError("E4_MODEL_PROFILE from the approved local model launcher is required")
-    if Path(configured_profile).resolve(strict=True) != profile:
-        raise SupervisorError("selected profile must match E4_MODEL_PROFILE from the approved launcher")
+        raise SupervisorError("model file must resolve inside the project")
     runtime_policy = json.loads((root / "config/bank/controller_policy.json").read_text(encoding="utf-8"))
     case_timeout = float(runtime_policy["serving"]["case_wall_seconds"])
     run_dir, base = fresh_run_directory(args.run_dir, e4_run_dir)
@@ -655,7 +646,7 @@ def _run_outer(args: argparse.Namespace) -> int:
                 raise SupervisorError("scored M5 E4 requires the shared trusted evaluator socket")
             from e4.comparison.e4_runs import validate_scored_run
             validate_scored_run(args.experiment_manifest, root=root, case_id=args.case_id,
-                                library_root=library_root, profile_path=profile)
+                                library_root=library_root, model=model)
         if args.mode == "m5-diagnostic" and split == "scored":
             if not args.task_view_root:
                 raise SupervisorError("scored M5 E4 requires the orchestrator-staged public task view")
@@ -688,8 +679,8 @@ def _run_outer(args: argparse.Namespace) -> int:
         view_digest = view_pins["restricted_view_sha256"]
         if args.mode == "bootstrap":
             command = _bwrap_command(view_root=view_root, run_dir=run_dir,
-                library_root=None, profile_relative=view_pins["profile_relative_path"],
-                mode=args.mode, case_id=None, endpoint=endpoint, feedback_socket=None,
+                library_root=None, model_name=model.name, remote=not model.is_local,
+                mode=args.mode, case_id=None, feedback_socket=None,
                 implementation_fingerprint_value=host_implementation_fingerprint)
             with (run_dir / "inner.stdout.log").open("w") as stdout, \
                     (run_dir / "inner.stderr.log").open("w") as stderr:
@@ -707,8 +698,8 @@ def _run_outer(args: argparse.Namespace) -> int:
                 evaluator = DevOnlyFeedbackEvaluator(root=root, allowed_case_ids=[args.case_id])
             def command_for_feedback(address: str) -> Sequence[str]:
                 return _bwrap_command(view_root=view_root, run_dir=run_dir,
-                    library_root=library_root, profile_relative=view_pins["profile_relative_path"],
-                    mode=args.mode, case_id=args.case_id, endpoint=endpoint, feedback_socket=address,
+                    library_root=library_root, model_name=model.name, remote=not model.is_local,
+                    mode=args.mode, case_id=args.case_id, feedback_socket=address,
                     split=args.split if args.mode == "m5-diagnostic" else "dev",
                     implementation_fingerprint_value=host_implementation_fingerprint)
             feedback_status: dict[str, Any] = {"case_wall_timeout": False}
@@ -749,7 +740,6 @@ def _run_outer(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--mode", choices=("bootstrap", "diagnostic", "m5-diagnostic"), required=True)
-    parser.add_argument("--profile", type=Path, default=ROOT / "config/models/gemma.json")
     parser.add_argument("--run-dir", type=Path, required=True)
     parser.add_argument("--case-id")
     parser.add_argument("--library-root", type=Path)

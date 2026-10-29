@@ -162,9 +162,8 @@ class M4BankSupervisorTests(unittest.TestCase):
             library = root / "libraries/snapshot-one"
             library.mkdir(parents=True)
             command = _bwrap_command(view_root=view, run_dir=output,
-                library_root=library, profile_relative=pins["profile_relative_path"]
-                    if "profile_relative_path" in pins else "config/models/gemma.json",
-                mode="diagnostic", case_id=case_id, endpoint="http://127.0.0.1:8080",
+                library_root=library, model_name="gemma",
+                mode="diagnostic", case_id=case_id,
                 feedback_socket="test-address", implementation_fingerprint_value="a" * 64)
             self.assertIn("--unshare-all", command)
             self.assertIn("--share-net", command)
@@ -199,8 +198,7 @@ class M4BankSupervisorTests(unittest.TestCase):
             view_pins = {"restricted_view_sha256": "a" * 64,
                          "profile_relative_path": "config/models/gemma.json",
                          "view_kind": "schema_only_bootstrap", "view_file_inventory": {}}
-            with patch.dict(os.environ, {"E4_RUN_DIR": str(run_root),
-                    "E4_MODEL_PROFILE": str(profile), "E4_BASE_URL": "http://127.0.0.1:8080"}), \
+            with patch.dict(os.environ, {"E4_RUN_DIR": str(run_root), "E4_MODEL": "gemma"}), \
                     patch("scripts.bank.diagnose.create_restricted_project_view",
                           return_value=view_pins), \
                     patch("scripts.bank.diagnose._bwrap_command", return_value=["mock-bwrap"]), \
@@ -336,8 +334,8 @@ raise SystemExit(0 if response=={"accepted":True} else 3)
                 "'source_root':pathlib.Path('" + str(root) + "').exists()}))"
             )
             command = _bwrap_command(view_root=view, run_dir=output, library_root=None,
-                profile_relative="config/models/gemma.json", mode="bootstrap",
-                case_id=None, endpoint="http://127.0.0.1:8080", feedback_socket=None,
+                model_name="gemma", mode="bootstrap",
+                case_id=None, feedback_socket=None,
                 implementation_fingerprint_value="a" * 64,
                 command_override=["/usr/bin/python3.10", "-c", code])
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -384,8 +382,8 @@ raise SystemExit(0 if result=={"accepted":True} else 3)
 
             def command(address):
                 return _bwrap_command(view_root=view, run_dir=output, library_root=None,
-                    profile_relative=pins["profile_relative_path"], mode="bootstrap",
-                    case_id=None, endpoint="http://127.0.0.1:8080", feedback_socket=address,
+                    model_name="gemma", mode="bootstrap",
+                    case_id=None, feedback_socket=address,
                     implementation_fingerprint_value="a" * 64,
                     command_override=["/usr/bin/python3.10", "-c", child_source, address])
 

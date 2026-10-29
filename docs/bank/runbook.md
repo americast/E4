@@ -112,7 +112,7 @@ E4_RUN_DIR=artifacts/m3/bank_controls_cpu .venv/bin/python scripts/bank/develop.
 The recorded first-development model invocation was:
 
 ```sh
-.venv/bin/python scripts/model/launch.py --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py --model gemma \
   --run-id bank_firstdev_v2 -- \
   .venv/bin/python scripts/bank/develop.py --case-id bank-20210323T0630-utc8
 ```

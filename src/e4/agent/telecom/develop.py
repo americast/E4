@@ -17,7 +17,8 @@ from e4.synthetic.benchmark import REPAIR_LIMIT, StaticTaskError, parse_strict_j
 from e4.dsl.cache import CacheStore, implementation_fingerprint
 from e4.dsl.verifier import DAGValidationError, verify_dag
 from e4.dsl.executor import SerialExecutor, execution_result_to_dict
-from e4.agent.model_client import LocalModelClient
+from e4.models.analysis_model import AnalysisModel
+from e4.models.client import ModelClient
 from e4.dsl.runtime import build_case_runtime
 from e4.operators.telecom.operators import telecom_registry
 
@@ -163,7 +164,7 @@ def build_development_prompt(case_id: str, alert: Mapping[str, Any],
             "\n\nPUBLIC CASE CONTEXT\n" + json.dumps(public_context, ensure_ascii=False, sort_keys=True))
 
 
-def run_development_dag(case_id: str, split: str, *, profile_path: Path,
+def run_development_dag(case_id: str, split: str, *, model: AnalysisModel,
                         run_dir: Path | None = None, root: Path = ROOT) -> dict[str, Any]:
     run_dir = run_dir or Path(os.environ.get("E4_RUN_DIR", root / "artifacts/m3/dev"))
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -195,7 +196,7 @@ def run_development_dag(case_id: str, split: str, *, profile_path: Path,
         kpi = select_primary_kpi(telemetry)
         prompt = build_development_prompt(case_id, alert, runtime, kpi, catalog, registry)
         prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()
-        profile = json.loads(profile_path.read_text())
+        profile = model.document
         telemetry_load = {"loader_seconds": load_seconds,
                           "file_bytes": sum(telemetry.file_bytes.values()),
                           "file_bytes_by_path": dict(telemetry.file_bytes),
@@ -204,7 +205,7 @@ def run_development_dag(case_id: str, split: str, *, profile_path: Path,
                           "cache_replay_policy": "same in-memory Telemetry object reused for cold/warm/disabled cache executions"}
         manifest = {"schema_version": "e4-m3-development-manifest/1", "case_id": case_id,
                     "split": split, "model_alias": profile.get("model_alias"),
-                    "profile_sha256": sha256_file(profile_path),
+                    "profile_sha256": sha256_file(model.path),
                     "alert_sha256": sha256_file(alert_path), "catalog_sha256": sha256_file(catalog_path),
                     "input_manifest_sha256": sha256_file(root / "config/telecom/input_manifest.json"),
                     "telemetry_load": telemetry_load, "selected_kpi": kpi,
@@ -212,7 +213,7 @@ def run_development_dag(case_id: str, split: str, *, profile_path: Path,
                     "seed_library_sha256": sha256_file(ROOT / "config/telecom/seed_playbooks.json"),
                     "runtime_schema_sha256": sha256_file(ROOT / "config/runtime/schema.json"),
                     "development_source_sha256": sha256_file(ROOT / "src/e4/agent/telecom/develop.py"),
-                    "model_client_source_sha256": sha256_file(ROOT / "src/e4/agent/model_client.py"),
+                    "model_client_source_sha256": sha256_file(ROOT / "src/e4/models/client.py"),
                     "runner_script_sha256": sha256_file(ROOT / "scripts/telecom/develop.py"),
                     "implementation_fingerprint": implementation_fingerprint(),
                     "runtime": runtime.as_dict(), "prompt_sha256": prompt_hash,
@@ -223,7 +224,7 @@ def run_development_dag(case_id: str, split: str, *, profile_path: Path,
                                             sort_keys=True, allow_nan=False) + "\n")
         calls_path = run_dir / "model_calls.jsonl"
         calls_path.write_text("")
-        client = LocalModelClient(profile, base_url=os.environ.get("E4_BASE_URL"))
+        client = ModelClient(model)
         repair_prompt = prompt
         repairs = 0
         static_errors: list[dict[str, Any]] = []

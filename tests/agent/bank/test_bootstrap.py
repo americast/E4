@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from e4.agent.bank.bootstrap import run_bootstrap
+from e4.models.analysis_model import AnalysisModel, model_from_document
 from e4.operators.bank.query import make_m4_registry
 from e4.agent.bank.fixtures import fixture_expected_top_component
 from e4.agent.library import load_library_snapshot
@@ -22,7 +23,7 @@ from e4.operators.generated import generated_spec_contract_schema, validate_gene
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def _copy_bootstrap_config(root: Path) -> Path:
+def _copy_bootstrap_config(root: Path) -> AnalysisModel:
     config = root / "config"
     config.mkdir(parents=True)
     for name in ("bank/metric_kind_policy.json", "bank/kpi_policy.json", "bank/controller_policy.json",
@@ -30,11 +31,12 @@ def _copy_bootstrap_config(root: Path) -> Path:
                  "bank/source.json"):
         (config / name).parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / "config" / name, config / name)
-    profile = config / "profile.json"
-    profile.write_text(json.dumps({"model_alias": "fake-gemma", "temperature": 1.0,
+    profile = {"base_url": "http://127.0.0.1:8080", "model_alias": "fake-gemma", "temperature": 1.0,
         "top_p": 0.95, "top_k": 64, "seed": 42, "max_generation_tokens": 8192,
-        "context_tokens": 32768, "reasoning_mode": "on"}), encoding="utf-8")
-    return profile
+        "context_tokens": 32768, "reasoning_mode": "on"}
+    profile_path = config / "profile.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+    return model_from_document("profile", profile, profile_path)
 
 
 def _typed_scorer_spec():
@@ -138,7 +140,7 @@ class FakeBootstrapClient:
 
 
 def _model_call(content, task_id, attempt, now):
-    from e4.agent.model_client import ModelCall
+    from e4.models.client import ModelCall
     raw = {"choices": [{"message": {"content": content}}]}
     return ModelCall(f"fake-bootstrap-{attempt}", task_id, attempt, now, now,
         0.01, 0.005, 20, 32768, (), {"messages": [{"role": "user", "content": "synthetic"}]},
@@ -177,9 +179,9 @@ class M4BootstrapTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            profile = _copy_bootstrap_config(root)
+            model = _copy_bootstrap_config(root)
             fake = FakeBootstrapClient(json.dumps({"operators": [], "playbooks": []}))
-            result = run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",
+            result = run_bootstrap(model=model, run_dir=root / "bootstrap",
                                    client=fake, root=root)
             bootstrap_prompt = fake.calls[0]
             self.assertIn("generated_spec_contract_schema", bootstrap_prompt)
@@ -247,9 +249,9 @@ class M4BootstrapTests(unittest.TestCase):
         self.assertIn("timestamp_ms_utc", schema["bank.public.query"]["public_query"]["rows_data"])
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            profile = _copy_bootstrap_config(root)
+            model = _copy_bootstrap_config(root)
             fake = FakeBootstrapClient(json.dumps({"operators": [], "playbooks": []}))
-            result = run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",
+            result = run_bootstrap(model=model, run_dir=root / "bootstrap",
                                    client=fake, root=root)
             self.assertIn("data_operator_contract_schema", fake.calls[0])
             self.assertIn("rows_data", fake.calls[0])
@@ -265,19 +267,16 @@ class M4BootstrapTests(unittest.TestCase):
             self.assertIn("NATIVE QUERY AND PROJECTION DATA LAYOUT", stage_prompt)
             self.assertIn("metadata.public_query.rows_data", stage_prompt)
 
-    def test_bootstrap_cli_delegates_to_restricted_supervisor_with_launcher_profile(self):
+    def test_bootstrap_cli_delegates_to_restricted_supervisor_with_launcher_model(self):
         from scripts.bank import bootstrap as bootstrap_script
         with tempfile.TemporaryDirectory() as temp:
             outer = Path(temp) / "existing-run"
             outer.mkdir()
-            profile = ROOT / "config/models/gemma.json"
-            with patch.dict("os.environ", {"E4_RUN_DIR": str(outer),
-                    "E4_BASE_URL": "http://127.0.0.1:8080", "E4_MODEL_PROFILE": str(profile)}), \
+            with patch.dict("os.environ", {"E4_RUN_DIR": str(outer), "E4_MODEL": "gemma"}), \
                     patch.object(bootstrap_script, "supervisor_main", return_value=0) as supervisor:
-                status = bootstrap_script.main(["--profile", str(profile), "--run-dir", "bootstrap"])
+                status = bootstrap_script.main(["--run-dir", "bootstrap"])
             self.assertEqual(status, 0)
-            supervisor.assert_called_once_with(["--mode", "bootstrap", "--profile",
-                str(profile), "--run-dir", "bootstrap"])
+            supervisor.assert_called_once_with(["--mode", "bootstrap", "--run-dir", "bootstrap"])
 
     def test_generated_source_literal_cannot_encode_a_component_or_incident(self):
         with self.assertRaisesRegex(M4ControllerError, "cannot embed"):
@@ -289,10 +288,10 @@ class M4BootstrapTests(unittest.TestCase):
     def test_seed_only_bootstrap_requires_model_response_and_materializes_protected_seeds(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            profile = _copy_bootstrap_config(root)
+            model = _copy_bootstrap_config(root)
             output = root / "bootstrap"
             fake = FakeBootstrapClient(json.dumps({"operators": [], "playbooks": []}))
-            result = run_bootstrap(profile_path=profile, run_dir=output,
+            result = run_bootstrap(model=model, run_dir=output,
                                    client=fake, root=root)
             self.assertEqual(result["result"]["status"], "complete_seed_only")
             self.assertTrue(result["result"]["model_response_received"])
@@ -311,11 +310,11 @@ class M4BootstrapTests(unittest.TestCase):
     def test_schema_bootstrap_executes_typed_generated_scorer_on_renamed_controls(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            profile = _copy_bootstrap_config(root)
+            model = _copy_bootstrap_config(root)
             bundle = {"operators": [_typed_scorer_spec()],
                       "playbooks": [_generated_playbook(root)]}
             fake = FakeBootstrapClient(json.dumps(bundle, ensure_ascii=False))
-            result = run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",
+            result = run_bootstrap(model=model, run_dir=root / "bootstrap",
                                    client=fake, root=root)
             self.assertEqual(result["result"]["status"], "complete_with_additions")
             self.assertEqual(len(result["result"]["accepted_generated_operators"]), 1)

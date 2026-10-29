@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Run the three-stage cyber diagnosis on the incalmo x enterprise_b pair, judged against the
-failed-exfiltration ground truth. Run it under the model launcher so the model server is up:
+failed-exfiltration ground truth. Run it under the model runner, which names the model:
 
-    cd /home/marko/E4 && .venv/bin/python scripts/model/launch.py \
-        --profile config/models/gemma_3090.json -- .venv/bin/python scripts/cyber/diagnose.py
+    cd /home/marko/E4 && .venv/bin/python scripts/model/run.py --model gemma_3090 -- \
+        .venv/bin/python scripts/cyber/diagnose.py
 """
 from __future__ import annotations
 
 import argparse
-import json
+import dataclasses
 import os
 import sys
 from pathlib import Path
@@ -21,6 +21,7 @@ from e4.adapters.cyber import load_run
 from e4.agent.cyber.scope import scope_cases
 from e4.judge.cyber.ground_truth import FAILED_EXFILTRATION
 from e4.agent.cyber.stages import CyberModelClient, run_cyber_diagnostic
+from e4.models.analysis_model import model_from_environment
 
 RUNS = ROOT / "data/cyber"
 SCOPE_RUNS = ["dissect_qwen38_i_entb_t2", "dissect_qwen38_i_entb_t1"]   # failing, successful
@@ -29,14 +30,14 @@ SCOPE_RUNS = ["dissect_qwen38_i_entb_t2", "dissect_qwen38_i_entb_t1"]   # failin
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--seed", type=int, default=None,
-                        help="sampling seed for this try; the profile's seed when omitted")
+                        help="sampling seed for this try; the model file's seed when omitted")
     args = parser.parse_args()
 
-    profile = json.loads(Path(os.environ["E4_MODEL_PROFILE"]).read_text())
+    model = model_from_environment()
     if args.seed is not None:
-        profile["seed"] = args.seed
-    print(f"model seed {profile['seed']}", flush=True)
-    client = CyberModelClient(profile, base_url=os.environ["E4_BASE_URL"])
+        model = dataclasses.replace(model, seed=args.seed)
+    print(f"model {model.name}, seed {model.seed}", flush=True)
+    client = CyberModelClient(model)
 
     print("loading runs in scope", flush=True)
     telemetries = {}

@@ -1,0 +1,10 @@
+{
+  "base_url": "https://ai-gateway.andrew.cmu.edu",
+  "model_alias": "us.anthropic.claude-sonnet-5",
+  "api_key_env": "LITELLM_API_KEY",
+  "context_tokens": 1000000,
+  "max_generation_tokens": 8192,
+  "request_timeout_seconds": 600,
+  "temperature": 0.1,
+  "token_counting": "none"
+}

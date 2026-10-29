@@ -67,8 +67,8 @@ Inference requires a CUDA-capable GPU, CUDA 12.3 and CMake 3.22 or newer for the
 Use a new run ID for each model run:
 
 ```bash
-.venv/bin/python scripts/model/launch.py \
-  --profile config/models/gemma.json \
+.venv/bin/python scripts/model/run.py \
+  --model gemma \
   --run-id bank_firstdev_local_01 -- \
   .venv/bin/python scripts/bank/develop.py \
   --case-id bank-20210323T0630-utc8

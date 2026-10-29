@@ -182,7 +182,6 @@ def build_parser() -> argparse.ArgumentParser:
                         help="orchestrator-staged public telemetry snapshot (required for scored)")
     parser.add_argument("--trusted-evaluator-socket", type=Path,
                         help="shared host evaluator socket (required for scored)")
-    parser.add_argument("--profile", type=Path)
     return parser
 
 
@@ -194,8 +193,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     forwarded = ["--mode", "m5-diagnostic", "--case-id", args.case_id,
                  "--split", args.split, "--run-dir", str(args.run_dir),
                  "--library-root", str(args.library_root)]
-    if args.profile is not None:
-        forwarded += ["--profile", str(args.profile)]
     if args.experiment_manifest is not None:
         forwarded += ["--experiment-manifest", str(args.experiment_manifest)]
     if args.task_view_root is not None:

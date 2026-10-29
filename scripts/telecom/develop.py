@@ -13,13 +13,13 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "src"))
 
 from e4.agent.telecom.develop import replay_saved_development_dag, run_development_dag
+from e4.models.analysis_model import model_from_environment
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--split", choices=("dev",), default="dev")
-    parser.add_argument("--profile", type=Path)
     parser.add_argument("--replay-dag", type=Path,
                         help="Replay a previously saved model DAG without making a new model request")
     parser.add_argument("--verify-cache-parity", action="store_true",
@@ -27,8 +27,6 @@ def main() -> int:
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[2])
     args = parser.parse_args()
-    if args.replay_dag is None and args.profile is None:
-        parser.error("--profile is required unless --replay-dag is supplied")
     outer_run_dir = Path(os.environ["E4_RUN_DIR"]) if os.environ.get("E4_RUN_DIR") else None
     if args.replay_dag:
         output = (outer_run_dir / "development_replay" if outer_run_dir else
@@ -46,7 +44,7 @@ def main() -> int:
                           "dag_sha256": result["dag_sha256"], "cache_hits": result["cache_hits"]},
                          sort_keys=True))
         return 0
-    result = run_development_dag(args.case_id, args.split, profile_path=args.profile,
+    result = run_development_dag(args.case_id, args.split, model=model_from_environment(),
                                  run_dir=output, root=args.root)
     print(json.dumps({"run_dir": str(output), "case_id": args.case_id,
                       "selected_kpi": result["selected_kpi"],

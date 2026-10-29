@@ -53,8 +53,8 @@ class M5E4RunnerTests(unittest.TestCase):
             for mode, split, case_id in (("m5-diagnostic", "scored", "bank-20210304T0100-utc8"),
                                          ("diagnostic", "dev", DEV_CASE)):
                 command = _bwrap_command(view_root=base, run_dir=base,
-                    library_root=None, profile_relative="config/profile.json", mode=mode,
-                    case_id=case_id, split=split, endpoint="http://127.0.0.1:8080",
+                    library_root=None, model_name="gemma", mode=mode,
+                    case_id=case_id, split=split,
                     feedback_socket="e4m4-test", implementation_fingerprint_value="a" * 64)
                 inner = command[command.index("--") + 1:]
                 if mode == "m5-diagnostic":

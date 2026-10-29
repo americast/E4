@@ -51,23 +51,23 @@ The generated-operator worker (`e4.sandbox.runner`) runs code in a separate bubb
 
 ## Local model and commands
 
-The pinned offline launcher is `scripts/model/launch.py`. It verifies the profile's model manifest/hash, pinned llama.cpp revision, libraries, GPU reserve, and local-only server URL; server and client share a network-isolated namespace. Gemma and Devstral profiles both declare 32,768 context tokens, 8,192 max generation tokens, seed 42, serial requests, and a 3,072 MiB free-VRAM reserve. Their decoding/reasoning settings are model-specific in `config/models/gemma.json` and `config/models/devstral.json`; common limits do not imply identical decoding. A run creates a unique artifact directory under `artifacts/m3/model_runs/`.
+The launcher is `scripts/model/run.py --model <name>`, which reads `config/models/<name>.json`. For a model with a `local_server` block it verifies the model manifest/hash, pinned llama.cpp revision, libraries, GPU reserve, and local-only server URL, and server and client share a network-isolated namespace; a remote model (an `https` `base_url` with an `api_key_env` read from `.env`) runs in the same sandbox with the host network. Gemma and Devstral profiles both declare 32,768 context tokens, 8,192 max generation tokens, seed 42, serial requests, and a 3,072 MiB free-VRAM reserve. Their decoding/reasoning settings are model-specific in `config/models/gemma.json` and `config/models/devstral.json`; common limits do not imply identical decoding. A run creates a unique artifact directory under `artifacts/m3/model_runs/`.
 
 Frozen synthetic comparison commands:
 
 ```sh
-.venv/bin/python scripts/model/launch.py --profile config/models/gemma.json -- \
+.venv/bin/python scripts/model/run.py --model gemma -- \
   .venv/bin/python scripts/synthetic/run_benchmark.py --suite config/synthetic/suite_v3.json
-.venv/bin/python scripts/model/launch.py --profile config/models/devstral.json -- \
+.venv/bin/python scripts/model/run.py --model devstral -- \
   .venv/bin/python scripts/synthetic/run_benchmark.py --suite config/synthetic/suite_v3.json
 ```
 
-The development runner is `scripts/telecom/develop.py`; it accepts `--case-id`, `--split dev`, `--profile`, `--run-id`, and optional `--root`. Its Python implementation is `e4.agent.telecom.develop.run_development_dag(case_id, split, profile_path=..., run_dir=..., root=...)`. The model launcher owns the unique model-run directory under `artifacts/m3/model_runs/<run-id>` and binds it as `E4_RUN_DIR`; the development runner writes under its `development/` child. Each development run records `dev_manifest.json` before its first model call, appends full calls to `model_calls.jsonl`, saves the accepted DAG as `model_dag.json`, writes the replay/result record to `development_run.json`, and tracks phase status in `phase_status.json`. A direct CLI invocation, when a model endpoint is running, has this form:
+The development runner is `scripts/telecom/develop.py`; it accepts `--case-id`, `--split dev`, `--run-id`, and optional `--root`, and takes its model from the launcher's `E4_MODEL`. Its Python implementation is `e4.agent.telecom.develop.run_development_dag(case_id, split, model=..., run_dir=..., root=...)`. The model launcher owns the unique model-run directory under `artifacts/m3/model_runs/<run-id>` and binds it as `E4_RUN_DIR`; the development runner writes under its `development/` child. Each development run records `dev_manifest.json` before its first model call, appends full calls to `model_calls.jsonl`, saves the accepted DAG as `model_dag.json`, writes the replay/result record to `development_run.json`, and tracks phase status in `phase_status.json`. A direct CLI invocation, when a model endpoint is running, has this form:
 
 ```sh
-.venv/bin/python scripts/model/launch.py --profile config/models/gemma.json -- \
+.venv/bin/python scripts/model/run.py --model gemma -- \
   .venv/bin/python scripts/telecom/develop.py --case-id <frozen-dev-id> --split dev \
-  --profile config/models/gemma.json --run-id <unique-run-id>
+  --run-id <unique-run-id>
 ```
 
 The analogous development launcher profile is `config/models/devstral.json`. Use a unique run ID and the launcher for real inference so the model and child share the isolated namespace. Full-library prompt calibration is separate: append `--calibrate` to the child `scripts/synthetic/run_benchmark.py` command; it is not one of the 20 tasks. The corrected synthetic comparison selected Gemma for the first development integration; its fresh-process cache parity replay passed. The separate trusted development-only assessment is recorded in [M3_RESULTS.md](synthetic/results.md). M3 is complete; this single case does not establish a Telecom accuracy trend.

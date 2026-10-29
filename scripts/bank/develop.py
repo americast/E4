@@ -10,7 +10,6 @@ import math
 import os
 import sys
 import time
-from urllib.parse import urlsplit
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,7 +26,8 @@ from e4.synthetic.benchmark import REPAIR_LIMIT, StaticTaskError, parse_strict_j
 from e4.dsl.cache import CacheStore, implementation_fingerprint
 from e4.dsl.verifier import DAGValidationError, VerifiedDAG, verify_dag
 from e4.dsl.executor import (ExecutionFailure, SerialExecutor, execution_result_to_dict)
-from e4.agent.model_client import LocalModelClient, ModelCall
+from e4.models.analysis_model import AnalysisModel, model_from_environment
+from e4.models.client import ModelCall, ModelClient
 from e4.operators.numerics import percentile
 from e4.dsl.runtime import RuntimeContext, build_case_runtime
 
@@ -43,8 +43,8 @@ class BankDevelopmentError(RuntimeError):
     pass
 
 
-class BankModelClient(LocalModelClient):
-    """Local chat client with Bank system wording and unchanged frozen request controls."""
+class BankModelClient(ModelClient):
+    """Chat client with Bank system wording and unchanged frozen request controls."""
 
     def make_payload(self, prompt: str, *, max_tokens: int | None = None) -> dict[str, Any]:
         payload = super().make_payload(prompt, max_tokens=max_tokens)
@@ -255,26 +255,15 @@ def _task_prompt_with_repair(base_prompt: str, previous: str,
             "\n\nReturn the corrected JSON object only.")
 
 
-def run_bank_development(case_id: str, *, profile_path: Path = ROOT / "config/models/gemma.json",
+def run_bank_development(case_id: str, *, model: AnalysisModel,
                          run_dir: Path | None = None, root: Path = ROOT,
                          client: BankModelClient | None = None) -> dict[str, Any]:
-    profile_path = profile_path.resolve(strict=True)
+    profile_path = model.path.resolve(strict=True)
     if not profile_path.is_relative_to(root.resolve()):
-        raise BankDevelopmentError("Bank inference profile must resolve inside the project root")
-    configured_profile = os.environ.get("E4_MODEL_PROFILE")
-    if not configured_profile:
-        raise BankDevelopmentError("E4_MODEL_PROFILE from the approved model launcher is required")
-    if Path(configured_profile).resolve(strict=True) != profile_path:
-        raise BankDevelopmentError("Bank inference profile must match E4_MODEL_PROFILE from the approved model launcher")
-    base_url = os.environ.get("E4_BASE_URL")
-    parsed_base_url = urlsplit(base_url or "")
-    if (parsed_base_url.scheme not in {"http", "https"} or
-            parsed_base_url.hostname not in {"localhost", "127.0.0.1", "::1"} or
-            parsed_base_url.port is None):
-        raise BankDevelopmentError("E4_BASE_URL from the approved model launcher must use a local endpoint")
+        raise BankDevelopmentError("Bank model file must resolve inside the project root")
     configured = os.environ.get("E4_RUN_DIR")
     if not configured:
-        raise BankDevelopmentError("E4_RUN_DIR from the approved model launcher is required")
+        raise BankDevelopmentError("E4_RUN_DIR from scripts/model/run.py is required")
     launcher_run_dir = Path(configured).resolve(strict=True)
     if run_dir is None:
         run_dir = launcher_run_dir / "development" / case_id
@@ -316,15 +305,15 @@ def run_bank_development(case_id: str, *, profile_path: Path = ROOT / "config/mo
             json.loads((root / "config/bank/seed_playbooks.json").read_text(encoding="utf-8")), registry)
         prompt = build_bank_development_prompt(case, runtime, kpi, registry, root=root)
         prompt_sha = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        profile = json.loads(profile_path.read_text(encoding="utf-8"))
-        model = client or BankModelClient(profile, base_url=base_url)
+        profile = model.document
+        model_client = client or BankModelClient(model)
         manifest = {
             "schema_version": "e4-bank-development-manifest/1",
             "run_id": run_dir.name, "case_id": case_id, "split": "dev",
             "model_alias": profile.get("model_alias"), "profile_path": str(profile_path),
             "profile_sha256": sha256_file(profile_path), "profile": profile,
-            "request_endpoint": model.base_url, "context_tokens": model.context_tokens,
-            "max_generation_tokens": model.max_generation_tokens,
+            "request_endpoint": model_client.base_url, "context_tokens": model_client.context_tokens,
+            "max_generation_tokens": model_client.max_generation_tokens,
             "bank_input_provenance": dict(case.provenance),
             "data_sha256": telemetry.data_sha256,
             "file_sha256": dict(telemetry.file_sha256),
@@ -339,7 +328,7 @@ def run_bank_development(case_id: str, *, profile_path: Path = ROOT / "config/mo
             "adapter_source_sha256": sha256_file(ROOT / "src/e4/adapters/bank.py"),
             "operator_source_sha256": sha256_file(ROOT / "src/e4/operators/bank/operators.py"),
             "runner_source_sha256": sha256_file(Path(__file__).resolve()),
-            "model_client_source_sha256": sha256_file(ROOT / "src/e4/agent/model_client.py"),
+            "model_client_source_sha256": sha256_file(ROOT / "src/e4/models/client.py"),
             "implementation_fingerprint": implementation_fingerprint(),
             "runtime": runtime.as_dict(), "selected_primary_kpi": kpi,
             "component_identity_coverage": dict(case.provenance["component_identity_coverage"]),
@@ -362,7 +351,7 @@ def run_bank_development(case_id: str, *, profile_path: Path = ROOT / "config/mo
             repair_count = 0
             static_errors: list[Mapping[str, Any]] = []
             while True:
-                call = model.complete(repaired_prompt, task_id=f"bank_dev_{case_id}",
+                call = model_client.complete(repaired_prompt, task_id=f"bank_dev_{case_id}",
                                       attempt=repair_count + 1)
                 with calls_path.open("a", encoding="utf-8") as stream:
                     stream.write(json.dumps(call.as_dict(), ensure_ascii=False,
@@ -635,7 +624,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--case-id", required=True)
     parser.add_argument("--split", choices=("dev",), default="dev")
-    parser.add_argument("--profile", type=Path, default=ROOT / "config/models/gemma.json")
     parser.add_argument("--run-dir", type=Path)
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--controls", action="store_true",
@@ -658,7 +646,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                               "mode": "saved_dag_replay",
                               "cache_parity_passed": result["manifest"]["cache_parity_passed"]}, sort_keys=True))
             return 0
-        result = run_bank_development(args.case_id, profile_path=args.profile,
+        result = run_bank_development(args.case_id, model=model_from_environment(),
                                       run_dir=args.run_dir, root=ROOT)
         print(json.dumps({"case_id": args.case_id, "run_dir": result["run_dir"],
                           "cache_parity_passed": result["development_run"]["cache_parity_passed"],

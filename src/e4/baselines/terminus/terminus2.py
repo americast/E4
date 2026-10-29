@@ -6,7 +6,6 @@ import hashlib
 import importlib
 import inspect
 import json
-import os
 import subprocess
 import sys
 import time
@@ -108,8 +107,10 @@ def _load_profile(root: Path) -> dict[str, Any]:
         "reasoning_mode": "on",
         "reasoning_budget": 2048,
     }
+    # the reasoning budget is a server setting, kept in the model file's local_server block
+    values = {**profile, "reasoning_budget": profile.get("local_server", {}).get("reasoning_budget")}
     for key, value in expected.items():
-        if profile.get(key) != value:
+        if values.get(key) != value:
             raise TerminusSetupError(f"Gemma profile {key} differs from the frozen setting")
     return profile
 
@@ -141,14 +142,14 @@ def load_terminus2(repository: Path, *, root: Path, logs_dir: Path,
         raise TerminusSetupError(
             f"imported Terminus-2 source {imported_agent_path} is outside the verified checkout"
         )
-    endpoint = api_base or os.environ.get("E4_BASE_URL")
+    endpoint = api_base or profile["base_url"]
     parsed_endpoint = urlsplit(endpoint or "")
     if (parsed_endpoint.scheme != "http" or
             parsed_endpoint.hostname not in {"127.0.0.1", "localhost"} or
             parsed_endpoint.username is not None or parsed_endpoint.password is not None or
             parsed_endpoint.port is None or not 1 <= parsed_endpoint.port <= 65535):
         raise TerminusSetupError(
-            "E4_BASE_URL must be a local HTTP endpoint on 127.0.0.1 or localhost"
+            "the Terminus model endpoint must be a local HTTP endpoint on 127.0.0.1 or localhost"
         )
     model_name = f"openai/{profile['model_alias']}"
     agent = Terminus2(

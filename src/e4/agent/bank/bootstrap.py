@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 import shutil
 import time
 from datetime import datetime, timezone
@@ -29,7 +28,8 @@ from e4.operators.generated import (generated_spec_contract_schema, register_gen
                                     validate_generated_spec)
 from e4.agent.library import (create_library_snapshot, playbook_graph_hash,
                               snapshot_library)
-from e4.agent.model_client import LocalModelClient
+from e4.models.analysis_model import AnalysisModel
+from e4.models.client import ModelClient
 from e4.dsl.registry import OperatorRegistry
 from e4.paths import ROOT
 
@@ -266,8 +266,8 @@ def _validate_playbooks(books: list[dict[str, Any]], generated_specs: list[dict[
     return accepted, rejected
 
 
-def run_bootstrap(*, profile_path: Path, run_dir: Path,
-                  client: LocalModelClient | None = None, root: Path = ROOT,
+def run_bootstrap(*, model: AnalysisModel, run_dir: Path,
+                  client: ModelClient | None = None, root: Path = ROOT,
                   policy_path: Path | None = None) -> dict[str, Any]:
     """Generate and verify an immutable deployment library from schema-only context."""
     root = root.resolve(strict=True)
@@ -289,18 +289,17 @@ def run_bootstrap(*, profile_path: Path, run_dir: Path,
     rejection_rows: list[dict[str, Any]] = []
     model_response_obtained = False
     try:
-        profile_path = profile_path.resolve(strict=True)
+        profile_path = model.path.resolve(strict=True)
         if not profile_path.is_relative_to(root):
-            raise M4ControllerError("profile_path", "bootstrap profile must resolve inside project root")
-        profile = json.loads(profile_path.read_text(encoding="utf-8"))
+            raise M4ControllerError("profile_path", "bootstrap model file must resolve inside project root")
+        profile = model.document
         base_registry = make_m4_registry(None, [], root=root,
             audit_dir=run_dir / "audit" / "schema_bootstrap")
         seed_library = json.loads((root / "config/bank/seed_playbooks.json").read_text(encoding="utf-8"))
         context = _schema_only_context(root, base_registry, seed_library, policy)
         prompt = _prompt(context)
         prompt_hash = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
-        bootstrap_model = client or M4BootstrapModelClient(profile,
-            base_url=os.environ.get("E4_BASE_URL"),
+        bootstrap_model = client or M4BootstrapModelClient(model,
             request_timeout=float(policy["serving"]["model_timeout_seconds"]))
         call_counter = 0
         repair_count = 0

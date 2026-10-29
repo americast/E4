@@ -17,7 +17,8 @@ from e4.agent.bank.controller import (M4ControllerError, _materialize_seeds_for_
 from e4.operators.bank.query import make_m4_registry
 from e4.agent.library import (create_library_snapshot, generated_specs_from_snapshot,
                               playbook_graph_hash, snapshot_library)
-from e4.agent.model_client import ModelCall
+from e4.models.analysis_model import model_from_document
+from e4.models.client import ModelCall
 from e4.contracts import EntityRef, Evidence, RankedAnswer, ScoredCandidate, Telemetry
 from e4.dsl.verifier import DAGValidationError, verify_dag
 from e4.dsl.runtime import resolve_parameters
@@ -43,11 +44,12 @@ def _fixture_root(root: Path) -> tuple[str, Path]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     manifest["sample_config_sha256"] = sha256_file(sample_path)
     manifest_path.write_text(json.dumps(manifest, sort_keys=True), encoding="utf-8")
-    profile_path = config / "profile.json"
-    profile_path.write_text(json.dumps({"model_alias": "fake-gemma", "temperature": 1.0,
+    profile = {"base_url": "http://127.0.0.1:8080", "model_alias": "fake-gemma", "temperature": 1.0,
         "top_p": 0.95, "top_k": 64, "seed": 42, "max_generation_tokens": 8192,
-        "context_tokens": 32768, "reasoning_mode": "on"}), encoding="utf-8")
-    return case_id, profile_path
+        "context_tokens": 32768, "reasoning_mode": "on"}
+    profile_path = config / "profile.json"
+    profile_path.write_text(json.dumps(profile), encoding="utf-8")
+    return case_id, model_from_document("profile", profile, profile_path)
 
 
 def _initial_library(root: Path, library_dir: Path):
@@ -161,7 +163,7 @@ class M4ControllerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                          "node_parameters": {}, "node_bindings": {}}
@@ -188,7 +190,7 @@ class M4ControllerTests(unittest.TestCase):
             with patch.object(controller, "_validate_graph", side_effect=fail_final_stage3):
                 result = run_diagnostic(case_id, library_root=library.root,
                     run_dir=root / "atomic_stage3", feedback=FakeFeedback([False, False]),
-                    profile_path=profile, client=client, root=root)
+                    model=model, client=client, root=root)
 
             stage3 = result["result"]["stages"][2]
             self.assertEqual(calls, 4)
@@ -253,7 +255,7 @@ class M4ControllerTests(unittest.TestCase):
     def test_static_repair_budget_is_two_then_controller_advances_stage(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             seed = _plain(library.playbooks["combined_shared_candidates"]["document"])
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
@@ -262,7 +264,7 @@ class M4ControllerTests(unittest.TestCase):
                 json.dumps({"dag": seed, "runtime_overrides": {}})])
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "repair_run", feedback=FakeFeedback([True]),
-                profile_path=profile, client=client, root=root)
+                model=model, client=client, root=root)
             self.assertEqual(len(client.prompts), 4)
             first = result["result"]["stages"][0]
             self.assertEqual(first["status"], "static_validation_failed")
@@ -273,7 +275,7 @@ class M4ControllerTests(unittest.TestCase):
     def test_unknown_runtime_binding_is_static_and_gets_one_repair(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             invalid = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                 "node_parameters": {}, "node_bindings": {"answer": {"limit": "runtime.not_declared"}}}
@@ -282,7 +284,7 @@ class M4ControllerTests(unittest.TestCase):
             client = FakeClient([json.dumps(invalid), json.dumps(valid)])
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "binding_repair", feedback=FakeFeedback([True]),
-                profile_path=profile, client=client, root=root)
+                model=model, client=client, root=root)
             self.assertTrue(result["result"]["accepted"])
             self.assertEqual(result["result"]["stages"][0]["static_repairs"], 1)
             self.assertIn("undeclared runtime", client.prompts[1].casefold())
@@ -290,13 +292,13 @@ class M4ControllerTests(unittest.TestCase):
     def test_model_failure_and_truncation_each_consume_one_stage_attempt(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             client = FakeClient([{"_error": {"code": "transport_error"}},
                 {"_truncated": "{\"dag\":"}, {"_error": {"code": "transport_error"}}])
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "failed_stages", feedback=FakeFeedback([]),
-                profile_path=profile, client=client, root=root)
+                model=model, client=client, root=root)
             self.assertEqual(len(client.prompts), 3)
             self.assertEqual([row["status"] for row in result["result"]["stages"]],
                              ["model_call_failed", "truncated", "model_call_failed"])
@@ -305,7 +307,7 @@ class M4ControllerTests(unittest.TestCase):
     def test_runtime_execution_failure_is_not_repaired_with_semantic_diagnostics(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                          "node_parameters": {}, "node_bindings": {}}
@@ -319,7 +321,7 @@ class M4ControllerTests(unittest.TestCase):
             feedback = FakeFeedback([False])
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "runtime_failure", feedback=feedback,
-                profile_path=profile, client=client, root=root)
+                model=model, client=client, root=root)
             self.assertEqual(len(client.prompts), 3)
             self.assertEqual(result["result"]["stages"][1]["status"], "runtime_execution_failed")
             self.assertEqual(result["result"]["stages"][1]["static_repairs"], 0)
@@ -332,7 +334,7 @@ class M4ControllerTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                          "node_parameters": {}, "node_bindings": {}}
@@ -340,7 +342,7 @@ class M4ControllerTests(unittest.TestCase):
             with self.assertRaisesRegex(M4ControllerError, "trusted evaluator"):
                 run_diagnostic(case_id, library_root=library.root,
                     run_dir=root / "feedback_failure", feedback=Unavailable(),
-                    profile_path=profile, client=client, root=root)
+                    model=model, client=client, root=root)
             self.assertEqual(len(client.prompts), 1)
             record = json.loads((root / "feedback_failure/diagnostic_result.json").read_text())
             self.assertEqual(record["status"], "failed")
@@ -349,8 +351,8 @@ class M4ControllerTests(unittest.TestCase):
     def test_runtime_overrides_are_typed_bounded_and_protected(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
-            del profile
+            case_id, model = _fixture_root(root)
+            del model
             from e4.adapters.bank import load_bank_case
             case = load_bank_case(case_id, "dev", root=root)
             default = build_m4_runtime(case.alert, root=root)
@@ -436,7 +438,7 @@ class M4ControllerTests(unittest.TestCase):
     def test_stage1_accepts_early_and_stage2_reuses_shared_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                          "node_parameters": {}, "node_bindings": {}}
@@ -444,7 +446,7 @@ class M4ControllerTests(unittest.TestCase):
             stage1_feedback = FakeFeedback([True])
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "stage1_run", feedback=stage1_feedback,
-                profile_path=profile, client=stage1_client, root=root)
+                model=model, client=stage1_client, root=root)
             self.assertTrue(result["result"]["accepted"])
             self.assertEqual(len(stage1_client.prompts), 1)
             self.assertEqual(len(result["result"]["stages"]), 1)
@@ -456,7 +458,7 @@ class M4ControllerTests(unittest.TestCase):
             stage2_feedback = FakeFeedback([False, True])
             result2 = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "stage2_run", feedback=stage2_feedback,
-                profile_path=profile, client=stage2_client, root=root)
+                model=model, client=stage2_client, root=root)
             self.assertTrue(result2["result"]["accepted"])
             self.assertEqual(len(stage2_client.prompts), 2)
             stage1_exec = result2["result"]["stages"][0]["execution"]
@@ -473,7 +475,7 @@ class M4ControllerTests(unittest.TestCase):
     def test_stage3_useful_synthesized_scorer_reaches_synthetic_cause_and_is_admitted(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                          "node_parameters": {}, "node_bindings": {}}
@@ -485,7 +487,7 @@ class M4ControllerTests(unittest.TestCase):
             client = FakeClient(responses)
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "stage3_run", feedback=FakeFeedback(expected_component="Tomcat01"),
-                profile_path=profile, client=client, root=root)
+                model=model, client=client, root=root)
             self.assertTrue(result["result"]["accepted"])
             self.assertEqual(result["result"]["accepted_stage"], "stage3_synthesize")
             self.assertTrue(any(key.startswith("evolved.synthetic_metric_score@")
@@ -496,7 +498,7 @@ class M4ControllerTests(unittest.TestCase):
     def test_rejected_empty_stage3_operator_is_not_admitted(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
-            case_id, profile = _fixture_root(root)
+            case_id, model = _fixture_root(root)
             library = _initial_library(root, root / "source_library")
             selection = {"playbook": "combined_shared_candidates", "runtime_overrides": {},
                          "node_parameters": {}, "node_bindings": {}}
@@ -507,7 +509,7 @@ class M4ControllerTests(unittest.TestCase):
                 json.dumps({"operators": [spec], "dag": stage3_dag, "runtime_overrides": {}})])
             result = run_diagnostic(case_id, library_root=library.root,
                 run_dir=root / "stage3_rejected", feedback=FakeFeedback(expected_component="Tomcat01"),
-                profile_path=profile, client=client, root=root)
+                model=model, client=client, root=root)
             self.assertFalse(result["result"]["accepted"])
             self.assertFalse(any(key.startswith("evolved.test_empty_scorer@")
                                  for key in result["snapshot"].operators))
