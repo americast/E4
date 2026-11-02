@@ -10,6 +10,51 @@ from .registry import OperatorRegistry, OperatorSpec
 from .runtime import RuntimeContext, RuntimeResolutionError, _freeze, _validate_parameter
 
 
+def _validate_profile_parameter(operator: Any, name: str, value: Any, node_id: str) -> None:
+    """Validate paper-profile parameters that carry trusted semantic enums."""
+    if operator.name != "paper.answers.weighted_consensus" or name != "family_weights":
+        return
+    from .paper_starter import normalize_consensus_weights
+    try:
+        normalize_consensus_weights(value)
+    except (TypeError, ValueError) as exc:
+        raise DAGValidationError("parameter_value_not_allowed", str(exc), node_id,
+                                 {"parameter": name}) from exc
+
+
+def _validate_profile_parameters(operator: Any, explicit: Mapping[str, Any],
+        bindings: Mapping[str, str], runtime: RuntimeContext | None, node_id: str) -> None:
+    """Validate paper-only cross-parameter constraints after precedence resolution."""
+    if operator.name != "paper.bank.log_pattern_contrast":
+        return
+    values: dict[str, Any] = {}
+    for name in ("alpha", "maximum_patterns", "resamples"):
+        if name in explicit:
+            values[name] = explicit[name]
+            continue
+        bound = bindings.get(name)
+        if bound is not None and bound.startswith("runtime.") and runtime is not None:
+            field_name = bound.removeprefix("runtime.")
+            if field_name in runtime.snapshot.values:
+                values[name] = runtime.snapshot.values[field_name]
+                continue
+        spec = operator.parameters.get(name)
+        if spec is not None and spec.runtime_field and runtime is not None:
+            if spec.runtime_field in runtime.snapshot.values:
+                values[name] = runtime.snapshot.values[spec.runtime_field]
+                continue
+        if spec is not None and spec.has_default:
+            values[name] = spec.default
+    if len(values) != 3:
+        return
+    from .paper_starter import validate_log_pattern_configuration
+    try:
+        validate_log_pattern_configuration(values)
+    except (TypeError, ValueError) as exc:
+        raise DAGValidationError("parameter_value_not_allowed", str(exc), node_id,
+            {"parameters": {key: values[key] for key in sorted(values)}}) from exc
+
+
 class DAGValidationError(ValueError):
     def __init__(self, code: str, message: str, node_id: str | None = None,
                  details: Mapping[str, Any] | None = None):
@@ -149,8 +194,11 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
                                              node_id, {"reference": ref})
                 legal_inputs = {
                     "Aggregate": {"Telemetry", "Aggregate"},
-                    "CandidateSet": {"Telemetry", "Aggregate", "CandidateSet"},
-                    "ScoredCandidates": {"Telemetry", "Aggregate", "CandidateSet", "ScoredCandidates"},
+                    "PaperStarterInput": {"Telemetry"},
+                    "CandidateSet": {"Telemetry", "PaperStarterInput", "Aggregate", "CandidateSet"},
+                    "PaperCandidateSet": {"PaperStarterInput", "PaperCandidateSet"},
+                    "ScoredCandidates": {"Telemetry", "PaperStarterInput", "Aggregate",
+                                         "CandidateSet", "PaperCandidateSet", "ScoredCandidates"},
                     "RankedAnswer": {"ScoredCandidates"},
                 }
                 if actual_type not in legal_inputs.get(operator.output_type, set()):
@@ -159,7 +207,7 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
                                              node_id, {"reference": ref})
                 depth = max(depth, node_by_id[ref].depth + 1)
                 consumers.setdefault(ref, []).append((node_id, port.name, operator))
-                if actual_type == "CandidateSet" and operator.output_type == "ScoredCandidates":
+                if actual_type in {"CandidateSet", "PaperCandidateSet"} and operator.output_type == "ScoredCandidates":
                     candidate_direct_scorers.setdefault(ref, []).append(node_id)
             normalized_inputs[port.name] = refs
         if set(params) - set(operator.parameters):
@@ -184,6 +232,7 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
             if runtime is not None and name not in params and field_name in runtime.snapshot.values:
                 try:
                     _validate_parameter(operator.parameters[name], runtime.snapshot.values[field_name])
+                    _validate_profile_parameter(operator, name, runtime.snapshot.values[field_name], node_id)
                 except RuntimeResolutionError as exc:
                     raise DAGValidationError("binding_type_mismatch",
                                              f"{field} is incompatible with parameter {name}: {exc}",
@@ -196,6 +245,7 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
             else:
                 try:
                     _validate_parameter(operator.parameters[name], value)
+                    _validate_profile_parameter(operator, name, value, node_id)
                 except RuntimeResolutionError as exc:
                     raise DAGValidationError(exc.code, str(exc), node_id, {"parameter": name}) from exc
         # Ensure omitted required values can be resolved before loading case telemetry.
@@ -211,14 +261,21 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
                     if spec.runtime_field in runtime.snapshot.values:
                         try:
                             _validate_parameter(spec, runtime.snapshot.values[spec.runtime_field])
+                            _validate_profile_parameter(operator, name,
+                                runtime.snapshot.values[spec.runtime_field], node_id)
                         except RuntimeResolutionError as exc:
                             raise DAGValidationError("binding_type_mismatch",
                                 f"runtime.{spec.runtime_field} is incompatible with parameter {name}: {exc}",
                                 node_id, {"field": f"runtime.{spec.runtime_field}",
                                           "parameter": name, "expected_type": spec.value_type}) from exc
+                    elif spec.has_default and spec.default == "auto":
+                        if not spec.estimator:
+                            raise DAGValidationError("auto_not_supported",
+                                f"default auto for {name} has no declared estimator", node_id)
                     elif spec.has_default:
                         try:
                             _validate_parameter(spec, spec.default)
+                            _validate_profile_parameter(operator, name, spec.default, node_id)
                         except RuntimeResolutionError as exc:
                             raise DAGValidationError("default_type_mismatch",
                                 f"default for parameter {name} is invalid: {exc}", node_id,
@@ -229,6 +286,7 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
                 if spec.required and not spec.runtime_field and not spec.has_default:
                     raise DAGValidationError("missing_required_parameter",
                                              f"required parameter {name} is unresolved", node_id)
+        _validate_profile_parameters(operator, params, bindings, runtime, node_id)
         node = VerifiedNode(node_id, operator, normalized_inputs, dict(params), dict(bindings), depth)
         node_by_id[node_id] = node
         type_by_id[node_id] = operator.output_type
@@ -248,7 +306,8 @@ def verify_dag(document: Mapping[str, Any], registry: OperatorRegistry,
     if any(node_id != return_node and not consumers.get(node_id) for node_id in node_by_id):
         unused = [node_id for node_id in node_by_id if node_id != return_node and not consumers.get(node_id)]
         raise DAGValidationError("unused_binding", f"node outputs are unused: {unused}", details={"node_ids": unused})
-    candidate_nodes = [node_id for node_id, value_type in type_by_id.items() if value_type == "CandidateSet"]
+    candidate_nodes = [node_id for node_id, value_type in type_by_id.items()
+                       if value_type in {"CandidateSet", "PaperCandidateSet"}]
     for candidate_id in candidate_nodes:
         if not candidate_direct_scorers.get(candidate_id):
             raise DAGValidationError("candidate_not_scored",

@@ -13,6 +13,7 @@ from typing import Any, Callable, Mapping
 
 from .cache import CacheStore, digest_value, implementation_fingerprint
 from .contracts import (Aggregate, CandidateSet, ExecutionResult, NodeRecord,
+                        PaperCandidateSet, PaperStarterInput,
                         RankedAnswer, RuntimeSnapshot, ScoredCandidates,
                         Telemetry, Window)
 from .dag import DAGValidationError, VerifiedDAG, verify_dag
@@ -97,9 +98,14 @@ class SerialExecutor:
             raise ExecutionFailure("external injection is restricted to declared external source operators", (),
                 {"code": "external_override_forbidden", "node_id": invalid_external[0],
                  "node_ids": sorted(invalid_external)})
+        starter_input = next((value for value in external_values.values()
+                              if isinstance(value, PaperStarterInput)), None)
         telemetry = next((value for value in external_values.values() if isinstance(value, Telemetry)), None)
+        telemetry = telemetry or (starter_input.telemetry if starter_input else None)
         external_fingerprints = {
-            key: (value.data_sha256 if isinstance(value, Telemetry) else digest_value(value))
+            key: (value.data_sha256 if isinstance(value, Telemetry)
+                  else value.telemetry.data_sha256 if isinstance(value, PaperStarterInput)
+                  else digest_value(value))
             for key, value in external_values.items()}
         if telemetry:
             case_id = case_id or telemetry.case_id
@@ -154,7 +160,8 @@ class SerialExecutor:
                     for name, parameter in spec.parameters.items())
                 resolved = resolve_parameters(spec.parameters, node.params, node.bindings,
                                               runtime, self.registry.estimators,
-                                              reference_data=_reference_only(telemetry) if needs_estimator else None)
+                                              reference_data=_reference_only(telemetry, input_values)
+                                              if needs_estimator else None)
                 cache_key = effective_cache.key(
                     case_id=case_id, data_sha256=data_sha256, file_sha256=file_sha256,
                     windows={"reference": reference, "alert": alert},
@@ -238,8 +245,9 @@ class SerialExecutor:
 
 
 def _validate_output(output_type: str, value: Any, node_id: str) -> None:
-    expected = {"Telemetry": Telemetry, "Aggregate": Aggregate,
-                "CandidateSet": CandidateSet, "ScoredCandidates": ScoredCandidates,
+    expected = {"Telemetry": Telemetry, "PaperStarterInput": PaperStarterInput,
+                "Aggregate": Aggregate, "CandidateSet": CandidateSet,
+                "PaperCandidateSet": PaperCandidateSet, "ScoredCandidates": ScoredCandidates,
                 "RankedAnswer": RankedAnswer}.get(output_type)
     if expected is None or not isinstance(value, expected):
         raise RuntimeResolutionError("operator_output_type",
@@ -253,6 +261,10 @@ def _row_count(value: Any) -> int:
         return sum(item.support for item in value.rows)
     if isinstance(value, CandidateSet):
         return len(value.candidates)
+    if isinstance(value, PaperStarterInput):
+        return len(value.telemetry.metrics) + len(value.telemetry.spans)
+    if isinstance(value, PaperCandidateSet):
+        return len(value.candidates)
     if isinstance(value, ScoredCandidates):
         return len(value.candidates)
     if isinstance(value, RankedAnswer):
@@ -260,17 +272,31 @@ def _row_count(value: Any) -> int:
     return 0
 
 
-def _reference_only(telemetry: Telemetry | None) -> Any:
+def _reference_only(telemetry: Telemetry | PaperStarterInput | None,
+                    inputs: Mapping[str, Any] | None = None) -> Any:
+    starter = telemetry if isinstance(telemetry, PaperStarterInput) else next(
+        (value for value in (inputs or {}).values() if isinstance(value, PaperStarterInput)), None)
+    if starter is not None:
+        telemetry = starter.telemetry
     if telemetry is None:
         return None
     # A bounded view object prevents estimators from seeing alert-window samples.
-    return MappingProxyType({
+    result = {
         "window": telemetry.reference_window,
         "metrics": tuple(point for point in telemetry.metrics
                           if telemetry.reference_window.contains(point.timestamp_ms_utc)),
         "spans": tuple(span for span in telemetry.spans
                         if telemetry.reference_window.contains(span.start_ms_utc)),
-    })
+    }
+    if starter is not None:
+        result["sessions"] = (None if starter.sessions is None else tuple(
+            item for item in starter.sessions
+            if telemetry.reference_window.contains(item.timestamp_ms_utc)))
+        result["urls"] = (None if starter.urls is None else tuple(
+            item for item in starter.urls
+            if telemetry.reference_window.contains(item.timestamp_ms_utc)))
+        result["capabilities"] = starter.capabilities
+    return MappingProxyType(result)
 
 
 def _parameter_requests_auto(name, parameter, node, runtime) -> bool:
@@ -278,9 +304,17 @@ def _parameter_requests_auto(name, parameter, node, runtime) -> bool:
         return node.params[name] == "auto"
     field = node.bindings.get(name)
     if field is not None and field.startswith("runtime."):
-        return runtime.snapshot.values.get(field.removeprefix("runtime.")) == "auto"
+        value = runtime.snapshot.values.get(field.removeprefix("runtime."), None)
+        if value is not None:
+            return value == "auto"
+        return bool(parameter.has_default and parameter.default == "auto")
     if parameter.runtime_field:
-        return runtime.snapshot.values.get(parameter.runtime_field) == "auto"
+        value = runtime.snapshot.values.get(parameter.runtime_field, None)
+        if value is not None:
+            return value == "auto"
+        return bool(parameter.has_default and parameter.default == "auto")
+    if parameter.has_default:
+        return parameter.default == "auto"
     return False
 
 

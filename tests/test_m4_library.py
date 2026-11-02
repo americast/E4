@@ -126,6 +126,189 @@ class LibrarySnapshotTests(unittest.TestCase):
             self.assertEqual(snapshot_library(root).snapshot_id, initial.snapshot_id)
             self.assertEqual(initial.path.read_bytes(), sha_before)
 
+    def test_typed_profile_and_input_requirements_survive_snapshot_reload(self):
+        spec = validate_generated_spec({
+            "name": "evolved.typed_roundtrip", "version": "v1",
+            "description": "typed contract fixture", "family": "fixture",
+            "input_ports": [{"name": "data", "type": "Aggregate"}],
+            "output_type": "Aggregate", "parameters": {},
+            "authoring_profile": "typed-records-v1",
+            "input_requirements": {"data": {
+                "source_columns": {"trace/trace_span.csv": ["duration"]},
+                "statistics": ["per_trace_mean"], "group_by": ["component"],
+                "support_unit": "trace_id", "coverage": "full_window"}},
+            "source": "def operator(inputs, params, runtime):\n    return inputs['data']\n",
+        })
+        legacy = generated("evolved.legacy_hash_fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshot = self._initial(root, [legacy, spec])
+            loaded = load_library_snapshot(snapshot.path)
+            rows = {row["name"]: row for row in generated_specs_from_snapshot(loaded)}
+            restored = rows[spec["name"]]
+            self.assertEqual(restored["authoring_profile"], "typed-records-v1")
+            self.assertEqual(restored["input_requirements"], spec["input_requirements"])
+            # The optional metadata remains omitted for legacy specs, preserving
+            # their historical normalized payload and signature exactly.
+            self.assertNotIn("authoring_profile", rows[legacy["name"]])
+            self.assertNotIn("input_requirements", rows[legacy["name"]])
+
+    def test_self_rehashed_snapshot_rejects_tampered_typed_profile_or_requirements(self):
+        spec = validate_generated_spec({
+            "name": "evolved.typed_tamper", "version": "v1",
+            "description": "typed contract fixture", "family": "fixture",
+            "input_ports": [{"name": "data", "type": "Aggregate"}],
+            "output_type": "Aggregate", "parameters": {},
+            "authoring_profile": "typed-records-v1",
+            "input_requirements": {"data": {
+                "source_columns": {"trace/trace_span.csv": ["duration"]},
+                "statistics": ["per_trace_mean"], "group_by": ["component"],
+                "support_unit": "trace_id", "coverage": "full_window"}},
+            "source": "def operator(inputs, params, runtime):\n    return inputs['data']\n",
+        })
+        for field, mutate in (
+            ("authoring_profile", lambda row: row.__setitem__("authoring_profile", "legacy")),
+            ("input_requirements", lambda row: row["input_requirements"]["data"].__setitem__("coverage", "page")),
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                snapshot = self._initial(root, [spec])
+                envelope = json.loads(snapshot.path.read_text())
+                entry = next(row for row in envelope["payload"]["operators"]
+                             if row["name"] == spec["name"])
+                mutate(entry["signature"])
+                canonical = json.dumps(envelope["payload"], ensure_ascii=False, sort_keys=True,
+                                       separators=(",", ":"), allow_nan=False).encode()
+                envelope["snapshot_id"] = hashlib.sha256(canonical).hexdigest()
+                path = root / f"{envelope['snapshot_id']}.json"
+                path.write_text(json.dumps(envelope, ensure_ascii=False, sort_keys=True,
+                                           separators=(",", ":")) + "\n")
+                with self.assertRaises(LibraryIntegrityError):
+                    load_library_snapshot(path)
+
+    def test_composite_program_calls_legacy_operator_and_nested_retained_macro_roundtrip(self):
+        from e4core.m4_composite import normalize_composite_spec
+        from e4core.m4_library import _operator_registry_from_rows
+        from e4core.m4_data import make_m4_registry
+
+        project = Path(__file__).resolve().parents[1]
+        primitive_registry = make_m4_registry(None, [], root=project)
+        legacy = validate_generated_spec({
+            "name": "evolved.log_pattern_scorer", "version": "v1",
+            "description": "frozen legacy scorer signature fixture", "family": "legacy",
+            "input_ports": [{"name": "data", "type": "CandidateSet"}],
+            "output_type": "ScoredCandidates", "parameters": {},
+            "source": "def operator(inputs, params, runtime):\n    return inputs['data']\n",
+        })
+        first_raw = {"name": "evolved.reusable_legacy_pipeline", "version": "v1",
+            "description": "closed wrapper around the retained scorer", "family": "fixture",
+            "input_ports": [{"name": "data", "type": "CandidateSet"}],
+            "output_type": "ScoredCandidates", "parameters": {},
+            "authoring_profile": "operator-dag-v1",
+            "program": {"schema_version": "e4-operator-dag/1", "nodes": [{
+                "id": "score", "operator": legacy["name"], "version": legacy["version"],
+                "inputs": {"data": "$input.data"}, "params": {}, "bindings": {}}],
+                "return": {"node": "score"}}}
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            snapshot = create_library_snapshot({"examples": {}}, [legacy, first_raw], [],
+                {"bootstrap": "closed-composite-test"}, root,
+                builtin_specs=primitive_registry.signatures())
+            loaded = load_library_snapshot(snapshot.path)
+            active = generated_specs_from_snapshot(loaded)
+            first = next(spec for spec in active if spec["name"] == first_raw["name"])
+            self.assertEqual(first["program"], first_raw["program"])
+            self.assertEqual(first["program"]["nodes"][0]["operator"], legacy["name"])
+
+            nested_registry = _operator_registry_from_rows(loaded.document["operators"])
+            second_raw = {"name": "evolved.reusable_nested_pipeline", "version": "v1",
+                "description": "closed wrapper around a retained composite", "family": "fixture",
+                "input_ports": [{"name": "data", "type": "CandidateSet"}],
+                "output_type": "ScoredCandidates", "parameters": {},
+                "authoring_profile": "operator-dag-v1",
+                "program": {"schema_version": "e4-operator-dag/1", "nodes": [{
+                    "id": "nested", "operator": first["name"], "version": first["version"],
+                    "inputs": {"data": "$input.data"}, "params": {}, "bindings": {}}],
+                    "return": {"node": "nested"}}}
+            second = normalize_composite_spec(second_raw, nested_registry,
+                composite_specs=[row for row in active if row.get("authoring_profile") == "operator-dag-v1"])
+            admitted = admit_after_accepted(loaded, [second], [],
+                {"source": "nested_macro_reuse"}, accepted=True,
+                verified_reachable_operator_keys={f"{second['name']}@{second['version']}"},
+                invocation_case_id="fixture-case-nested")
+            reloaded = load_library_snapshot(admitted.path)
+            restored = {spec["name"]: spec for spec in generated_specs_from_snapshot(reloaded)}
+            self.assertEqual(restored[second["name"]]["program"], second["program"])
+            self.assertIn(f"{first['name']}@{first['version']}",
+                restored[second["name"]]["dependencies"])
+
+    def test_cap_eviction_removes_composites_and_playbooks_depending_on_evicted_legacy_operator(self):
+        from e4core.m4_composite import normalize_composite_spec
+
+        legacy = validate_generated_spec({
+            "name": "evolved.aaa_legacy", "version": "v1",
+            "description": "old retained operator used by a composite", "family": "legacy",
+            "input_ports": [{"name": "data", "type": "Aggregate"}],
+            "output_type": "Aggregate", "parameters": {},
+            "source": "def operator(inputs, params, runtime):\n    return inputs['data']\n",
+        })
+        first = {"name": "evolved.pipeline_a", "version": "v1",
+            "description": "composite over the retained legacy operator", "family": "fixture",
+            "input_ports": [{"name": "data", "type": "Aggregate"}],
+            "output_type": "Aggregate", "parameters": {},
+            "authoring_profile": "operator-dag-v1",
+            "program": {"schema_version": "e4-operator-dag/1", "nodes": [{
+                "id": "legacy", "operator": legacy["name"], "version": legacy["version"],
+                "inputs": {"data": "$input.data"}, "params": {}, "bindings": {}}],
+                "return": {"node": "legacy"}}}
+        fillers = [generated(f"evolved.filler_{index}") for index in range(8)]
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            initial = create_library_snapshot({"examples": {}}, [legacy, first, *fillers], [],
+                {"bootstrap": "eviction-dependency-fixture"}, root,
+                builtin_specs=builtins())
+            initial = record_library_invocation(initial, invocation_case_id="warm-fillers",
+                used_operator_keys={f"{row['name']}@{row['version']}" for row in fillers},
+                used_playbook_names=set())
+            active = generated_specs_from_snapshot(initial)
+            first_spec = next(row for row in active if row["name"] == first["name"])
+            validation_registry = __import__("e4core.m4_library", fromlist=[
+                "_operator_registry_from_rows"])._operator_registry_from_rows(initial.document["operators"])
+            second_raw = {"name": "evolved.pipeline_b", "version": "v1",
+                "description": "nested retained composite", "family": "fixture",
+                "input_ports": [{"name": "data", "type": "Aggregate"}],
+                "output_type": "Aggregate", "parameters": {},
+                "authoring_profile": "operator-dag-v1",
+                "program": {"schema_version": "e4-operator-dag/1", "nodes": [{
+                    "id": "nested", "operator": first_spec["name"], "version": first_spec["version"],
+                    "inputs": {"data": "$input.data"}, "params": {}, "bindings": {}}],
+                    "return": {"node": "nested"}}}
+            second = normalize_composite_spec(second_raw, validation_registry,
+                composite_specs=[row for row in active if row.get("authoring_profile") == "operator-dag-v1"])
+            book = {"name": "pipeline_b_book", "document": {"schema_version": "e4-dag/1",
+                "nodes": [
+                    {"id": "input", "operator": "bank.test0", "version": "1",
+                     "inputs": {}, "params": {}, "bindings": {}},
+                    {"id": "pipeline", "operator": second["name"], "version": second["version"],
+                     "inputs": {"data": "input"}, "params": {}, "bindings": {}}],
+                "return": {"node": "pipeline"}}}
+            graph_hash = playbook_graph_hash(book["document"])
+            updated = admit_after_accepted(initial, [second], [book],
+                {"source": "eviction-dependency-fixture"}, accepted=True,
+                verified_reachable_operator_keys={f"{second['name']}@{second['version']}"},
+                invocation_case_id="eviction-fixture-case",
+                used_operator_keys={f"{legacy['name']}@{legacy['version']}",
+                    f"{first_spec['name']}@{first_spec['version']}",
+                    f"{second['name']}@{second['version']}"},
+                verified_playbook_graph_hashes={graph_hash})
+            lineage = updated.document["lineage"][-1]
+            removed = set(lineage["evicted_operator_keys"]) | set(
+                lineage["dependency_invalidated_composite_keys"])
+            self.assertIn(f"{legacy['name']}@{legacy['version']}", removed)
+            self.assertIn(f"{first_spec['name']}@{first_spec['version']}", removed)
+            self.assertIn(f"{second['name']}@{second['version']}", removed)
+            self.assertNotIn("pipeline_b_book", updated.playbooks)
+
     def test_current_m4_registry_must_match_snapshot_builtin_signatures(self):
         from e4core.m4_data import make_m4_registry
         project = Path(__file__).resolve().parents[1]

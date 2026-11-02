@@ -1,0 +1,13 @@
+{
+  "schema_version": "e4-paper-starter-runtime/1",
+  "analysis_block_minutes": 1,
+  "analysis_block_rationale": "One-minute per-window-relative blocks are a fixed profile choice made before any scored-case analysis to retain temporal resolution in Bank's 30-minute windows. The same grain applies to metric contrasts and native-log composition. Fine blocks provide more test units but need explicit multiple-testing control; block aggregation alone does not guarantee statistical independence.",
+  "maximum_native_log_pattern_groups": 100000,
+  "log_token_normalization": {
+    "preserve_three_digit_codes": true,
+    "replace_uuid_ip_long_hex_and_long_numeric_identifiers": true,
+    "maximum_tokens_per_line": 256,
+    "description": "Bounded normalized token text plus a SHA-256 motif digest is retained for explainable row-local template matching; raw log lines, stack traces, and high-cardinality identifiers stay local. These motifs are not session event sequences and do not infer event success or cross-record order."
+  },
+  "log_pattern_multiple_testing": "Bonferroni within component/log_name family"
+}

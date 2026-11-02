@@ -13,6 +13,7 @@ if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
 from e4core.m5_manifest import ROOT, build_frozen_manifest
+from scripts.run_e4_revision import build_revision_metadata
 
 
 def main() -> int:
@@ -27,6 +28,8 @@ def main() -> int:
                         help="setup_terminus.py output containing the immutable Docker image ID")
     parser.add_argument("--output", type=Path)
     parser.add_argument("--root", type=Path, default=ROOT)
+    parser.add_argument("--reuse-terminus-baseline", action="store_true",
+                        help="pin the approved immutable Terminus baseline for an exploratory E4-only revision")
     args = parser.parse_args()
     target = args.output or (args.root / "artifacts/m5/experiments" / args.run_id / "frozen_manifest.json")
     source_pin = json.loads(args.harbor_source_pin.read_text(encoding="utf-8"))
@@ -34,6 +37,8 @@ def main() -> int:
     source_path = Path(source_pin["harbor_source_path"])
     if not source_path.is_absolute():
         source_path = args.root / source_path
+    revision_metadata = (build_revision_metadata(root=args.root)
+                         if args.reuse_terminus_baseline else None)
     manifest = build_frozen_manifest(
         root=args.root, run_id=args.run_id,
         terminus_upstream_pin=source_pin,
@@ -43,6 +48,7 @@ def main() -> int:
         initial_library_path=None,
         initial_library_snapshot_id=None,
         bootstrap_result_path=args.bootstrap_result,
+        revision_metadata=revision_metadata,
         output_path=target)
     print(json.dumps({"manifest": str(target), "status": manifest["status"],
                       "case_count": len(manifest["case_ids"]),

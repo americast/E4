@@ -6,6 +6,7 @@ dependencies = [
   "numpy==2.2.6",
   "scipy==1.15.3",
   "scikit-learn==1.7.2",
+  "mypy==1.19.1",
 ]
 
 [tool.ruff]

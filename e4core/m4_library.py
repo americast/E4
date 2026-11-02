@@ -15,10 +15,23 @@ from types import MappingProxyType
 from typing import Any, Iterable, Mapping, Sequence
 
 from .m4_generated import validate_generated_spec
+from .registry import OperatorRegistry, OperatorSpec, PortSpec
+from .runtime import ParameterSpec
 
 
 SCHEMA_VERSION = "e4-m4-library/1"
 TOTAL_OPERATOR_CAP = 19
+LEGACY_CAPACITY_POLICY = "legacy-v1"
+PAPER_STARTER_CAPACITY_POLICY = "reconstructed-paper-starter-v1"
+_CAPACITY_POLICIES = {LEGACY_CAPACITY_POLICY, PAPER_STARTER_CAPACITY_POLICY}
+_PAPER_UTILITY_SIGNATURES = {
+    "case.telemetry": ("Telemetry", "utility"),
+    "paper.input.prepare": ("PaperStarterInput", "paper_data_access"),
+    "bank.public.query": ("Aggregate", "bank_public_query"),
+    "bank.public.project": ("Aggregate", "bank_public_projection"),
+    "bank.metrics.aggregate": ("Aggregate", "bank_aggregation"),
+    "bank.traces.aggregate": ("Aggregate", "bank_aggregation"),
+}
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 _VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._+-]{0,127}$")
 _SNAPSHOT_ID = re.compile(r"^[0-9a-f]{64}$")
@@ -93,6 +106,35 @@ def operator_key(spec: Mapping[str, Any]) -> str:
     return f"{name}@{version}"
 
 
+def _is_paper_utility(row: Mapping[str, Any]) -> bool:
+    """Recognize only the frozen builtin plumbing contracts as uncounted utilities.
+
+    Operator families are model-authored for generated operators, so neither a
+    `utility` family nor a utility marker can exempt a proposal from retention.
+    """
+    if row.get("kind") != "builtin":
+        return False
+    signature = row.get("signature", {})
+    expected = _PAPER_UTILITY_SIGNATURES.get(row.get("name"))
+    if expected is None:
+        return False
+    output_type, family = expected
+    if signature.get("output_type") != output_type or signature.get("family") != family:
+        return False
+    return (row.get("name") != "case.telemetry" or
+            signature.get("external_input") is True)
+
+
+def _paper_counts(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    utilities = [row for row in rows if _is_paper_utility(row)]
+    diagnostics = [row for row in rows if not _is_paper_utility(row)]
+    return {"diagnostic_operator_count": len(diagnostics),
+            "utility_operator_count": len(utilities),
+            "utility_operator_families": dict(sorted(Counter(
+                str(row.get("signature", {}).get("family", "unspecified"))
+                for row in utilities).items()))}
+
+
 def _validate_identity(name: Any, version: Any) -> None:
     if not isinstance(name, str) or not _NAME.fullmatch(name) or name in {".", ".."} or ".." in name.split("."):
         raise LibraryError(f"unsafe library identity name: {name!r}")
@@ -117,7 +159,104 @@ def _normalize_builtin(spec: Mapping[str, Any]) -> dict[str, Any]:
             "invoked_case_ids": [], "admission_provenance": {"source": "pinned_builtin_registry"}}
 
 
-def _normalize_generated(spec: Mapping[str, Any], *, kind: str) -> dict[str, Any]:
+def _is_composite_spec(spec: Mapping[str, Any]) -> bool:
+    return spec.get("authoring_profile") == "operator-dag-v1"
+
+
+def _operator_registry_from_rows(rows: Sequence[Mapping[str, Any]]) -> OperatorRegistry:
+    """Rebuild signature-only operators for snapshot DSL validation; no code is executed."""
+    registry = OperatorRegistry()
+
+    def unavailable_implementation(*_args, **_kwargs):
+        raise LibraryIntegrityError("signature-only operator catalog cannot execute")
+
+    for item in rows:
+        signature = item.get("signature", {})
+        raw_ports = signature.get("inputs", signature.get("input_ports", []))
+        ports = tuple(PortSpec(row["name"], row.get("type", row.get("value_type")),
+            row.get("required", True), row.get("variadic", False),
+            row.get("minimum_items", 1), row.get("maximum_items")) for row in raw_ports)
+        parameters = {}
+        for name, row in signature.get("parameters", {}).items():
+            parameters[name] = ParameterSpec(name=name,
+                value_type=row.get("type", row.get("value_type")),
+                required=row.get("required", False), nullable=row.get("nullable", False),
+                default=row.get("default"), has_default=row.get("has_default", "default" in row),
+                runtime_field=row.get("runtime_field"), estimator=None,
+                description=row.get("description", ""), choices=tuple(row.get("choices", ())),
+                constraints=row.get("constraints", {}))
+        external = bool(signature.get("external_input", False))
+        registry.register(OperatorSpec(name=item["name"], version=item["version"],
+            inputs=ports, output_type=signature["output_type"], parameters=parameters,
+            family=signature.get("family", "library"), cacheable=False,
+            implementation=None if external else unavailable_implementation,
+            description=signature.get("description", ""),
+            external_input=external))
+    return registry
+
+
+def _composite_specs_from_rows(rows: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    result = []
+    for item in rows:
+        signature = item.get("signature", {})
+        if signature.get("authoring_profile") != "operator-dag-v1":
+            continue
+        result.append({"name": signature["name"], "version": signature["version"],
+            "authoring_profile": signature["authoring_profile"],
+            "dependencies": list(signature.get("dependencies", [])),
+            "program_effects": list(signature.get("program_effects", [])),
+            "input_ports": signature["input_ports"], "output_type": signature["output_type"],
+            "program": item["program"]})
+    return result
+
+
+def _composite_raw_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
+    parameters = {}
+    for name, row in spec["parameters"].items():
+        item = {key: _thaw(value) for key, value in row.items() if key != "has_default"}
+        if not row.get("has_default"):
+            item.pop("default", None)
+        parameters[name] = item
+    return {"name": spec["name"],
+        "version": spec.get("declared_version", spec.get("version")),
+        "description": spec["description"], "family": spec["family"],
+        "input_ports": _thaw(spec["input_ports"]), "output_type": spec["output_type"],
+        "parameters": parameters,
+        "authoring_profile": spec["authoring_profile"], "program": _thaw(spec["program"])}
+
+
+def _normalize_generated(spec: Mapping[str, Any], *, kind: str,
+                         registry: OperatorRegistry | None = None,
+                         composite_specs: Sequence[Mapping[str, Any]] = ()) -> dict[str, Any]:
+    if _is_composite_spec(spec):
+        if registry is None:
+            raise LibraryError("composite operator normalization requires the active registered catalog")
+        from .m4_composite import normalize_composite_spec
+        normalized = normalize_composite_spec(_composite_raw_spec(spec), registry,
+            composite_specs=composite_specs)
+        name, version = normalized["name"], normalized["version"]
+        _validate_identity(name, version)
+        signature = {key: _thaw(value) for key, value in normalized.items()
+            if key != "program"}
+        program = _thaw(normalized["program"])
+        program_sha = normalized["program_sha256"]
+        return {"name": name, "version": version, "kind": kind,
+            "signature": signature, "signature_sha256": normalized["signature_sha256"],
+            "source_sha256": program_sha, "source": None,
+            "program": program, "program_sha256": program_sha,
+            "invoked_case_ids": [], "admission_provenance": {}}
+    if spec.get("authoring_profile") in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+        normalized = validate_generated_spec(spec)
+        name, version = normalized["name"], normalized["version"]
+        _validate_identity(name, version)
+        program = _thaw(normalized["program"])
+        program_sha = normalized["program_sha256"]
+        return {"name": name, "version": version, "kind": kind,
+            "signature": {key: _thaw(value) for key, value in normalized.items() if key != "program"},
+            "signature_sha256": normalized["signature_sha256"],
+            "source_sha256": program_sha, "source": None,
+            "program": program, "program_sha256": program_sha,
+            "invoked_case_ids": [], "admission_provenance": {}}
     normalized = validate_generated_spec(spec)
     name, version = normalized["name"], normalized["version"]
     _validate_identity(name, version)
@@ -133,8 +272,12 @@ def _normalize_generated(spec: Mapping[str, Any], *, kind: str) -> dict[str, Any
 
 
 def _operator_identity_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: _thaw(row.get(key)) for key in
-            ("name", "version", "kind", "signature", "signature_sha256", "source_sha256", "source")}
+    result = {key: _thaw(row.get(key)) for key in
+        ("name", "version", "kind", "signature", "signature_sha256", "source_sha256", "source")}
+    for optional in ("program", "program_sha256"):
+        if optional in row:
+            result[optional] = _thaw(row[optional])
+    return result
 
 
 def canonicalize_playbook_graph(document: Mapping[str, Any]) -> dict[str, Any]:
@@ -278,6 +421,11 @@ def _validate_payload(payload: Any) -> None:
     if (not isinstance(payload["lineage"], list) or not isinstance(payload["provenance"], dict)
             or not isinstance(payload["policy"], dict)):
         raise LibraryIntegrityError("snapshot lineage, provenance, and policy have invalid types")
+    try:
+        validation_registry = _operator_registry_from_rows(payload["operators"])
+        active_composites = _composite_specs_from_rows(payload["operators"])
+    except Exception as exc:
+        raise LibraryIntegrityError("operator signatures cannot form a registered catalog") from exc
     seen_ops, seen_books, seen_graphs = set(), set(), set()
     for item in payload["operators"]:
         key = operator_key(item)
@@ -313,14 +461,52 @@ def _validate_payload(payload: Any) -> None:
                     "description": signature["description"], "family": signature["family"],
                     "input_ports": signature["input_ports"], "output_type": signature["output_type"],
                     "parameters": parameter_spec, "source": item["source"]}
+                # These fields are absent from legacy signatures by design. Keep
+                # them omitted in that case so historical canonical hashes stay
+                # byte-for-byte stable, while preserving the typed authoring
+                # contract for newly generated operators.
+                for optional_field in ("authoring_profile", "input_requirements"):
+                    if optional_field in signature:
+                        raw_spec[optional_field] = signature[optional_field]
                 normalized = validate_generated_spec(raw_spec)
             except Exception as exc:
                 raise LibraryIntegrityError(f"generated contract is invalid for {key}") from exc
             expected_signature = {field: value for field, value in normalized.items() if field != "source"}
             if _canonical(expected_signature) != _canonical(signature):
                 raise LibraryIntegrityError(f"generated signature/source identity mismatch for {key}")
+        elif item.get("kind") != "builtin" and item.get("program") is not None:
+            if (signature.get("authoring_profile") not in {"operator-dag-v1", "typed-operator-ir-v1",
+                    "typed-operator-ir-v2"} or
+                    not isinstance(item.get("program_sha256"), str) or
+                    item.get("program_sha256") != signature.get("program_sha256") or
+                    item.get("source_sha256") != item.get("program_sha256") or
+                    _sha(_canonical(item["program"])) != item.get("program_sha256")):
+                raise LibraryIntegrityError(f"generated program hash/profile mismatch for {key}")
+            try:
+                if signature["authoring_profile"] in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+                    raw_spec = {field: signature[field] for field in (
+                        "name", "description", "family", "input_ports", "output_type",
+                        "parameters", "authoring_profile", "input_requirements")}
+                    raw_spec["version"] = signature["declared_version"]
+                    raw_spec["program"] = item["program"]
+                    normalized = validate_generated_spec(raw_spec)
+                else:
+                    from .m4_composite import normalize_composite_spec
+                    raw_spec = {field: signature[field] for field in (
+                        "name", "description", "family", "input_ports", "output_type",
+                        "parameters", "authoring_profile")}
+                    raw_spec["version"] = signature["declared_version"]
+                    raw_spec["program"] = item["program"]
+                    normalized = normalize_composite_spec(raw_spec, validation_registry,
+                        composite_specs=active_composites)
+            except Exception as exc:
+                raise LibraryIntegrityError(f"generated program contract is invalid for {key}") from exc
+            expected_signature = {field: value for field, value in normalized.items()
+                if field != "program"}
+            if _canonical(expected_signature) != _canonical(signature):
+                raise LibraryIntegrityError(f"composite signature/program identity mismatch for {key}")
         elif item.get("kind") != "builtin":
-            raise LibraryIntegrityError(f"generated operator {key} lacks source bytes")
+            raise LibraryIntegrityError(f"generated operator {key} lacks source or composite program")
         elif item.get("source_sha256") is not None:
             raise LibraryIntegrityError(f"builtin operator {key} cannot declare generated source bytes")
         invoked = item.get("invoked_case_ids")
@@ -350,16 +536,29 @@ def _validate_payload(payload: Any) -> None:
                 len(set(book_invoked)) != len(book_invoked)):
             raise LibraryIntegrityError(f"invalid playbook invocation history: {name}")
     immutable = payload["immutable_operator_keys"]
+    policy = payload["policy"]
+    capacity_policy = policy.get("capacity_policy", LEGACY_CAPACITY_POLICY)
+    if capacity_policy not in _CAPACITY_POLICIES:
+        raise LibraryIntegrityError("snapshot declares an unsupported capacity policy")
     builtin_keys = {operator_key(row) for row in payload["operators"] if row["kind"] == "builtin"}
+    expected_immutable = (builtin_keys if capacity_policy == LEGACY_CAPACITY_POLICY else
+        {operator_key(row) for row in payload["operators"]
+         if row["kind"] == "builtin" and _is_paper_utility(row)})
     if (not isinstance(immutable, list) or any(not isinstance(key, str) for key in immutable)
             or len(set(immutable)) != len(immutable)
-            or set(immutable) != builtin_keys):
+            or set(immutable) != expected_immutable):
         raise LibraryIntegrityError("immutable operator set is invalid")
-    policy = payload["policy"]
     if policy.get("total_operator_cap") != TOTAL_OPERATOR_CAP:
         raise LibraryIntegrityError("snapshot retention policy does not match frozen total operator cap")
-    if len(payload["operators"]) > TOTAL_OPERATOR_CAP:
-        raise LibraryIntegrityError("snapshot exceeds the frozen total operator cap")
+    if capacity_policy == LEGACY_CAPACITY_POLICY:
+        if len(payload["operators"]) > TOTAL_OPERATOR_CAP:
+            raise LibraryIntegrityError("snapshot exceeds the frozen total operator cap")
+    else:
+        counts = _paper_counts(payload["operators"])
+        if counts["diagnostic_operator_count"] > TOTAL_OPERATOR_CAP:
+            raise LibraryIntegrityError("snapshot exceeds the frozen paper diagnostic operator cap")
+        if policy.get("paper_counts") != counts:
+            raise LibraryIntegrityError("paper diagnostic/utility counts differ from active operator entries")
     expected_policy_versions = {operator_key(row): row["version"] for row in payload["operators"]
                                 if row["kind"] == "builtin"}
     if policy.get("builtin_policy_versions") != expected_policy_versions:
@@ -389,7 +588,31 @@ def generated_specs_from_snapshot(snapshot: LibrarySnapshot) -> list[dict[str, A
     for entry in snapshot.document["operators"]:
         if entry["kind"] == "builtin":
             continue
-        spec = _thaw(entry["signature"])
+        signature = _thaw(entry["signature"])
+        if signature.get("authoring_profile") in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+            spec = {field: signature[field] for field in ("name", "version", "declared_version",
+                "description", "family", "input_ports", "output_type", "parameters",
+                "authoring_profile", "input_requirements", "program_sha256", "source_sha256",
+                "signature_sha256", "contract_hash", "kernel_abi_sha256", "interpreter_sha256", "policy_pins")
+                if field in signature}
+            spec["program"] = _thaw(entry["program"])
+            normalized = validate_generated_spec(spec)
+            if operator_key(normalized) != operator_key(entry):
+                raise LibraryIntegrityError("typed operator IR identity changed while thawing snapshot")
+            specs.append(normalized)
+            continue
+        if signature.get("authoring_profile") == "operator-dag-v1":
+            spec = {key: signature[key] for key in (
+                "name", "version", "declared_version", "description", "family",
+                "input_ports", "output_type", "parameters", "authoring_profile",
+                "program_sha256", "signature_sha256", "dependencies", "program_effects")
+                if key in signature}
+            spec["program"] = _thaw(entry["program"])
+            if operator_key(spec) != operator_key(entry):
+                raise LibraryIntegrityError("composite spec identity changed while thawing snapshot")
+            specs.append(spec)
+            continue
+        spec = signature
         spec["source"] = entry["source"]
         normalized = validate_generated_spec(spec)
         if operator_key(normalized) != operator_key(entry):
@@ -496,16 +719,21 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
                             directory: Path | str, parent: LibrarySnapshot | str | None = None, *,
                             builtin_specs: Sequence[Mapping[str, Any]] = (),
                             total_operator_cap: int = TOTAL_OPERATOR_CAP,
+                            capacity_policy: str = LEGACY_CAPACITY_POLICY,
                             verified_playbook_graph_hashes: Iterable[str] = ()) -> LibrarySnapshot:
     """Create the initial immutable deployment snapshot.
 
     Schema-bootstrap generated operators share the total-19 retention pool with
     later evolving additions. Only registry builtins and seed playbooks are protected.
     """
+    if capacity_policy not in _CAPACITY_POLICIES:
+        raise LibraryError(f"unsupported capacity policy: {capacity_policy}")
     if total_operator_cap != TOTAL_OPERATOR_CAP:
         raise LibraryError(f"frozen total operator cap is {TOTAL_OPERATOR_CAP}")
+    parent_snapshot = None
     if parent is not None:
         if isinstance(parent, LibrarySnapshot):
+            parent_snapshot = parent
             parent_id = parent.snapshot_id
             root = Path(directory)
             if parent.root.resolve() != root.resolve():
@@ -515,22 +743,41 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
             root = Path(directory)
             if not _SNAPSHOT_ID.fullmatch(parent_id):
                 raise LibraryError("parent must be a full snapshot content hash")
-            _load_snapshot_file(root / f"{parent_id}.json", root)
+            parent_snapshot = _load_snapshot_file(root / f"{parent_id}.json", root)
     else:
         parent_id, root = None, Path(directory)
     builtin_rows = [_normalize_builtin(item) for item in builtin_specs]
-    seed_specs = [_normalize_generated(item, kind="generated") for item in generated_specs]
+    validation_rows = list(builtin_rows)
+    if parent_snapshot is not None:
+        by_key = {operator_key(row): row for row in validation_rows}
+        by_key.update({operator_key(row): _thaw(row)
+            for row in parent_snapshot.document["operators"]})
+        validation_rows = list(by_key.values())
+    candidate_legacy_rows = [_normalize_generated(item, kind="generated")
+        for item in generated_specs if not _is_composite_spec(item)]
+    validation_by_key = {operator_key(row): row for row in validation_rows}
+    validation_by_key.update({operator_key(row): row for row in candidate_legacy_rows})
+    validation_rows = list(validation_by_key.values())
+    validation_registry = _operator_registry_from_rows(validation_rows)
+    active_composites = _composite_specs_from_rows(validation_rows)
+    seed_specs = list(candidate_legacy_rows)
+    seed_specs.extend(_normalize_generated(item, kind="generated", registry=validation_registry,
+        composite_specs=active_composites) for item in generated_specs if _is_composite_spec(item))
     operators = _merge_operator_rows(builtin_rows, seed_specs)
-    if len(builtin_rows) > total_operator_cap:
-        raise LibraryError("immutable builtin operator set alone exceeds cap 19")
-    bootstrap_overflow = max(0, len(operators) - total_operator_cap)
+    if capacity_policy == LEGACY_CAPACITY_POLICY:
+        if len(builtin_rows) > total_operator_cap:
+            raise LibraryError("immutable builtin operator set alone exceeds cap 19")
+        bootstrap_overflow = max(0, len(operators) - total_operator_cap)
+        evictable_rows = [row for row in operators if row["kind"] != "builtin"]
+    else:
+        bootstrap_overflow = max(0, sum(not _is_paper_utility(row) for row in operators) - total_operator_cap)
+        evictable_rows = [row for row in operators if not _is_paper_utility(row)]
     bootstrap_evicted = []
     if bootstrap_overflow:
-        generated_rows = [row for row in operators if row["kind"] != "builtin"]
-        generated_rows.sort(key=lambda row: (len(row["invoked_case_ids"]), operator_key(row)))
-        bootstrap_evicted = [operator_key(row) for row in generated_rows[:bootstrap_overflow]]
+        evictable_rows.sort(key=lambda row: (len(row["invoked_case_ids"]), operator_key(row)))
+        bootstrap_evicted = [operator_key(row) for row in evictable_rows[:bootstrap_overflow]]
         if len(bootstrap_evicted) < bootstrap_overflow:
-            raise LibraryError("bootstrap operator set exceeds cap 19")
+            raise LibraryError("bootstrap operator set exceeds cap 19 after protected utilities")
         evicted_set = set(bootstrap_evicted)
         operators = [row for row in operators if operator_key(row) not in evicted_set]
     if isinstance(seed_documents, Mapping):
@@ -559,7 +806,33 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
         for book in all_generated_books
         if book["name"] not in kept_generated_names and book["name"] not in unverified_names)
     playbooks = _dedupe_playbooks(seed_books, generated_books)
-    immutable_keys = sorted(operator_key(row) for row in builtin_rows)
+    immutable_keys = sorted(operator_key(row) for row in builtin_rows if
+        capacity_policy == LEGACY_CAPACITY_POLICY or _is_paper_utility(row))
+    policy = {"total_operator_cap": total_operator_cap,
+        "builtin_policy_versions": {operator_key(row): row["version"] for row in operators
+                                     if row["kind"] == "builtin"},
+        "cap_interpretation": ("19 total operators including immutable builtins/public query and bootstrap-generated operators; only builtins are immutable"
+            if capacity_policy == LEGACY_CAPACITY_POLICY else
+            "19 active non-utility diagnostic operators; protected data/query utilities are counted and reported separately"),
+        "retention": ("evict least-used evolving generated operator; ties by qualified name; never evict immutable operators"
+            if capacity_policy == LEGACY_CAPACITY_POLICY else
+            "evict least distinct-case-used active diagnostics; ties by qualified name; protect utility operators and accepted dependency closure"),
+        "playbook_retention": ("seed playbooks protected; generated playbooks removed when invalid or referencing evicted operators"
+            if capacity_policy == LEGACY_CAPACITY_POLICY else
+            "remove active playbooks when invalid or referencing unavailable operators; canonical origin templates remain in the separate frozen artifact"),
+        "playbook_deduplication": "exact DAG isomorphism modulo node IDs only; parameters/bindings/ports/return preserved"}
+    if capacity_policy != LEGACY_CAPACITY_POLICY:
+        policy["capacity_policy"] = capacity_policy
+        policy["paper_counts"] = _paper_counts(operators)
+    creation_event = {"event": "snapshot_created", "parent_snapshot_id": parent_id,
+        "bootstrap_operator_keys": sorted(operator_key(row) for row in seed_specs),
+        "bootstrap_evicted_operator_keys": bootstrap_evicted,
+        "seed_playbook_names": sorted(row["name"] for row in seed_books),
+        "generated_playbook_names": sorted(row["name"] for row in generated_books),
+        "dropped_seed_playbooks": dropped_seed_books,
+        "dropped_generated_playbooks": dropped_generated_books}
+    if capacity_policy != LEGACY_CAPACITY_POLICY and bootstrap_evicted:
+        creation_event["bootstrap_eviction_reason"] = "least_distinct_case_usage_then_qualified_name"
     payload = {
         "schema_version": SCHEMA_VERSION,
         "parent_snapshot_id": parent_id,
@@ -567,19 +840,8 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
         "playbooks": sorted(playbooks, key=lambda row: row["name"]),
         "immutable_operator_keys": immutable_keys,
         "provenance": _thaw(provenance),
-        "lineage": [{"event": "snapshot_created", "parent_snapshot_id": parent_id,
-                     "bootstrap_operator_keys": sorted(operator_key(row) for row in seed_specs),
-                     "bootstrap_evicted_operator_keys": bootstrap_evicted,
-                     "seed_playbook_names": sorted(row["name"] for row in seed_books),
-                     "generated_playbook_names": sorted(row["name"] for row in generated_books),
-                     "dropped_seed_playbooks": dropped_seed_books,
-                     "dropped_generated_playbooks": dropped_generated_books}],
-        "policy": {"total_operator_cap": total_operator_cap,
-            "builtin_policy_versions": {operator_key(row): row["version"] for row in builtin_rows},
-            "cap_interpretation": "19 total operators including immutable builtins/public query and bootstrap-generated operators; only builtins are immutable",
-            "retention": "evict least-used evolving generated operator; ties by qualified name; never evict immutable operators",
-            "playbook_retention": "seed playbooks protected; generated playbooks removed when invalid or referencing evicted operators",
-            "playbook_deduplication": "exact DAG isomorphism modulo node IDs only; parameters/bindings/ports/return preserved"},
+        "lineage": [creation_event],
+        "policy": policy,
     }
     return _write_snapshot(payload, root, expected_current_id=parent_id,
                            allow_initial=parent is None)
@@ -715,7 +977,13 @@ def admit_after_accepted(snapshot: LibrarySnapshot, generated_specs: Sequence[Ma
     if _read_head(snapshot.root) != snapshot.snapshot_id:
         raise LibraryConflictError("admission parent is no longer CURRENT")
     payload = _thaw(snapshot.document)
+    capacity_policy = payload["policy"].get("capacity_policy", LEGACY_CAPACITY_POLICY)
+    if capacity_policy == PAPER_STARTER_CAPACITY_POLICY and len(generated_specs) > 3:
+        raise LibraryError("paper-starter admissions accept at most three transient operator proposals")
     payload["parent_snapshot_id"] = snapshot.snapshot_id
+    validation_rows = payload["operators"]
+    validation_registry = _operator_registry_from_rows(validation_rows)
+    active_composites = _composite_specs_from_rows(validation_rows)
     if isinstance(verified_reachable_operator_keys, str) or isinstance(verified_playbook_graph_hashes, str):
         raise LibraryError("verified reachability proofs must be collections, not strings")
     reachable_values = list(verified_reachable_operator_keys)
@@ -726,7 +994,8 @@ def admit_after_accepted(snapshot: LibrarySnapshot, generated_specs: Sequence[Ma
     rejected_specs = []
     for index, item in enumerate(generated_specs):
         try:
-            normalized = _normalize_generated(item, kind="generated")
+            normalized = _normalize_generated(item, kind="generated",
+                registry=validation_registry, composite_specs=active_composites)
         except Exception as exc:
             rejected_specs.append({"index": index, "reason": type(exc).__name__})
             continue
@@ -769,21 +1038,74 @@ def admit_after_accepted(snapshot: LibrarySnapshot, generated_specs: Sequence[Ma
     _usage_update(payload, invocation_case_id, used_operator_keys, used_playbook_names)
     operators, books = payload["operators"], payload["playbooks"]
     protected = set(payload["immutable_operator_keys"])
-    generated = [row for row in operators if operator_key(row) not in protected]
+    accepted_closure: set[str] = set()
+    if capacity_policy == PAPER_STARTER_CAPACITY_POLICY:
+        by_key = {operator_key(row): row for row in operators}
+        pending = set(reachable)
+        for book in filtered_books:
+            pending.update(_playbook_operator_keys(book["document"]))
+        while pending:
+            key = pending.pop()
+            if key in accepted_closure or key not in by_key:
+                continue
+            accepted_closure.add(key)
+            row = by_key[key]
+            signature = row.get("signature", {})
+            if signature.get("authoring_profile") == "operator-dag-v1":
+                program = row.get("program", {})
+                for node in program.get("nodes", []) if isinstance(program, Mapping) else []:
+                    if isinstance(node, Mapping) and isinstance(node.get("operator"), str) and isinstance(node.get("version"), str):
+                        pending.add(f"{node['operator']}@{node['version']}")
+            for dependency in signature.get("dependencies", []):
+                if isinstance(dependency, str):
+                    pending.add(dependency)
+                elif isinstance(dependency, Mapping) and isinstance(dependency.get("name"), str) and isinstance(dependency.get("version"), str):
+                    pending.add(f"{dependency['name']}@{dependency['version']}")
+        protected.update(accepted_closure)
+        generated = [row for row in operators if not _is_paper_utility(row)]
+    else:
+        generated = [row for row in operators if operator_key(row) not in protected]
     cap = payload["policy"]["total_operator_cap"]
-    overflow = len(operators) - cap
+    overflow = ((sum(not _is_paper_utility(row) for row in operators) - cap)
+                if capacity_policy == PAPER_STARTER_CAPACITY_POLICY else len(operators) - cap)
     evicted: list[str] = []
+    dependency_invalidated: list[str] = []
     if overflow > 0:
+        if capacity_policy == PAPER_STARTER_CAPACITY_POLICY:
+            generated = [row for row in generated if operator_key(row) not in protected]
         generated.sort(key=lambda row: (len(row["invoked_case_ids"]), operator_key(row)))
         evicted = [operator_key(row) for row in generated[:overflow]]
         if len(evicted) < overflow:
-            raise LibraryError("protected operators alone exceed the frozen cap")
+            raise LibraryError("accepted dependency closure and protected utilities exceed the paper diagnostic cap")
         evicted_set = set(evicted)
         operators = [row for row in operators if operator_key(row) not in evicted_set]
+        # A retained composite is invalid if any generated operator called by
+        # its body was evicted. Propagate that invalidation through nested
+        # composites before retaining playbooks, while keeping the existing
+        # least-used operator eviction order and total capacity unchanged.
+        changed = True
+        while changed:
+            changed = False
+            for row in list(operators):
+                signature = row.get("signature", {})
+                if (row.get("kind") == "builtin" or
+                        signature.get("authoring_profile") != "operator-dag-v1"):
+                    continue
+                body = row.get("program", {})
+                called = {f"{node.get('operator')}@{node.get('version')}"
+                    for node in body.get("nodes", []) if isinstance(node, Mapping)}
+                missing_dependencies = called & evicted_set
+                if missing_dependencies:
+                    key = operator_key(row)
+                    operators.remove(row)
+                    evicted_set.add(key)
+                    dependency_invalidated.append(key)
+                    changed = True
         retained = {operator_key(row) for row in operators}
         kept_books = []
         for book in books:
-            if book["kind"] == "seed" or _playbook_operator_keys(book["document"]) <= retained:
+            if ((capacity_policy == LEGACY_CAPACITY_POLICY and book["kind"] == "seed") or
+                    _playbook_operator_keys(book["document"]) <= retained):
                 kept_books.append(book)
             else:
                 invalid_playbooks.append({"name": book["name"], "reason": "operator_evicted"})
@@ -791,7 +1113,7 @@ def admit_after_accepted(snapshot: LibrarySnapshot, generated_specs: Sequence[Ma
     # Ensure schema-bootstrap seed playbooks never disappear through a name or
     # graph collision in an evolving update.
     seed_names = {book["name"] for book in payload["playbooks"] if book["kind"] == "seed"}
-    if not seed_names <= {book["name"] for book in books}:
+    if capacity_policy == LEGACY_CAPACITY_POLICY and not seed_names <= {book["name"] for book in books}:
         raise LibraryIntegrityError("admission attempted to remove a protected seed playbook")
     admitted_playbook_names = {book["name"] for book in books} - existing_book_names
     candidate_playbook_names = {book["name"] for book in filtered_books}
@@ -810,7 +1132,16 @@ def admit_after_accepted(snapshot: LibrarySnapshot, generated_specs: Sequence[Ma
         "verified_reachable_operator_keys": sorted(reachable),
         "verified_playbook_graph_hashes": sorted(verified_graphs),
         "evicted_operator_keys": evicted,
-        "retention_cap_total": cap})
+        "dependency_invalidated_composite_keys": sorted(dependency_invalidated),
+        "retention_cap_total": cap,
+        "retention_policy": capacity_policy,
+        "accepted_dependency_closure": sorted(accepted_closure),
+        "eviction_reason": "least_distinct_case_usage_then_qualified_name" if evicted and capacity_policy == PAPER_STARTER_CAPACITY_POLICY else None})
+    if capacity_policy == PAPER_STARTER_CAPACITY_POLICY:
+        payload["policy"]["paper_counts"] = _paper_counts(payload["operators"])
+        payload["policy"]["builtin_policy_versions"] = {
+            operator_key(row): row["version"] for row in payload["operators"]
+            if row["kind"] == "builtin"}
     return _write_snapshot(payload, snapshot.root, expected_current_id=snapshot.snapshot_id)
 
 

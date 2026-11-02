@@ -1,6 +1,12 @@
 cloudpickle==3.1.2
 joblib==1.6.0
+mypy==1.19.1
+mypy_extensions==1.1.0
 numpy==2.2.6
+pathspec==1.1.1
 scikit-learn==1.7.2
 scipy==1.15.3
+tomli==2.5.0
 threadpoolctl==3.7.0
+typing_extensions==4.16.0
+librt==0.16.0

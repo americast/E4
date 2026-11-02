@@ -530,6 +530,7 @@ def build_frozen_manifest(*, root: Path = ROOT, run_id: str,
                           initial_library_path: Path | None,
                           initial_library_snapshot_id: str | None,
                           bootstrap_result_path: Path,
+                          revision_metadata: Mapping[str, Any] | None = None,
                           output_path: Path) -> dict[str, Any]:
     """Capture the M6 freeze after development review and the primary's explicit M6 go.
 
@@ -746,6 +747,12 @@ def build_frozen_manifest(*, root: Path = ROOT, run_id: str,
         "limitations": ["Development resource budgets must be marked frozen before this manifest is used.",
                         "Terminus-2 turn limits are architecture-specific; count all model generations."]
     }
+    if revision_metadata is not None:
+        if not isinstance(revision_metadata, Mapping):
+            raise FrozenManifestError("revision metadata must be a mapping")
+        if revision_metadata.get("schema_version") != "e4-exploratory-revision/1":
+            raise FrozenManifestError("unsupported exploratory E4 revision metadata schema")
+        manifest["revision_metadata"] = dict(revision_metadata)
     if manifest["local_pins"]["m5_e4_wrapper_sha256"] is None or manifest["local_pins"]["m5_e4_runner_sha256"] is None:
         raise FrozenManifestError("M5 E4 wrapper and runner must exist before freeze")
     _validate_resource_budget(manifest, experiment)

@@ -396,12 +396,27 @@ def _register_m4_combiner(registry: OperatorRegistry, base: OperatorSpec,
                      "from runtime.analysis_weights; unknown generated families use weight 1.")))
 
 
+def generated_sandbox_limits(root: Path = ROOT) -> dict[str, Any]:
+    """Return the frozen M4-only worker overrides; generic sandbox defaults stay independent."""
+    policy = json.loads((root / "config/m4_runtime.json").read_text(encoding="utf-8"))
+    limits = policy.get("query_and_generation", {})
+    return {"input_bytes": int(limits["maximum_operator_input_bytes"]),
+            "cpu_seconds": int(limits["generated_operator_cpu_seconds"]),
+            "wall_seconds": float(limits["generated_operator_wall_seconds"]),
+            "memory_bytes": int(limits["generated_operator_memory_bytes"])}
+
+
 def make_m4_registry(case: BankCase | None, generated_specs: list[dict[str, Any]], *,
                      root: Path = ROOT, audit_dir: Path | None = None,
-                     shared_query_budget: M4QueryBudget | None = None) -> OperatorRegistry:
-    """Build the frozen Bank registry plus trusted query and validated generated operators."""
+                     shared_query_budget: M4QueryBudget | None = None,
+                     metric_policy_path: Path | None = None) -> OperatorRegistry:
+    """Build the current Bank registry plus trusted query and generated operators.
+
+    An explicit historical metric-policy path creates a legacy-only registry for
+    replay; the default contains only current policy-bound operators.
+    """
     root = root.resolve(strict=True)
-    base_registry = bank_registry(root=root)
+    base_registry = bank_registry(root=root, metric_policy_path=metric_policy_path)
     signatures = base_registry.signatures()
     base_combiner_signature = next((row for row in signatures
                                     if row["name"] == "bank.answers.combine"), None)
@@ -409,6 +424,8 @@ def make_m4_registry(case: BankCase | None, generated_specs: list[dict[str, Any]
         raise BankQueryError("Bank base registry has no answer combiner")
     base_combiner = base_registry.require("bank.answers.combine", base_combiner_signature["version"])
     registry = OperatorRegistry()
+    for estimator_name, estimator in base_registry.estimators.items():
+        registry.register_estimator(estimator_name, estimator)
     for signature in signatures:
         if signature["name"] == "bank.answers.combine":
             continue
@@ -417,5 +434,7 @@ def make_m4_registry(case: BankCase | None, generated_specs: list[dict[str, Any]
                     shared_budget=shared_query_budget)
     _register_m4_combiner(registry, base_combiner, base_combiner_signature, root=root)
     register_m4_projection(registry)
-    register_generated_specs(registry, generated_specs, audit_dir=audit_dir)
+    sandbox_limits = generated_sandbox_limits(root) if generated_specs else None
+    register_generated_specs(registry, generated_specs, audit_dir=audit_dir,
+                             sandbox_limits=sandbox_limits)
     return registry

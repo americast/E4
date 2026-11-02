@@ -17,12 +17,18 @@ from typing import Any, Mapping, Union, get_args, get_origin, get_type_hints
 
 from .contracts import (Aggregate, AggregateRow, Candidate, CandidateSet, EntityRef, Evidence,
                         ExecutionResult, MetricPoint, NodeRecord, RankedAnswer,
+                        OperatorIRLogBlockDenominator, OperatorIRLogInput, PaperCandidate,
+                        PaperCandidateSet, PaperLogPatternSummary, PaperLogSummary,
+                        PaperSessionObservation, PaperStarterInput, PaperURLObservation,
                         RuntimeSnapshot, ScoredCandidate, ScoredCandidates, Span,
                         Telemetry, Window)
 
 
 _CONTRACT_TYPES = {item.__name__: item for item in
                    (Aggregate, AggregateRow, Candidate, CandidateSet, EntityRef, Evidence,
+                    OperatorIRLogBlockDenominator, OperatorIRLogInput, PaperCandidate,
+                    PaperCandidateSet, PaperLogPatternSummary, PaperLogSummary,
+                    PaperSessionObservation, PaperStarterInput, PaperURLObservation,
                     ExecutionResult, MetricPoint, NodeRecord, RankedAnswer, RuntimeSnapshot,
                     ScoredCandidate, ScoredCandidates, Span, Telemetry, Window)}
 
@@ -45,7 +51,6 @@ def deserialize_contract_json(value: Any, expected_type: str) -> Any:
     decoded = _decode(value)
     if not isinstance(decoded, expected):
         raise TypeError(f"decoded value is not {expected_type}")
-    _validate_annotation(decoded, expected)
     return decoded
 
 
@@ -200,6 +205,12 @@ def implementation_fingerprint() -> str:
         root / "config/core_decisions.json",
         root / "config/metric_kind_policy.json",
         root / "config/dev_kpi_policy.json",
+        root / "config/bank_metric_kind_policy.json",
+        root / "config/typed_operator_ir_v2_policy.json",
+        root / "config/paper_starter_catalog.json",
+        root / "config/paper_starter_playbooks.json",
+        root / "config/paper_starter_runtime.json",
+        root / "config/paper_bank_adaptations.json",
         root / "pyproject.toml",
         root / "requirements-m3.lock",
     ]
@@ -248,7 +259,17 @@ def _decode(value: Any) -> Any:
             class_ = _CONTRACT_TYPES.get(value["$type"])
             if class_ is None:
                 raise ValueError(f"unknown cached contract type {value['$type']}")
-            return class_(**{key: _decode(item) for key, item in value["$fields"].items()})
+            decoded_fields = {key: _decode(item) for key, item in value["$fields"].items()}
+            hints = get_type_hints(class_)
+            for field_name, field_value in decoded_fields.items():
+                annotation = hints.get(field_name)
+                if annotation is None:
+                    raise TypeError(f"missing trusted annotation for {class_.__name__}.{field_name}")
+                # Validate nested values before dataclass construction so a
+                # plain mapping cannot trigger __post_init__ AttributeError
+                # before the strict contract error is reported.
+                _validate_annotation(field_value, annotation)
+            return class_(**decoded_fields)
         return {key: _decode(item) for key, item in value.items()}
     return value
 
@@ -321,6 +342,7 @@ class CacheStore:
 
 def _is_output_type(value: Any, output_type: str) -> bool:
     types = {"Telemetry": Telemetry, "Aggregate": Aggregate, "CandidateSet": CandidateSet,
+             "PaperStarterInput": PaperStarterInput, "PaperCandidateSet": PaperCandidateSet,
              "ScoredCandidates": ScoredCandidates, "RankedAnswer": RankedAnswer}
     expected = types.get(output_type)
     return expected is not None and isinstance(value, expected)

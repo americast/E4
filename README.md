@@ -35,7 +35,7 @@ The controls read the prepared public clips and make no model requests. The case
 
 ## Starter library
 
-Create a validated starter-library snapshot:
+With the prepared Bank experiment manifest at `artifacts/m5/experiments/bank_m6_initial_20261017_02/frozen_manifest.json`, create a validated starter-library snapshot:
 
 ```bash
 .venv/bin/python scripts/freeze_paper_starter.py
@@ -78,15 +78,15 @@ The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-i
 
 ## Current results
 
-Accuracy measures ground-truth inclusion in the top three, averaged across decoding seeds 42, 43 and 44 on the same ten Bank incidents. E4 rows are cumulative stage prefixes. Token cost is the mean same-seed input-plus-output token ratio relative to T2 (100%), including repairs and recovery calls.
+Accuracy measures ground-truth inclusion in the top three, averaged across decoding seeds 42 and 43 on the same ten Bank incidents. E4 rows are cumulative stage prefixes. Token cost includes input and output tokens for all model calls and repairs, relative to the same-seed T2 baseline (100%).
 
-| Method | Mean accuracy | Mean token cost (% of T2) |
+| Method | Mean accuracy | Token cost (% of T2; seed42) |
 |---|---:|---:|
-| E4: retrieval | 30.0% | 5.6% |
-| E4: retrieval + adaptation | 43.3% | 9.3% |
-| E4: retrieval + adaptation + evolution | 46.7% | 15.5% |
-| T2: up to three diagnoses | 36.7% | 100.0% |
+| E4: retrieval | 30.0% | 4.2% |
+| E4: retrieval + adaptation | 55.0% | 8.1% |
+| E4: retrieval + adaptation + evolution | 70.0% | 11.4% |
+| T2: up to three diagnoses | 40.0% | 100.0% |
 
-Accuracy covers all three seeds. Cost covers seeds 42 and 44 only; T2 seed43 token usage is incomplete. These exploratory results use ten distinct incidents and do not establish statistical significance.
+Final E4 accuracy is 80% for seed42 and 60% for seed43. Cost covers seed42 only because T2 seed43 token usage is incomplete. These exploratory runs reuse ten distinct incidents and do not establish statistical significance.
 
-The local report is `artifacts/seed_variability/reports/pilot_20261025_s43_s44_v2/seed_variability_report.md`.
+See the [verified results](docs/BANK_CURRENT_RESULTS.md) for per-seed counts, token totals and result hashes.

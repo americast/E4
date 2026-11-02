@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import base64
+import hashlib
 import os
 import selectors
 import shutil
@@ -11,6 +13,7 @@ import socket
 import subprocess
 import tempfile
 import time
+import zlib
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -28,6 +31,124 @@ DEFAULT_LIMITS = {
 }
 
 _WORKER = Path(__file__).with_name("sandbox_worker.py")
+_IR_WORKER = Path(__file__).with_name("m4_operator_ir_worker.py")
+_IR_V2_WORKER = Path(__file__).with_name("m4_operator_ir_v2_worker.py")
+_IR_RESULT_TRANSPORT_VERSION = "e4-typed-ir-result/1"
+_IR_RESULT_TRANSPORT_CODEC = "zlib+base64"
+_IR_RESULT_MAX_BYTES = 1024 * 1024
+
+
+class _IRTransportError(ValueError):
+    pass
+
+
+def _reject_duplicate_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise _IRTransportError("typed IR transport JSON contains a duplicate key")
+        result[key] = value
+    return result
+
+
+def _bounded_json_size(value: Any, maximum_bytes: int) -> tuple[int, bool]:
+    """Measure a parsed result incrementally, without retaining another JSON copy."""
+    encoder = json.JSONEncoder(allow_nan=False, separators=(",", ":"), ensure_ascii=True)
+    total = 0
+    for chunk in encoder.iterencode(value):
+        for offset in range(0, len(chunk), 8192):
+            total += len(chunk[offset:offset + 8192].encode("utf-8"))
+            if total > maximum_bytes:
+                return total, False
+    return total, True
+
+
+def _decode_ir_result_transport(response: Any, *, authoring_profile: str | None,
+                                decoded_limit_bytes: int = _IR_RESULT_MAX_BYTES) -> Any:
+    """Decode a compressed result envelope only for the trusted typed-IR invocation."""
+    if authoring_profile not in {"typed-operator-ir-v1", "typed-operator-ir-v2"} or type(response) is not dict:
+        return response
+    if response.get("ok") is not True:
+        return response
+    if set(response) != {"ok", "result", "stdout", "stderr"}:
+        raise _IRTransportError("typed IR worker success response has an unexpected outer shape")
+    envelope = response.get("result")
+    if not isinstance(envelope, dict) or "$transport" not in envelope:
+        try:
+            measured, fits = _bounded_json_size(envelope, decoded_limit_bytes)
+        except (TypeError, ValueError, RecursionError) as exc:
+            raise _IRTransportError("typed IR plain result is not finite JSON data") from exc
+        if not fits:
+            raise _IRTransportError(
+                f"typed IR plain result exceeds the {decoded_limit_bytes}-byte decoded limit")
+        return response
+    expected_keys = {"$transport", "codec", "decoded_bytes", "sha256", "payload"}
+    if set(envelope) != expected_keys:
+        raise _IRTransportError("typed IR result envelope has missing or extra fields")
+    if (envelope.get("$transport") != _IR_RESULT_TRANSPORT_VERSION or
+            envelope.get("codec") != _IR_RESULT_TRANSPORT_CODEC):
+        raise _IRTransportError("typed IR result envelope version or codec is unsupported")
+    decoded_size = envelope.get("decoded_bytes")
+    digest = envelope.get("sha256")
+    encoded = envelope.get("payload")
+    if (type(decoded_size) is not int or decoded_size < 0 or decoded_size > decoded_limit_bytes or
+            not isinstance(digest, str) or len(digest) != 64 or
+            any(char not in "0123456789abcdef" for char in digest) or
+            not isinstance(encoded, str)):
+        raise _IRTransportError("typed IR result envelope length, digest, or payload is malformed")
+    try:
+        compressed = base64.b64decode(encoded.encode("ascii"), validate=True)
+    except (UnicodeEncodeError, ValueError) as exc:
+        raise _IRTransportError("typed IR result payload is not strict ASCII base64") from exc
+    try:
+        decompressor = zlib.decompressobj()
+        decoded = decompressor.decompress(compressed, decoded_limit_bytes + 1)
+    except zlib.error as exc:
+        raise _IRTransportError("typed IR result zlib stream is invalid") from exc
+    if len(decoded) > decoded_limit_bytes:
+        raise _IRTransportError("typed IR result exceeds the decoded byte limit")
+    if decompressor.unconsumed_tail:
+        raise _IRTransportError("typed IR result exceeds the bounded decompression allowance")
+    if not decompressor.eof:
+        raise _IRTransportError("typed IR result zlib stream is incomplete")
+    if decompressor.unused_data:
+        raise _IRTransportError("typed IR result has trailing data or a concatenated stream")
+    if len(decoded) != decoded_size or hashlib.sha256(decoded).hexdigest() != digest:
+        raise _IRTransportError("typed IR result decoded length or SHA-256 does not match its envelope")
+
+    def reject_constant(token):
+        raise _IRTransportError(f"typed IR result contains non-finite JSON value {token}")
+    try:
+        value = json.loads(decoded.decode("utf-8"), object_pairs_hook=_reject_duplicate_json_keys,
+            parse_constant=reject_constant)
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+        raise _IRTransportError("typed IR result payload is not valid UTF-8 JSON") from exc
+    return {**response, "result": value}
+
+
+def _ir_statistic(program: Mapping[str, Any]) -> str:
+    nodes = program.get("nodes", [])
+    def has_kernel(name: str) -> bool:
+        return any(isinstance(row, Mapping) and row.get("kernel") == name and
+            str(row.get("version")) == "1" for row in nodes)
+
+    correlation = has_kernel("series.correlate")
+    reducer = next((row for row in nodes if isinstance(row, Mapping) and
+        row.get("kernel") == "series.reduce" and str(row.get("version")) == "1"), None)
+    compare = next((row for row in nodes if isinstance(row, Mapping) and
+        row.get("kernel") == "numbers.window_compare" and str(row.get("version")) == "1"), None)
+    magnitude = has_kernel("numbers.absolute")
+    if correlation and reducer is None and compare is None:
+        return "component_kpi_association_magnitude" if magnitude else "component_kpi_association"
+    if correlation:
+        statistic = reducer.get("params", {}).get("statistic", "metric") if reducer else "metric"
+        operation = compare.get("params", {}).get("operation", "score") if compare else "score"
+        return f"component_kpi_association_weighted_{statistic}_{operation}"
+    if reducer is not None:
+        statistic = reducer.get("params", {}).get("statistic", "metric")
+        operation = compare.get("params", {}).get("operation", "summary") if compare else "summary"
+        return f"component_{statistic}_{operation}"
+    return "component_numeric_analysis"
 
 
 def _limits(overrides: Mapping[str, Any] | None) -> dict[str, Any]:
@@ -49,7 +170,8 @@ def _limits(overrides: Mapping[str, Any] | None) -> dict[str, Any]:
 def _bwrap_base() -> list[str]:
     bwrap = shutil.which("bwrap")
     python = "/usr/bin/python3.10"
-    if not bwrap or not os.path.exists(python) or not _WORKER.is_file():
+    if (not bwrap or not os.path.exists(python) or not _WORKER.is_file() or
+            not _IR_WORKER.is_file() or not _IR_V2_WORKER.is_file()):
         raise RuntimeError("bubblewrap or Python 3.10 worker runtime is unavailable")
     args = [bwrap, "--unshare-all", "--die-with-parent",
             "--clearenv", "--setenv", "PATH", "/usr/bin", "--setenv", "LANG", "C.UTF-8",
@@ -62,7 +184,9 @@ def _bwrap_base() -> list[str]:
         args += ["--ro-bind", "/lib64", "/lib64"]
     if os.path.exists("/etc/ld.so.cache"):
         args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
-    args += ["--ro-bind", str(_WORKER), "/sandbox/worker.py", "--", python, "-I", "-S",
+    args += ["--ro-bind", str(_WORKER), "/sandbox/worker.py",
+             "--ro-bind", str(_IR_WORKER), "/sandbox/m4_operator_ir_worker.py",
+             "--ro-bind", str(_IR_V2_WORKER), "/sandbox/m4_operator_ir_v2_worker.py", "--", python, "-I", "-S",
              "/sandbox/worker.py"]
     return args
 
@@ -115,10 +239,14 @@ def _validate_worker_response(response: Any) -> dict[str, Any]:
     return response
 
 
-def run_generated_operator(source: str, inputs: Any, params: Any, runtime: Any,
+def run_generated_operator(source: str | None, inputs: Any, params: Any, runtime: Any,
                            output_type: str, limits: Mapping[str, Any] | None = None,
                            case_dir: str | Path | None = None,
-                           catalog_path: str | Path | None = None) -> dict[str, Any]:
+                           catalog_path: str | Path | None = None, *,
+                           authoring_profile: str | None = None,
+                           typecheck_spec: Mapping[str, Any] | None = None,
+                           ir_program: Mapping[str, Any] | None = None,
+                           trusted_context: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Run one three-argument generated operator in a fresh isolated process.
 
     Explicit arguments must be JSON excerpts; filesystem paths are never
@@ -128,10 +256,45 @@ def run_generated_operator(source: str, inputs: Any, params: Any, runtime: Any,
     _json_safe(inputs, "inputs")
     _json_safe(params, "params")
     _json_safe(runtime, "runtime")
-    if not isinstance(source, str):
+    if authoring_profile in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+        if (source is not None or not isinstance(typecheck_spec, Mapping) or
+                typecheck_spec.get("authoring_profile") != authoring_profile or
+                not isinstance(ir_program, Mapping) or typecheck_spec.get("program") != ir_program or
+                not isinstance(trusted_context, Mapping)):
+            return _failure("typed_ir_spec_required", "typed operator IR requires its checked source-free spec and trusted context", "")
+        try:
+            from .m4_generated import validate_generated_spec
+            checked = validate_generated_spec(typecheck_spec)
+            if checked != dict(typecheck_spec):
+                raise ValueError("normalized typed operator IR identity differs")
+            _json_safe(trusted_context, "trusted_context")
+        except Exception as exc:
+            return _failure("typed_ir_spec_mismatch", str(exc), "")
+        # This is a fixed bounded result allowance, declared to the worker and
+        # independently enforced by the host decoder; it does not raise the
+        # existing 64 KiB response-wire cap.
+        limit["ir_result_bytes"] = _IR_RESULT_MAX_BYTES
+    elif not isinstance(source, str):
         raise ValueError("source must be text")
     if not isinstance(output_type, str) or not output_type:
         raise ValueError("output_type must be a non-empty string")
+    if authoring_profile is not None and authoring_profile not in {
+            "typed-operator-ir-v1", "typed-operator-ir-v2"}:
+        from .m4_typecheck import PROFILE, check_generated_spec_types, TypedAuthoringError
+        if authoring_profile != PROFILE:
+            return _failure("unsupported_authoring_profile",
+                            f"unsupported authoring_profile {authoring_profile!r}", source)
+        if not isinstance(typecheck_spec, Mapping) or typecheck_spec.get("authoring_profile") != PROFILE:
+            return _failure("typed_spec_required", "typed-records-v1 execution requires its checked normalized spec", source)
+        if typecheck_spec.get("source") != source or typecheck_spec.get("output_type") != output_type:
+            return _failure("typed_spec_mismatch",
+                "typed execution source and output type must match the checked spec", source)
+        try:
+            check_generated_spec_types(typecheck_spec)
+        except TypedAuthoringError as exc:
+            return _failure(exc.code, str(exc), source)
+    elif authoring_profile is None and typecheck_spec is not None:
+        return _failure("typed_spec_without_profile", "typecheck_spec requires authoring_profile", source)
     if output_type.lower() not in {"json", "object", "array", "string", "boolean", "integer", "number"} and output_type not in {
             "Telemetry", "Aggregate", "CandidateSet", "ScoredCandidates", "RankedAnswer"}:
         return _failure("unsupported_output_type", f"unsupported operator output type {output_type}", source)
@@ -148,6 +311,13 @@ def run_generated_operator(source: str, inputs: Any, params: Any, runtime: Any,
     request = {"source": source, "inputs": inputs, "params": params,
                "runtime": runtime, "output_type": output_type,
                "limits": limit}
+    if authoring_profile is not None:
+        request["authoring_profile"] = authoring_profile
+    if authoring_profile in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+        request["typed_operator_ir"] = ir_program
+        request["trusted_context"] = dict(trusted_context or {})
+        request["ir_family"] = typecheck_spec.get("family")
+        request["ir_statistic"] = _ir_statistic(ir_program)
     payload = json.dumps(request, allow_nan=False, separators=(",", ":")).encode()
     if len(payload) > limit["input_bytes"]:
         return _failure("input_limit", "serialized operator request exceeds input limit", source)
@@ -239,7 +409,17 @@ def run_generated_operator(source: str, inputs: Any, params: Any, runtime: Any,
                 "isolation": {"backend": "bubblewrap", "requested_namespaces":
                               ["user", "pid", "ipc", "uts", "network", "mount"], "active": False}}
     try:
-        response = _validate_worker_response(json.loads(stdout_text))
+        parsed_response = json.loads(stdout_text,
+            object_pairs_hook=(_reject_duplicate_json_keys
+                if authoring_profile in {"typed-operator-ir-v1", "typed-operator-ir-v2"} else None))
+        parsed_response = _decode_ir_result_transport(parsed_response,
+            authoring_profile=authoring_profile,
+            decoded_limit_bytes=_IR_RESULT_MAX_BYTES)
+        response = _validate_worker_response(parsed_response)
+    except _IRTransportError as exc:
+        response = {"ok": False, "result": None,
+            "error": {"code": "ir_transport_invalid", "message": str(exc)[:500]},
+            "stdout": "", "stderr": ""}
     except Exception:
         if proc.returncode not in (0, None):
             return {"ok": False, "result": None,
@@ -261,7 +441,7 @@ def run_generated_operator(source: str, inputs: Any, params: Any, runtime: Any,
         except LookupError as exc:
             response = {"ok": False, "result": None,
                         "error": {"code": "unsupported_output_type", "message": str(exc)}}
-        except (TypeError, ValueError) as exc:
+        except (TypeError, ValueError, RecursionError) as exc:
             response = {"ok": False, "result": None,
                         "error": {"code": "output_type_mismatch", "message": str(exc)}}
         else:

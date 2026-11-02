@@ -17,9 +17,12 @@ from e4core.m4_generated import (GeneratedSpecError, PARAMETER_TYPES, PARAM_FIEL
                                  PORT_FIELDS, PORT_TYPES, SPEC_FIELDS,
                                  assert_snapshot_registry_compatible,
                                  generated_spec_contract_schema, register_generated_specs,
+                                 generated_contract_fields_guidance,
+                                 typed_profile_contract_schema,
                                  validate_generated_spec)
 from e4core.registry import OperatorRegistry
-from e4core.sandbox_worker import validate_source as validate_sandbox_source
+from e4core.sandbox_worker import (HELPER_API, HELPER_NAMES, helper_api_schema,
+                                   validate_source as validate_sandbox_source)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,10 +77,41 @@ class M4GeneratedOperatorTests(unittest.TestCase):
         sandbox = generated_spec_contract_schema()["sandbox"]
         self.assertIn("Lambda", sandbox["forbidden_ast_constructs"])
         self.assertIn("open", sandbox["forbidden_names"])
+        self.assertIn("isinstance", sandbox["allowed_builtins"])
+        self.assertIn("math", sandbox["allowed_modules"])
+        self.assertIn("contract_fields", sandbox["provided_helpers"])
+        self.assertEqual(sandbox["resource_limits"]["standalone_input_bytes"], 2 * 1024 * 1024)
+        self.assertEqual(sandbox["resource_limits"]["m4_serving_input_bytes"], 16 * 1024 * 1024)
+        self.assertEqual(sandbox["resource_limits"]["m4_serving_cpu_seconds"], 10)
+        self.assertEqual(sandbox["resource_limits"]["m4_serving_wall_seconds"], 15)
+        self.assertEqual(sandbox["resource_limits"]["protocol_bytes"], 64 * 1024)
+        self.assertIn("complete compact JSON request", sandbox["resource_limits"]["input_metering"])
+        published_helpers = sandbox["typed_helper_api"]
+        self.assertEqual(published_helpers["schema_version"], helper_api_schema()["schema_version"])
+        self.assertEqual(published_helpers["helpers"], [
+            {key: row[key] for key in ("name", "signature", "returns")}
+            for row in HELPER_API])
+        self.assertEqual(published_helpers["wire_semantics"],
+            helper_api_schema().get("wire_semantics", helper_api_schema().get("wire_encoding", {})))
+        self.assertEqual(set(sandbox["provided_helpers"]), set(HELPER_NAMES))
+        self.assertEqual({row["name"] for row in HELPER_API}, set(HELPER_NAMES))
+        self.assertEqual({row["name"] for row in sandbox["typed_helper_api"]["helpers"]},
+                         set(HELPER_NAMES))
+        self.assertIn("make_scored_candidates", json.dumps(published_helpers["helpers"]))
+        self.assertIn("Neutral shape example:", generated_contract_fields_guidance())
+        self.assertIn("make_aggregate", generated_contract_fields_guidance())
+        self.assertNotIn("$type", generated_contract_fields_guidance().split("Neutral shape example:", 1)[1])
+        self.assertIn("ranking_eligible", generated_contract_fields_guidance())
         with self.assertRaisesRegex(ValueError, r"Lambda at line 2, column 8"):
             validate_sandbox_source("def operator(inputs, params, runtime):\n    f = lambda: 1\n    return inputs")
         with self.assertRaisesRegex(ValueError, r"forbidden name 'open'.*line 2"):
             validate_sandbox_source("def operator(inputs, params, runtime):\n    return open('x')")
+
+    def test_static_validation_catches_only_unbound_global_names(self):
+        with self.assertRaisesRegex(ValueError, "unbound name 'isinstnace'"):
+            validate_sandbox_source("def operator(inputs, params, runtime):\n    return isinstnace(inputs, dict)")
+        validate_sandbox_source("import math\ndef operator(inputs, params, runtime):\n    return isinstance(inputs, dict) and math.sqrt(4) > 0")
+        validate_sandbox_source("def operator(inputs, params, runtime):\n    result = [value for value in inputs if value]\n    return result")
 
     def test_public_schema_matches_validator_and_rejects_port_mapping(self):
         schema = generated_spec_contract_schema()
@@ -89,6 +123,14 @@ class M4GeneratedOperatorTests(unittest.TestCase):
                          sorted(PARAMETER_TYPES))
         self.assertEqual(schema["input_ports"]["min_items"], 1)
         self.assertEqual(schema["input_ports"]["max_items"], 8)
+        profile_schema = typed_profile_contract_schema()
+        self.assertEqual(profile_schema["optional_fields"]["authoring_profile"]["enum"],
+                         ["typed-records-v1"])
+        self.assertEqual(profile_schema["optional_fields"]["input_requirements"]["required_for"],
+                         "typed-records-v1")
+        typed_helpers = profile_schema["typed_record_helper_api"]
+        self.assertIn("make_evidence", {row["name"] for row in typed_helpers["helpers"]})
+        self.assertIn("AggregateView", typed_helpers["record_fields"])
         self.assertEqual(validate_generated_spec(spec())["input_ports"][0]["name"], "data")
 
         mapped_ports = spec()
@@ -104,6 +146,34 @@ class M4GeneratedOperatorTests(unittest.TestCase):
         changed = validate_generated_spec(spec(SOURCE.replace("max(0,", "max(1,")))
         self.assertNotEqual(normalized["version"], changed["version"])
         self.assertNotEqual(normalized["source_sha256"], changed["source_sha256"])
+
+    def test_typed_profile_is_explicit_and_legacy_signature_is_unchanged(self):
+        legacy = validate_generated_spec(spec())
+        signature_fields = ("name", "declared_version", "description", "family",
+                            "input_ports", "output_type", "parameters")
+        legacy_signature = {key: legacy[key] for key in signature_fields}
+        expected_version = hashlib.sha256(canonical_json({"signature": legacy_signature,
+            "source_sha256": legacy["source_sha256"]})).hexdigest()[:16]
+        self.assertEqual(legacy["version"], "1+" + expected_version)
+        self.assertNotIn("authoring_profile", legacy)
+        self.assertNotIn("input_requirements", legacy)
+
+        typed = spec()
+        typed["source"] = "def operator(inputs, params, runtime):\n    return inputs['data']\n"
+        typed["authoring_profile"] = "typed-records-v1"
+        typed["input_requirements"] = {"data": {"source_columns": {
+            "metric/metric_container.csv": ["value"]}, "statistics": ["median"],
+            "group_by": ["component"], "support_unit": "timestamp",
+            "coverage": "full_window"}}
+        typed_normalized = validate_generated_spec(typed)
+        self.assertEqual(typed_normalized["authoring_profile"], "typed-records-v1")
+        self.assertNotEqual(typed_normalized["version"], legacy["version"])
+        self.assertEqual(validate_generated_spec(typed_normalized), typed_normalized)
+
+        missing = dict(typed)
+        missing.pop("input_requirements")
+        with self.assertRaisesRegex(GeneratedSpecError, "requires input_requirements"):
+            validate_generated_spec(missing)
 
     def test_spec_rejects_unregistered_numbers_bad_signature_and_non_namespaced_name(self):
         hardcoded = SOURCE.replace('params["threshold"]', '2')
@@ -172,7 +242,7 @@ class M4GeneratedOperatorTests(unittest.TestCase):
             root = Path(temp)
             config = root / "config"
             config.mkdir()
-            for name in ("bank_metric_kind_policy.json", "bank_dev_kpi_policy.json"):
+            for name in ("bank_metric_kind_policy.json", "bank_dev_kpi_policy.json", "m4_runtime.json"):
                 shutil.copyfile(ROOT / "config" / name, config / name)
             reference = Window("reference", 1_700_000_000_000, 1_700_001_800_000)
             alert_window = Window("alert", 1_700_001_800_000, 1_700_003_600_000)

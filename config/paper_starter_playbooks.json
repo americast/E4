@@ -1,0 +1,824 @@
+{
+  "playbooks": [
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.attribute",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.welch",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "attribute_cohort_shift",
+      "provenance": {
+        "reconstruction_id": "B1",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.conjunction",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "joint_cohort_interaction",
+      "provenance": {
+        "reconstruction_id": "B2",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.activity",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.tree_likelihood",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "activity_cohort_explanation",
+      "provenance": {
+        "reconstruction_id": "B3",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.metric_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.mean_welch",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "backend_mean_shift",
+      "provenance": {
+        "reconstruction_id": "B4",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.metric_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.location_permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "backend_location_shift",
+      "provenance": {
+        "reconstruction_id": "B5",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.metric_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.tail_permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "backend_tail_degradation",
+      "provenance": {
+        "reconstruction_id": "B6",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.urls.failure_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.urls.welch",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "url_failure_diagnosis",
+      "provenance": {
+        "reconstruction_id": "B7",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.urls.delay_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.urls.permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_2",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.urls.flow_contribution",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1",
+                "score_2"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "url_delay_flow_attribution",
+      "provenance": {
+        "reconstruction_id": "B8",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.events.subsequences",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.events.outcome_support",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "failed_session_event_patterns",
+      "provenance": {
+        "reconstruction_id": "B9",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.attribute",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.cohorts.permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_2",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.metric_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_3",
+            "inputs": {
+              "candidates": "candidate_2",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.location_permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "score_1",
+                "score_3"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "combined_client_backend",
+      "provenance": {
+        "reconstruction_id": "B10",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    },
+    {
+      "document": {
+        "nodes": [
+          {
+            "bindings": {},
+            "id": "telemetry",
+            "inputs": {},
+            "operator": "case.telemetry",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "starter_input",
+            "inputs": {
+              "data": "telemetry"
+            },
+            "operator": "paper.input.prepare",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "candidate_0",
+            "inputs": {
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.metric_conditions",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_1",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.mean_welch",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_2",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.location_permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "score_3",
+            "inputs": {
+              "candidates": "candidate_0",
+              "data": "starter_input"
+            },
+            "operator": "paper.backend.tail_permutation",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "adjust_4_0",
+            "inputs": {
+              "data": "starter_input",
+              "scores": "score_1"
+            },
+            "operator": "paper.scores.dependency_adjust",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "adjust_4_1",
+            "inputs": {
+              "data": "starter_input",
+              "scores": "score_2"
+            },
+            "operator": "paper.scores.dependency_adjust",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "adjust_4_2",
+            "inputs": {
+              "data": "starter_input",
+              "scores": "score_3"
+            },
+            "operator": "paper.scores.dependency_adjust",
+            "params": {},
+            "version": "1"
+          },
+          {
+            "bindings": {},
+            "id": "answer",
+            "inputs": {
+              "scores": [
+                "adjust_4_0",
+                "adjust_4_1",
+                "adjust_4_2"
+              ]
+            },
+            "operator": "paper.answers.weighted_consensus",
+            "params": {},
+            "version": "1"
+          }
+        ],
+        "return": {
+          "node": "answer"
+        },
+        "schema_version": "e4-dag/1"
+      },
+      "name": "dependency_adjusted_backend_consensus",
+      "provenance": {
+        "reconstruction_id": "B11",
+        "source": "reconstructed-paper-starter-v1"
+      }
+    }
+  ],
+  "profile": "reconstructed-paper-starter-v1",
+  "schema_version": "e4-paper-starter-playbooks/1",
+  "source": "Table 2 family-level reconstruction; exact original playbooks are unavailable"
+}

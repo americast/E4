@@ -22,6 +22,29 @@ class PortSpec:
 OperatorFunction = Callable[[Mapping[str, Any], Mapping[str, Any], Any], Any]
 
 
+def _json_plain(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _json_plain(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_plain(item) for item in value]
+    return value
+
+
+def _parameter_signature(spec: ParameterSpec) -> dict[str, Any]:
+    row = {"type": spec.value_type,
+        "required": spec.required,
+        "nullable": spec.nullable,
+        "has_default": spec.has_default,
+        "default": spec.default if spec.has_default else None,
+        "choices": list(spec.choices),
+        "runtime_field": spec.runtime_field,
+        "estimator": spec.estimator,
+        "description": spec.description}
+    if spec.constraints:
+        row["constraints"] = _json_plain(spec.constraints)
+    return row
+
+
 @dataclass(frozen=True, slots=True)
 class OperatorSpec:
     name: str
@@ -88,15 +111,7 @@ class OperatorRegistry:
                             for port in item.inputs],
                  "output_type": item.output_type, "family": item.family,
                  "external_input": item.external_input,
-                 "parameters": {name: {"type": spec.value_type,
-                                        "required": spec.required,
-                                        "nullable": spec.nullable,
-                                        "has_default": spec.has_default,
-                                        "default": spec.default if spec.has_default else None,
-                                        "choices": list(spec.choices),
-                                        "runtime_field": spec.runtime_field,
-                                        "estimator": spec.estimator,
-                                        "description": spec.description}
+                 "parameters": {name: _parameter_signature(spec)
                                 for name, spec in item.parameters.items()},
                  "description": item.description}
                 for item in sorted(self._operators.values(), key=lambda op: (op.name, op.version))]

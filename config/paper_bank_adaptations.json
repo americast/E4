@@ -1,0 +1,32 @@
+{
+  "schema_version": "e4-paper-bank-adaptations/1",
+  "source_status": "Bank-specific deployment adaptations; these do not pad or alter the reconstructed canonical 19.",
+  "operators": [
+    {
+      "name": "paper.bank.metric_tree_likelihood",
+      "capabilities": ["component_metrics", "app_mrt"],
+      "computation": "Fit one component's native metric to aligned app MRT values; validate on a heldout chronological baseline suffix; compare per-observation alert residual likelihood with the heldout baseline reference; score the actual component membership using explicit excess-NLL gates.",
+      "limitations": ["MRT unit is not assumed", "component metric units remain native and field-specific", "not causal", "insufficient aligned support or failed validation abstains"]
+    },
+    {
+      "name": "paper.bank.trace_root_flow",
+      "capabilities": ["trace_root_duration"],
+      "computation": "Fit a shared multicomponent model from non-root inclusive span durations to unique explicit trace-root durations; use historical heldout validation and report component contribution changes.",
+      "limitations": ["trace duration unit is undeclared", "root spans are excluded as predictors", "duplicate IDs, cycles, unresolved parents, nonunique roots, missing feature coverage, collinearity, or failed validation abstain", "parent closure does not establish complete tracing", "no exclusive-time or causal claim"]
+    },
+    {
+      "name": "paper.bank.log_pattern_contrast",
+      "capabilities": ["native_log_patterns"],
+      "computation": "Discover row-local hashed token motifs from pooled, label-blind native log lines; use Aho-Corasick to count motif support within each line; compare per-block motif composition rates with explicit multiple-test correction.",
+      "limitations": ["motifs are not session event sequences", "no cross-line or cross-window sequence construction", "raw log text is not returned", "time-block denominators control for uniform log-volume changes", "pattern capacity or token-bound overflow marks only this capability unsupported"]
+    }
+  ],
+  "books": [
+    {"id": "B12", "name": "bank_component_metric_to_app_mrt", "operators": ["bank.candidates.generate", "paper.bank.metric_tree_likelihood", "paper.answers.weighted_consensus"], "requires": ["component_metrics", "app_mrt"]},
+    {"id": "B13", "name": "bank_trace_root_duration_flow", "operators": ["bank.candidates.generate", "paper.bank.trace_root_flow", "paper.answers.weighted_consensus"], "requires": ["trace_root_duration"]},
+    {"id": "B14", "name": "bank_log_template_composition", "operators": ["bank.candidates.generate", "paper.bank.log_pattern_contrast", "paper.answers.weighted_consensus"], "requires": ["native_log_patterns"]}
+  ],
+  "canonical_inventory_count": 19,
+  "active_diagnostic_cap": 19,
+  "utility_operators_excluded_from_diagnostic_count": true
+}

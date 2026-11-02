@@ -1,6 +1,7 @@
 {
   "schema_version": "e4-m4-runtime-policy/1",
-  "policy_name": "bank-m4-controller-frozen",
+  "policy_name": "bank-m4-controller-input16m-cpu10-wall15-v3",
+  "policy_rationale": "The four recorded stage-3 input-limit failures carried 2.24 to 14.11 MB of complete typed inputs. A synthetic 14.36 MB nested AggregateRow request with 330400 bucket tuple envelopes required 4.56 worker CPU seconds and 227328 KiB peak RSS, within 512 MiB but above the generic 2 CPU-second cap. M4 generated operators therefore receive 10 CPU seconds and 15 wall seconds while remaining under the same 512 MiB memory limit; the generic sandbox stays at 2 MiB, 2 CPU seconds, and 5 wall seconds.",
   "selected_profile": "config/gemma_m3_inference.json",
   "bootstrap": {
     "maximum_new_operators": 2,
@@ -15,6 +16,10 @@
     "maximum_new_operators": 3,
     "stages": ["select", "compose", "synthesize"],
     "static_repair_limit_per_attempt": 2,
+    "evolution_protocol_version": "e4-separated-evolve-serve/1",
+    "maximum_stage3_static_repairs": 2,
+    "maximum_model_calls": 10,
+    "maximum_aggregate_generated_tokens": 73728,
     "maximum_nodes": 40,
     "maximum_depth": 12,
     "maximum_leads": 5,
@@ -49,8 +54,9 @@
     }
   },
   "query_and_generation": {
-    "maximum_operator_input_bytes": 2097152,
-    "generated_operator_wall_seconds": 5,
+    "maximum_operator_input_bytes": 16777216,
+    "generated_operator_cpu_seconds": 10,
+    "generated_operator_wall_seconds": 15,
     "generated_operator_memory_bytes": 536870912,
     "maximum_public_query_requests_per_case": 32,
     "maximum_public_query_rows_per_request": 256,

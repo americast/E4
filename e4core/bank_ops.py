@@ -13,6 +13,7 @@ from typing import Any, Mapping
 from .contracts import (Aggregate, AggregateRow, Candidate, CandidateSet, EntityRef,
                         Evidence, RankedAnswer, ScoredCandidate, ScoredCandidates,
                         Telemetry)
+from .bank_metric_policy import BankMetricPolicy, load_bank_metric_policy
 from .executor import NodeContext, OperatorResult
 from .numerics import block_reduce, contrast_score, percentile, permutation_contrast, stable_seed
 from .registry import OperatorRegistry, OperatorSpec, PortSpec
@@ -23,7 +24,6 @@ ROOT = Path(__file__).resolve().parents[1]
 METRIC_POLICY_PATH = ROOT / "config/bank_metric_kind_policy.json"
 KPI_POLICY_PATH = ROOT / "config/bank_dev_kpi_policy.json"
 _POLICY_VERSION = "e4-bank-metric-kind-policy/1"
-_SUPPORTED_RANKING_KINDS = {"gauge", "rate", "event_count"}
 
 
 def _policy_version(path: Path) -> str:
@@ -31,10 +31,19 @@ def _policy_version(path: Path) -> str:
     return f"1+{digest}"
 
 
-def bank_registry(*, root: Path = ROOT) -> OperatorRegistry:
-    metric_policy_path = root / "config/bank_metric_kind_policy.json"
+def bank_registry(*, root: Path = ROOT,
+                  metric_policy_path: Path | None = None) -> OperatorRegistry:
+    """Build a current-only registry, or an explicitly policy-pinned replay registry.
+
+    Passing a historical policy path registers only that historical version. The
+    default never includes legacy aliases, so current seed materialization and
+    immutable builtin inventories cannot select stale policy versions.
+    """
+    metric_policy_path = (root / "config/bank_metric_kind_policy.json"
+        if metric_policy_path is None else Path(metric_policy_path).resolve(strict=True))
     kpi_policy_path = root / "config/bank_dev_kpi_policy.json"
     metric_version = _policy_version(metric_policy_path)
+    metric_contrast_version = "2+" + metric_version.split("+", 1)[1]
     kpi_version = _policy_version(kpi_policy_path)
     registry = OperatorRegistry()
     registry.register(OperatorSpec("case.telemetry", "1", (), "Telemetry",
@@ -58,7 +67,7 @@ def bank_registry(*, root: Path = ROOT) -> OperatorRegistry:
                                                    variadic=True, minimum_items=0)),
         "CandidateSet", family="bank_candidate", implementation=generate_bank_candidates,
         description="Exact observed Bank component IDs only; no service aliases or topology edges are inferred."))
-    registry.register(OperatorSpec("bank.metrics.contrast", metric_version,
+    registry.register(OperatorSpec("bank.metrics.contrast", metric_contrast_version,
         (PortSpec("reference", "Aggregate"), PortSpec("alert", "Aggregate"),
          PortSpec("candidates", "CandidateSet")), "ScoredCandidates",
         family="bank_metric", implementation=score_bank_metrics,
@@ -82,13 +91,6 @@ def bank_registry(*, root: Path = ROOT) -> OperatorRegistry:
     return registry
 
 
-def _policy(path: Path = METRIC_POLICY_PATH) -> dict[str, Any]:
-    value = json.loads(path.read_text())
-    if value.get("schema_version") != _POLICY_VERSION:
-        raise ValueError("unsupported Bank metric kind policy")
-    return value
-
-
 def _dev_policy(path: Path = KPI_POLICY_PATH) -> dict[str, Any]:
     value = json.loads(path.read_text())
     if value.get("schema_version") != "e4-bank-dev-kpi-policy/1":
@@ -96,20 +98,25 @@ def _dev_policy(path: Path = KPI_POLICY_PATH) -> dict[str, Any]:
     return value
 
 
-def _policy_entry(point: Any, policy: Mapping[str, Any]) -> dict[str, Any]:
-    semantics = policy.get("source_semantics", {})
-    if point.table == "bank/metric_app.csv":
-        return dict(semantics.get("metric_app", {}).get("fields", {}).get(point.metric_name, {}))
-    if point.table == "bank/metric_container.csv":
-        return dict(semantics.get("metric_container", {}).get("ranking_allowlist", {}).get(
-            point.metric_name, {"kind": "unknown", "unit": "undeclared", "ranking_eligible": False}))
-    if point.table == "bank/log/log_service.csv" and point.metric_name == "log_volume_count":
-        value = semantics.get("log_service", {})
-        return {"kind": value.get("derived_kind", "unknown"),
-                "unit": value.get("derived_unit", "undeclared"),
-                "ranking_eligible": value.get("ranking_eligible", False),
-                "provenance": "derived by counting all hash-pinned log rows per component/log_name/minute"}
-    return {"kind": "unknown", "unit": "undeclared", "ranking_eligible": False}
+def _policy_entry(point: Any, classifier: BankMetricPolicy) -> dict[str, Any]:
+    try:
+        semantics = classifier.classify(point.table, point.metric_name)
+    except ValueError:
+        return {"kind": "unknown", "unit": "undeclared", "ranking_eligible": False,
+            "provenance": "source table is not in the shared Bank metric policy",
+            "direction": "unknown", "rule_id": "default-unknown/unsupported-source",
+            "classification_status": "unknown", "unit_status": "undeclared",
+            "transform": "none", "reset_policy": "unverified", "derived_from": ()}
+    provenance = ("not present in explicit Bank metric allowlist"
+        if semantics.rule_id.startswith("default-unknown/") else
+        "; ".join(semantics.provenance[:-1]))
+    return {"kind": semantics.kind, "unit": semantics.unit,
+        "ranking_eligible": semantics.ranking_eligible,
+        "provenance": provenance, "direction": semantics.direction,
+        "rule_id": semantics.rule_id, "classification_status": semantics.classification_status,
+        "unit_status": semantics.unit_status, "transform": semantics.transform,
+        "reset_policy": semantics.reset_policy,
+        "derived_from": semantics.derived_from}
 
 
 def aggregate_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
@@ -118,7 +125,8 @@ def aggregate_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
     telemetry: Telemetry = inputs["data"]
     window_name = params["window"]
     window = telemetry.reference_window if window_name == "reference" else telemetry.alert_window
-    policy = _policy(policy_path)
+    classifier = load_bank_metric_policy(policy_path)
+    policy = classifier.document
     grouped: dict[tuple[EntityRef, str, str, str, str], dict[int, list[float]]] = defaultdict(lambda: defaultdict(list))
     source_by_series: dict[tuple[EntityRef, str, str, str, str], set[str]] = defaultdict(set)
     policy_by_series: dict[tuple[EntityRef, str, str, str, str], dict[str, Any]] = {}
@@ -130,7 +138,7 @@ def aggregate_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
         key = (point.entity, point.table, point.metric_name,
                point.bomc_id or "", point.item_id or "")
         source_by_series[key].add(point.table)
-        policy_by_series[key] = _policy_entry(point, policy)
+        policy_by_series[key] = _policy_entry(point, classifier)
         point_by_series[key] = point
         identity = (*key, point.timestamp_ms_utc)
         raw_count[identity] += 1
@@ -151,9 +159,15 @@ def aggregate_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
         details = {
             "metric_kind": metric_kind,
             "kind_provenance": classification.get("provenance", "not present in explicit Bank metric allowlist"),
+            "metric_rule_id": classification.get("rule_id", "unknown"),
+            "metric_classification_status": classification.get("classification_status", "unknown"),
             "unit": classification.get("unit", "undeclared"),
-            "ranking_eligible": bool(classification.get("ranking_eligible", False)) and
-                                metric_kind in _SUPPORTED_RANKING_KINDS,
+            "unit_status": classification.get("unit_status", "undeclared"),
+            "metric_direction": classification.get("direction", "unknown"),
+            "metric_transform": classification.get("transform", "none"),
+            "metric_reset_policy": classification.get("reset_policy", "unverified"),
+            "derived_from": classification.get("derived_from", ()),
+            "ranking_eligible": bool(classification.get("ranking_eligible", False)),
             "source_field": metric_name,
             "source_table": point.table,
             "item_id": item_id,
@@ -178,7 +192,9 @@ def aggregate_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
         table for point in telemetry.metrics if window.contains(point.timestamp_ms_utc)
         for table in (point.table,)})),
         {"source": "Bank telemetry", "policy_schema": policy["schema_version"],
-         "window": window_name, "metric_semantics": "explicit allowlist; unreviewed fields excluded"}))
+         "window": window_name, "metric_semantics": "explicit allowlist; unreviewed fields excluded",
+         "source_hashes": dict(sorted(telemetry.file_sha256.items())),
+         "case_data_sha256": telemetry.data_sha256}))
 
 
 def aggregate_bank_trace_durations(inputs: Mapping[str, Any], params: Mapping[str, Any],
@@ -309,6 +325,9 @@ def score_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
                     "low_timestamp_support_excluded", alert.value, (candidate.entity,),
                     min(reference.support, alert.support),
                     {"metric_key": reference.metric_key, "minimum_support": runtime["minimum_support"],
+                     "support_unit": "distinct_timestamps_per_window",
+                     "reference_timestamp_support": reference.support,
+                     "alert_timestamp_support": alert.support,
                      "ranking_eligible": False}))
                 continue
             block_quantile = 0.5 if statistic == "median" else runtime["tail_quantile"]
@@ -343,6 +362,11 @@ def score_bank_metrics(inputs: Mapping[str, Any], params: Mapping[str, Any],
                  "normalized_effect": test.normalized_effect, "p_value": test.p_value,
                  "direction": direction, "comparison_scope": "same field across windows only",
                  "summary_statistic": statistic, "block_quantile": block_quantile,
+                 "support_unit": "independent_time_blocks",
+                 "reference_timestamp_support": reference.support,
+                 "alert_timestamp_support": alert.support,
+                 "reference_independent_block_support": test.baseline_support,
+                 "alert_independent_block_support": test.alert_support,
                  "minimum_timestamp_support": runtime["minimum_support"],
                  "minimum_independent_blocks": runtime["minimum_independent_blocks"],
                  "minimum_normalized_effect": runtime["minimum_normalized_effect"],

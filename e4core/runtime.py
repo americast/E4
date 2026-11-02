@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
@@ -159,9 +159,34 @@ class ParameterSpec:
     estimator: str | None = None
     description: str = ""
     choices: tuple[Any, ...] = ()
+    constraints: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "choices", tuple(self.choices))
+        if not isinstance(self.constraints, Mapping):
+            raise ValueError("parameter constraints must be a mapping")
+        constraints = dict(self.constraints)
+        allowed_constraints = {"minimum", "maximum", "exclusive_minimum", "exclusive_maximum"}
+        unknown = set(constraints) - allowed_constraints
+        if unknown:
+            raise ValueError(f"unsupported parameter constraint key(s): {sorted(unknown)}")
+        for key in ("minimum", "maximum"):
+            if key in constraints:
+                bound = constraints[key]
+                if type(bound) not in (int, float) or (type(bound) is float and not math.isfinite(bound)):
+                    raise ValueError(f"parameter constraint {key} must be a finite number")
+        for key in ("exclusive_minimum", "exclusive_maximum"):
+            if key in constraints and type(constraints[key]) is not bool:
+                raise ValueError(f"parameter constraint {key} must be a boolean")
+        if ("exclusive_minimum" in constraints and "minimum" not in constraints) or (
+                "exclusive_maximum" in constraints and "maximum" not in constraints):
+            raise ValueError("exclusive parameter constraints require their corresponding bound")
+        if "minimum" in constraints and "maximum" in constraints:
+            low, high = constraints["minimum"], constraints["maximum"]
+            if low > high or (low == high and (constraints.get("exclusive_minimum") or
+                                                constraints.get("exclusive_maximum"))):
+                raise ValueError("parameter constraint interval is empty")
+        object.__setattr__(self, "constraints", _freeze(constraints))
         if self.has_default:
             object.__setattr__(self, "default", _freeze(self.default))
 
@@ -253,6 +278,9 @@ def _validate_parameter(spec: ParameterSpec, value: Any) -> None:
         "integer": lambda x: type(x) is int,
         "positive_integer": lambda x: type(x) is int and x > 0,
         "number": lambda x: type(x) in (int, float) and math.isfinite(float(x)),
+        "number_map": lambda x: isinstance(x, Mapping) and all(
+            isinstance(key, str) and type(item) in (int, float) and math.isfinite(float(item)) and float(item) >= 0
+            for key, item in x.items()),
         "string_list": lambda x: isinstance(x, (list, tuple)) and all(isinstance(v, str) for v in x),
     }.get(spec.value_type)
     if valid is None:
@@ -263,6 +291,18 @@ def _validate_parameter(spec: ParameterSpec, value: Any) -> None:
     if spec.choices and value not in spec.choices:
         raise RuntimeResolutionError("parameter_value_not_allowed",
                                      f"parameter {spec.name} must be one of {spec.choices}", spec.name)
+    constraints = spec.constraints
+    if type(value) in (int, float) and constraints:
+        minimum = constraints.get("minimum")
+        maximum = constraints.get("maximum")
+        if minimum is not None and (value < minimum or
+                (constraints.get("exclusive_minimum") is True and value == minimum)):
+            raise RuntimeResolutionError("parameter_value_below_minimum",
+                f"parameter {spec.name} must be {'greater than' if constraints.get('exclusive_minimum') else 'at least'} {minimum}", spec.name)
+        if maximum is not None and (value > maximum or
+                (constraints.get("exclusive_maximum") is True and value == maximum)):
+            raise RuntimeResolutionError("parameter_value_above_maximum",
+                f"parameter {spec.name} must be {'less than' if constraints.get('exclusive_maximum') else 'at most'} {maximum}", spec.name)
 
 
 def _validate_runtime_semantics(name: str, value: Any) -> None:

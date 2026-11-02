@@ -245,7 +245,338 @@
           "ranking_eligible": true,
           "provenance": "Explicit working interpretation from the source KPI name on the first Bank development day; compared only with the same exact kpi_name and native values across windows; absolute units remain unverified."
         }
-      }
+      },
+      "rules": [
+        {
+          "rule_id": "bank.bmc.oslinux.cpu_system_time",
+          "rule_version": "1",
+          "description": "BMC PATROL system-mode CPU-time percentage field",
+          "field_pattern": "^OSLinux-CPU_CPU_CPUSysTime$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact BMC PATROL parameter name CPUSysTime; official documentation describes percentage of CPU time in system mode (0-100). OpenRCA input does not pin the BMC producer/version or transforms.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-UNIX-and-Linux/unixlinux913/Monitor-types-and-attributes/CPU-CPU/CPU-Utilization-In-System-Mode-CPUSysTime/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.cpu_user_time",
+          "rule_version": "1",
+          "description": "BMC PATROL user-mode CPU-time percentage field",
+          "field_pattern": "^OSLinux-CPU_CPU_CPUUserTime$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact BMC PATROL parameter name CPUUserTime; official documentation describes percentage of CPU time in user mode (0-100). OpenRCA input does not pin the BMC producer/version or transforms.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-UNIX-and-Linux/unixlinux913/Monitor-types-and-attributes/CPU-CPU/CPU-Utilization-In-User-Mode-CPUUserTime/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.disk_busy_percent",
+          "rule_version": "1",
+          "description": "BMC PATROL disk-busy percentage across exact disk instances",
+          "field_pattern": "^OSLinux-OSLinux_LOCALDISK_LOCALDISK-[A-Za-z0-9-]+_DSKPercentBusy$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact BMC PATROL DSKPercentBusy parameter family; BMC catalogs this as a disk-busy percentage parameter. OpenRCA input does not pin producer/version or transforms.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-UNIX-and-Linux/unixlinux913/Monitor-types-and-attributes/Parameters-available-in-DCM-and-PSL-mode/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.used_memory",
+          "rule_version": "1",
+          "description": "Redis INFO exact key used_memory",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(used_memory\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key used_memory; Redis allocator bytes currently allocated. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.used_memory_rss",
+          "rule_version": "1",
+          "description": "Redis INFO exact key used_memory_rss",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(used_memory_rss\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key used_memory_rss; Redis resident-set bytes. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.mem_fragmentation_ratio",
+          "rule_version": "1",
+          "description": "Redis INFO exact key mem_fragmentation_ratio",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(mem_fragmentation_ratio\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key mem_fragmentation_ratio; Redis RSS/used-memory ratio; documentation warns it also includes other overhead. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.instantaneous_ops_per_sec",
+          "rule_version": "1",
+          "description": "Redis INFO exact key instantaneous_ops_per_sec",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(instantaneous_ops_per_sec\\)$",
+          "kind": "rate",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key instantaneous_ops_per_sec; Redis instantaneous command rate. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.instantaneous_input_kbps",
+          "rule_version": "1",
+          "description": "Redis INFO exact key instantaneous_input_kbps",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(instantaneous_input_kbps\\)$",
+          "kind": "rate",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key instantaneous_input_kbps; Redis documents instantaneous network input throughput in kilobytes per second. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.instantaneous_output_kbps",
+          "rule_version": "1",
+          "description": "Redis INFO exact key instantaneous_output_kbps",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(instantaneous_output_kbps\\)$",
+          "kind": "rate",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key instantaneous_output_kbps; Redis documents instantaneous network output throughput in kilobytes per second. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.blocked_clients",
+          "rule_version": "1",
+          "description": "Redis INFO exact key blocked_clients",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(blocked_clients\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key blocked_clients; current clients blocked on blocking calls. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.connected_clients",
+          "rule_version": "1",
+          "description": "Redis INFO exact key connected_clients",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(connected_clients\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key connected_clients; current client connections excluding replicas. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.connected_slaves",
+          "rule_version": "1",
+          "description": "Redis INFO exact key connected_slaves",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(connected_slaves\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key connected_slaves; current connected replicas. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.redis.info.pubsub_channels",
+          "rule_version": "1",
+          "description": "Redis INFO exact key pubsub_channels",
+          "field_pattern": "^redis-Redis_[0-9]+_Redis  \\(pubsub_channels\\)$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "Exact Redis INFO key pubsub_channels; current subscribed pub/sub channel count. OpenRCA input does not pin Redis exporter/version or transforms.",
+            "https://redis.io/docs/latest/commands/info/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.filesystem_capacity_percent",
+          "rule_version": "1",
+          "description": "BMC PATROL filesystem used-capacity percentage across instances",
+          "field_pattern": "^OSLinux-OSLinux_FILESYSTEM_[-A-Za-z0-9_.]+_FSCapacity$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "higher_is_worse",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "BMC PATROL defines FSCapacity as percentage of filesystem space in use (0-100). The public Bank source does not pin collector version or value transformation.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-UNIX-and-Linux/unixlinux913/Monitor-types-and-attributes/Filesystem-FILESYSTEM/Filesystem-Space-Used-FSCapacity/",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-AIX/aix11/FAQ/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.filesystem_inode_used_percent",
+          "rule_version": "1",
+          "description": "BMC PATROL filesystem inode-used percentage across instances",
+          "field_pattern": "^OSLinux-OSLinux_FILESYSTEM_[-A-Za-z0-9_.]+_FSInodeUsedPercent$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "higher_is_worse",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "BMC maps the filesystem InodeUsedPercent attribute to FSInodeUsedPercent and documents the used-inode percentage. The public Bank source does not pin collector version or value transformation.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-Linux/Linux253/Monitor-types-and-attributes/Linux-monitor-types-and-attributes/FileSystem-NUK_FileSystem/",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-AIX/aix11/FAQ/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.filesystem_available_space",
+          "rule_version": "1",
+          "description": "BMC PATROL filesystem available-space gauge across instances",
+          "field_pattern": "^OSLinux-OSLinux_FILESYSTEM_[-A-Za-z0-9_.]+_FSAvailableSpace$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "lower_is_worse",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "BMC maps filesystem AvailableSpace to FSAvailableSpace and describes the amount of filesystem space available; units vary by collector/platform. The public Bank source does not pin that mapping.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-UNIX-and-Linux/unixlinux913/Using/Using-in-a-BMC-PATROL-environment/Managing-data-collection/Comparison-of-Data-Collection-Methods-Local-DCM-or-PSL-or-Remote/",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-AIX/aix11/FAQ/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.filesystem_used_space",
+          "rule_version": "1",
+          "description": "BMC PATROL filesystem used-space gauge across instances",
+          "field_pattern": "^OSLinux-OSLinux_FILESYSTEM_[-A-Za-z0-9_.]+_FSUsedSpace$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "BMC maps filesystem UsedSpace to FSUsedSpace and describes current used storage; units vary by collector/platform. The public Bank source does not pin that mapping. Same-field within-instance comparison only.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-UNIX-and-Linux/unixlinux913/Monitor-types-and-attributes/Parameters-available-in-DCM-and-PSL-mode/",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-AIX/aix11/FAQ/"
+          ]
+        },
+        {
+          "rule_id": "bank.bmc.oslinux.network_output_error_percent",
+          "rule_version": "1",
+          "description": "BMC PATROL network output-error percentage candidate",
+          "field_pattern": "^OSLinux-OSLinux_NETWORK_[A-Za-z0-9_.:-]+_NETOutErrPrc$",
+          "kind": "gauge",
+          "unit": "undeclared native value",
+          "unit_status": "working_interpretation",
+          "direction": "higher_is_worse",
+          "ranking_eligible": true,
+          "transform": "identity",
+          "reset_policy": "not_applicable",
+          "classification_status": "working_interpretation",
+          "provenance": [
+            "BMC PATROL maps network OutgoingErrors to NETOutErrPrc. Its name indicates a percentage-like gauge, but the public Bank input does not pin the collector's denominator or mapping. It is not request latency.",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-PATROL-for-AIX/aix11/FAQ/",
+            "https://docs.helixops.ai/bin/IT-Operations-Management/Operations-Management/BMC-Helix-Operations-Management/bhom261/Detecting-anomalies-by-using-static-and-dynamic-thresholds/Autoanomalies/"
+          ]
+        }
+      ]
     },
     "trace_span": {
       "upstream_declared_timestamp_unit": "milliseconds",
@@ -265,7 +596,31 @@
       "derived_unit": "record rows per fixed one-minute case-relative bucket; empty buckets are zero rows recorded in the supplied clip",
       "derived_kind": "event_count",
       "ranking_eligible": true,
-      "raw_value_interpretation": "not parsed; original clipped CSV remains hash-pinned"
+      "raw_value_interpretation": "not parsed; original clipped CSV remains hash-pinned",
+      "derived_fields": {
+        "log_pattern_exposure_rate": {
+          "rule_id": "bank.log.pattern_exposure_rate",
+          "rule_version": "1",
+          "kind": "rate",
+          "unit": "fraction of full-window source log rows",
+          "unit_status": "derived_from_source_rows",
+          "direction": "two_sided",
+          "ranking_eligible": true,
+          "transform": "matched_log_rows_divided_by_full_window_log_rows",
+          "reset_policy": "not_applicable",
+          "classification_status": "derived",
+          "derived_from": [
+            "pattern_id",
+            "log_name",
+            "matched_row_count",
+            "full_window_log_row_count",
+            "source_window_sha256"
+          ],
+          "provenance": [
+            "Derived composition/exposure measure over trusted complete full-window log row denominator; descriptive pattern fraction only, not an error or request-failure rate."
+          ]
+        }
+      }
     }
   },
   "loader_limits": {
@@ -274,5 +629,6 @@
     "max_csv_field_chars": 4194304,
     "max_log_groups": 1000000,
     "max_log_summary_groups": 256
-  }
+  },
+  "selector_catalog_version": "e4-bank-metric-selector-catalog/1"
 }

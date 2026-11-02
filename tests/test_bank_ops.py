@@ -178,6 +178,96 @@ class BankOperatorTests(unittest.TestCase):
             score_bank_metrics({"reference": reversed_window, "alert": alert,
                                 "candidates": candidate}, {}, context())
 
+    def test_metric_evidence_distinguishes_timestamps_from_permutation_blocks(self):
+        entity = EntityRef("component", "PodA")
+        candidate = CandidateSet((Candidate(entity),), "synthetic cadence fixture")
+        # Twenty raw minute samples cover all six five-minute blocks in each window.
+        minute_offsets = (0, 1, 2, 3, 5, 6, 7, 8, 10, 11,
+                          12, 13, 15, 16, 17, 18, 20, 21, 25, 29)
+
+        def window_aggregate(window, value, offsets=minute_offsets):
+            samples = tuple((window.start_ms_utc + minute * 60_000, value)
+                            for minute in offsets)
+            row = AggregateRow(entity,
+                "bank/metric_container.csv|CPUUtil|bank.metric_container|value",
+                window, "median", value, len(samples), ("bank/metric_container.csv",), (),
+                {"metric_kind": "gauge", "ranking_eligible": True,
+                 "unit": "synthetic", "direction": "two_sided",
+                 "bucket_samples": samples})
+            return Aggregate(window, (row,), ("bank/metric_container.csv",))
+
+        values = {**RUNTIME, "minimum_support": 12}
+        ctx = NodeContext("bank-fixture", "node", "bank.metrics.contrast", values,
+                          {}, REFERENCE, ALERT, "a" * 64)
+        result = score_bank_metrics({"reference": window_aggregate(REFERENCE, 10),
+                                     "alert": window_aggregate(ALERT, 20),
+                                     "candidates": candidate}, {}, ctx)
+        self.assertEqual(result.status, "abstained")
+        self.assertEqual(result.candidates[0].score, 0)
+        evidence = result.candidates[0].evidence[0]
+        self.assertEqual(evidence.support, 6)
+        self.assertEqual(evidence.details["support_unit"], "independent_time_blocks")
+        self.assertEqual(evidence.details["reference_timestamp_support"], 20)
+        self.assertEqual(evidence.details["alert_timestamp_support"], 20)
+        self.assertEqual(evidence.details["reference_independent_block_support"], 6)
+        self.assertEqual(evidence.details["alert_independent_block_support"], 6)
+        self.assertFalse(evidence.details["ranking_eligible"])
+        self.assertGreater(evidence.details["p_value"], RUNTIME["maximum_change_p_value"])
+
+        sparse = window_aggregate(REFERENCE, 10, minute_offsets[:6])
+        excluded = score_bank_metrics({"reference": sparse,
+            "alert": window_aggregate(ALERT, 20), "candidates": candidate}, {}, ctx)
+        support_evidence = excluded.candidates[0].evidence[0]
+        self.assertEqual(support_evidence.statistic, "low_timestamp_support_excluded")
+        self.assertEqual(support_evidence.details["support_unit"], "distinct_timestamps_per_window")
+        self.assertEqual(support_evidence.details["reference_timestamp_support"], 6)
+        self.assertEqual(support_evidence.details["alert_timestamp_support"], 20)
+
+    def test_native_metric_ranking_normalizes_each_field_before_comparison(self):
+        entity = EntityRef("component", "opaque-component")
+        candidate = CandidateSet((Candidate(entity, "fixture"),), "fixture")
+
+        def aggregate(window, factor):
+            rows = []
+            fields = {
+                "OSLinux-OSLinux_MEMORY_MEMORY_MEMUsedMemPerc":
+                    ([10, 11, 9, 10, 11, 9], [20, 21, 19, 20, 21, 19]),
+                "OSLinux-CPU_CPU_CPUCpuUtil":
+                    ([1e8, 1.1e8, 0.9e8, 1e8, 1.1e8, 0.9e8],
+                     [1e8, 1.1e8, 0.9e8, 1e8, 1.1e8, 0.9e8]),
+            }
+            selected_window = 0 if window.name == "reference" else 1
+            for field_name, pair in fields.items():
+                values = [value * factor for value in pair[selected_window]]
+                samples = tuple((window.start_ms_utc + i * 300_000, value)
+                    for i, value in enumerate(values))
+                for statistic in ("median", "tail_quantile"):
+                    rows.append(AggregateRow(entity,
+                        f"bank/metric_container.csv|{field_name}|bank.metric_container|value",
+                        window, statistic, float(values[2]), len(values),
+                        ("bank/metric_container.csv",), (),
+                        {"metric_kind": "gauge", "ranking_eligible": True,
+                         "unit": "undeclared native value", "direction": "two_sided",
+                         "bucket_samples": samples, "source_table": "bank/metric_container.csv",
+                         "source_field": field_name}))
+            return Aggregate(window, tuple(rows), ("bank/metric_container.csv",))
+
+        def score(factor):
+            result = score_bank_metrics({"reference": aggregate(REFERENCE, factor),
+                "alert": aggregate(ALERT, factor), "candidates": candidate}, {},
+                context()).candidates[0]
+            changed = next(e for e in result.evidence
+                if "OSLinux-OSLinux_MEMORY_MEMORY_MEMUsedMemPerc" in e.details.get("metric_key", "")
+                and e.details.get("ranking_eligible"))
+            return result.score, changed.details["normalized_effect"], changed.details["p_value"]
+
+        baseline = score(1.0)
+        rescaled = score(100.0)
+        self.assertGreater(baseline[0], 0)
+        self.assertAlmostEqual(baseline[0], rescaled[0], places=10)
+        self.assertAlmostEqual(baseline[1], rescaled[1], places=10)
+        self.assertAlmostEqual(baseline[2], rescaled[2], places=12)
+
     def test_sparse_slow_tail_is_retained_when_median_does_not_move(self):
         policy = json.loads((Path(__file__).resolve().parents[1] /
                              "config/bank_metric_kind_policy.json").read_text(encoding="utf-8"))

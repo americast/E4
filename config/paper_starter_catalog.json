@@ -1,0 +1,58 @@
+{
+  "schema_version": "e4-paper-starter-reconstruction/1",
+  "source": {
+    "paper": "Agentic RCA for Internet-Scale Services Using Constrained Creativity",
+    "paper_revision": "arXiv:2610.08622v1",
+    "table": "Table 2",
+    "identity_status": "reconstructed families; exact original operator names, equations, contracts, and DAGs are not published"
+  },
+  "inventory": {
+    "candidate_generators": [
+      {"id": "C1", "name": "paper.cohorts.attribute", "computation": "Partition sessions by an observed categorical attribute; retain supported cohorts.", "bank": "unsupported: no client attributes or session records"},
+      {"id": "C2", "name": "paper.cohorts.conjunction", "computation": "Bounded frequent conjunction mining over observed client attributes.", "bank": "unsupported: no client attributes or session records"},
+      {"id": "C3", "name": "paper.cohorts.activity", "computation": "Form activity cohorts from pre-alert user history.", "bank": "unsupported: no user/session history"},
+      {"id": "C4", "name": "paper.backend.metric_conditions", "computation": "Propose observed components with supported native metric excursions.", "bank": "available: exact observed component metrics"},
+      {"id": "C5", "name": "paper.events.subsequences", "computation": "Mine bounded contiguous event subsequences with distinct-session support.", "bank": "unsupported: no event streams"},
+      {"id": "C6", "name": "paper.urls.failure_conditions", "computation": "Select endpoints with supported request failure-rate increases.", "bank": "unsupported: no URL, outcome, or request denominator fields"},
+      {"id": "C7", "name": "paper.urls.delay_conditions", "computation": "Select endpoints with supported latency-quantile increases in declared units.", "bank": "unsupported: no URL or endpoint latency fields"}
+    ],
+    "scorers": [
+      {"id": "S1", "name": "paper.cohorts.welch", "computation": "Welch comparison of cohort KPI observations across baseline and alert.", "bank": "unsupported: no cohort or client KPI observations"},
+      {"id": "S2", "name": "paper.cohorts.permutation", "computation": "Independent-unit permutation contrast for cohort KPI observations.", "bank": "unsupported: no cohort or client KPI observations"},
+      {"id": "S3", "name": "paper.cohorts.tree_likelihood", "computation": "Regression-tree historical KPI attribution with an explicit alert-residual likelihood.", "bank": "unsupported: no client features or KPI observations"},
+      {"id": "S4", "name": "paper.backend.mean_welch", "computation": "Welch comparison over supported independent time-block means.", "bank": "available: native component metrics"},
+      {"id": "S5", "name": "paper.backend.location_permutation", "computation": "Block permutation test for a declared location statistic.", "bank": "available: native component metrics"},
+      {"id": "S6", "name": "paper.backend.tail_permutation", "computation": "Block permutation test for a separately declared tail statistic.", "bank": "available: native component metrics"},
+      {"id": "S7", "name": "paper.urls.welch", "computation": "Welch contrast over endpoint request or latency observations.", "bank": "unsupported: no URL observations"},
+      {"id": "S8", "name": "paper.urls.permutation", "computation": "Request/session-group permutation contrast over endpoint observations.", "bank": "unsupported: no URL observations"},
+      {"id": "S9", "name": "paper.urls.flow_contribution", "computation": "Shared additive flow model with endpoint contribution-change attribution.", "bank": "unsupported: no URL observations"},
+      {"id": "S10", "name": "paper.events.outcome_support", "computation": "Aho-Corasick event-pattern support contrast between valid outcome groups.", "bank": "unsupported: no events or valid success outcomes"}
+    ],
+    "summarizers": [
+      {"id": "U1", "name": "paper.scores.dependency_adjust", "computation": "Adjust scores using supported trace-local dependency edges and corroborated anomalies.", "bank": "conditional: exact trace-local parent edges; no inferred service classes"},
+      {"id": "U2", "name": "paper.answers.weighted_consensus", "computation": "Normalize independent scorer votes and combine using explicit weights.", "bank": "available: component candidates and score outputs"}
+    ]
+  },
+  "books": [
+    {"id": "B1", "name": "attribute_cohort_shift", "operators": ["paper.cohorts.attribute", "paper.cohorts.welch", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B2", "name": "joint_cohort_interaction", "operators": ["paper.cohorts.conjunction", "paper.cohorts.permutation", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B3", "name": "activity_cohort_explanation", "operators": ["paper.cohorts.activity", "paper.cohorts.tree_likelihood", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B4", "name": "backend_mean_shift", "operators": ["paper.backend.metric_conditions", "paper.backend.mean_welch", "paper.answers.weighted_consensus"], "bank": "available"},
+    {"id": "B5", "name": "backend_location_shift", "operators": ["paper.backend.metric_conditions", "paper.backend.location_permutation", "paper.answers.weighted_consensus"], "bank": "available"},
+    {"id": "B6", "name": "backend_tail_degradation", "operators": ["paper.backend.metric_conditions", "paper.backend.tail_permutation", "paper.answers.weighted_consensus"], "bank": "available"},
+    {"id": "B7", "name": "url_failure_diagnosis", "operators": ["paper.urls.failure_conditions", "paper.urls.welch", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B8", "name": "url_delay_flow_attribution", "operators": ["paper.urls.delay_conditions", "paper.urls.permutation", "paper.urls.flow_contribution", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B9", "name": "failed_session_event_patterns", "operators": ["paper.events.subsequences", "paper.events.outcome_support", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B10", "name": "combined_client_backend", "operators": ["paper.cohorts.attribute", "paper.cohorts.permutation", "paper.backend.metric_conditions", "paper.backend.location_permutation", "paper.answers.weighted_consensus"], "bank": "unsupported"},
+    {"id": "B11", "name": "dependency_adjusted_backend_consensus", "operators": ["paper.backend.metric_conditions", "paper.backend.mean_welch", "paper.backend.location_permutation", "paper.backend.tail_permutation", "paper.scores.dependency_adjust", "paper.answers.weighted_consensus"], "bank": "conditional"}
+  ],
+  "bank_profile": {
+    "active_operator_names": ["paper.backend.metric_conditions", "paper.backend.mean_welch", "paper.backend.location_permutation", "paper.backend.tail_permutation", "paper.scores.dependency_adjust", "paper.answers.weighted_consensus"],
+    "active_book_ids": ["B4", "B5", "B6"],
+    "conditional_book_ids": ["B11"],
+    "unsupported_is_not_zero": true,
+    "availability_rule": "Filter any book whose required capability is unsupported before prompt construction; conditional capabilities are checked against the case context.",
+    "bank_extras": ["bank.candidates.generate", "bank.traces.latency_contrast", "bank.logs.volume_contrast"]
+  },
+  "formula_disclosure": "Specific likelihood, block, tail, adjustment, and consensus equations are implementation reconstructions, not equations specified by Table 2."
+}

@@ -6,22 +6,43 @@ import ast
 import hashlib
 import json
 import re
+from pathlib import Path
 from typing import Any, Mapping
 
 from .cache import canonical_json, deserialize_contract_json
 from .registry import OperatorRegistry, OperatorSpec, PortSpec
 from .runtime import ParameterSpec, RuntimeResolutionError, _jsonable, _validate_parameter
-from .sandbox import run_generated_operator
-from .sandbox_worker import validate_source as validate_sandbox_source
+from .sandbox import DEFAULT_LIMITS, run_generated_operator
+from .sandbox_worker import (ALLOWED_MODULES, HELPER_API, HELPER_NAMES, SAFE_BUILTIN_NAMES,
+                             helper_api_schema, generated_helper_guidance,
+                             TYPED_RECORD_PROFILE, typed_record_helper_schema,
+                             typed_record_helper_guidance,
+                             validate_source as validate_sandbox_source)
+
+
+def generated_contract_fields_guidance() -> str:
+    """Shared concise guidance derived from the worker's typed helper registry."""
+    return generated_helper_guidance()
+
+
+def _published_typed_helper_api() -> dict[str, Any]:
+    """Publish exact helper signatures once, projected from the worker API registry."""
+    schema = helper_api_schema()
+    return {"schema_version": schema["schema_version"],
+        "helpers": [{key: row[key] for key in ("name", "signature", "returns")}
+                    for row in HELPER_API],
+        "wire_semantics": schema.get("wire_semantics", schema.get("wire_encoding", {}))}
 
 
 GENERATED_NAME = re.compile(r"^evolved\.[a-z][a-z0-9_]{0,62}$")
 VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
-PORT_TYPES = {"Aggregate", "CandidateSet", "ScoredCandidates"}
+PORT_TYPES = {"Aggregate", "CandidateSet", "PaperStarterInput", "ScoredCandidates"}
 OUTPUT_TYPES = {"Aggregate", "CandidateSet", "ScoredCandidates"}
 PARAMETER_TYPES = {"string", "boolean", "integer", "positive_integer", "number", "string_list"}
 SPEC_FIELDS = {"name", "version", "description", "family", "input_ports", "output_type",
                "parameters", "source"}
+SPEC_OPTIONAL_FIELDS = {"authoring_profile", "input_requirements"}
+TYPED_RECORDS_PROFILE = TYPED_RECORD_PROFILE
 PARAM_FIELDS = {"type", "required", "nullable", "default", "choices", "runtime_field", "description"}
 PORT_FIELDS = {"name", "type", "required", "variadic", "minimum_items", "maximum_items"}
 MAX_SOURCE_BYTES = 65_536
@@ -37,6 +58,9 @@ def generated_spec_contract_schema() -> dict[str, Any]:
     This describes the validator's existing grammar. Keep changes here aligned
     with ``validate_generated_spec``; prompt callers serialize this value as-is.
     """
+    m4_policy = json.loads((Path(__file__).resolve().parents[1] /
+        "config/m4_runtime.json").read_text(encoding="utf-8"))
+    m4_limits = m4_policy["query_and_generation"]
     return {
         "schema_version": "e4-m4-generated-operator-spec/1",
         "top_level": {
@@ -121,10 +145,73 @@ def generated_spec_contract_schema() -> dict[str, Any]:
             "forbidden_names": ["open", "eval", "exec", "compile", "globals", "locals", "getattr",
                 "setattr", "delattr", "vars", "input", "breakpoint", "memoryview", "names beginning __"],
             "forbidden_attribute_access": "attribute names beginning with underscore",
-            "forbidden_modules": ["all modules except math, statistics, itertools, collections"],
+            "allowed_builtins": sorted(SAFE_BUILTIN_NAMES),
+            "allowed_modules": sorted(ALLOWED_MODULES),
+            "provided_helpers": sorted(HELPER_NAMES),
+            "typed_helper_api": _published_typed_helper_api(),
+            "resource_limits": {
+                "stdout_bytes": DEFAULT_LIMITS["stdout_bytes"],
+                "stderr_bytes": DEFAULT_LIMITS["stderr_bytes"],
+                "protocol_bytes": DEFAULT_LIMITS["protocol_bytes"],
+                "standalone_input_bytes": DEFAULT_LIMITS["input_bytes"],
+                "m4_serving_input_bytes": m4_limits["maximum_operator_input_bytes"],
+                "m4_serving_wall_seconds": m4_limits["generated_operator_wall_seconds"],
+                "m4_serving_memory_bytes": m4_limits["generated_operator_memory_bytes"],
+                "m4_serving_cpu_seconds": m4_limits["generated_operator_cpu_seconds"],
+                "input_metering": "UTF-8 bytes of the complete compact JSON request, including source, inputs, parameters, runtime, and limits",
+            },
             "diagnostics": "static source errors identify the AST construct or name and its line and column; errors contain no case data or gold",
         },
     }
+
+
+def typed_profile_contract_schema() -> dict[str, Any]:
+    """Prompt schema for newly authored operators; omits legacy wire-envelope internals."""
+    schema = generated_spec_contract_schema()
+    optional_fields = {
+        "authoring_profile": {"type": "string", "enum": [TYPED_RECORD_PROFILE],
+            "meaning": "Selects the immutable typed-record authoring API; required for newly generated Stage 3 operators."},
+        "input_requirements": {"type": "object", "required_for": TYPED_RECORD_PROFILE,
+            "keyed_by": "every declared input port exactly once", "additional_fields": False,
+            "port_fields": {"source_columns": "mapping of canonical table paths to arrays of published native column names",
+                "statistics": "upstream statistics the source consumes; use raw for unaggregated rows",
+                "group_by": "grouping dimensions the source provides",
+                "support_unit": "required support unit string or null",
+                "coverage": {"enum": ["any", "full_window", "page"],
+                    "meaning": "page permits a bounded source page with explicit coverage metadata and never means complete-window coverage"}},
+            "meaning": "Compared to trusted input producers before execution. This declaration does not prove arbitrary code honors it."}}
+    return {"schema_version": schema["schema_version"],
+        "required_fields": schema["top_level"]["required_fields"],
+        "additional_fields": False,
+        "optional_fields": optional_fields,
+        "name": schema["top_level"]["fields"]["name"],
+        "version": schema["top_level"]["fields"]["version"],
+        "description": schema["top_level"]["fields"]["description"],
+        "family": schema["top_level"]["fields"]["family"],
+        "input_ports": schema["input_ports"],
+        "output_types": schema["output_types"],
+        "parameters": schema["parameters"],
+        "source": schema["top_level"]["fields"]["source"],
+        "sandbox": {key: schema["sandbox"][key] for key in (
+            "forbidden_ast_constructs", "forbidden_names", "forbidden_attribute_access",
+            "allowed_builtins", "allowed_modules", "resource_limits")},
+        "authoring_profile": TYPED_RECORD_PROFILE,
+        "typed_record_helper_api": typed_record_helper_schema(),
+        "output_constraints": {
+            "category": "null; Bank has no supported generated fault-category classifier",
+            "evidence": "make_evidence requires explicit source, typed Window, typed contributors, support, and caller-computed ranking_eligible",
+            "eligibility": "host validation remains authoritative; matching or a positive score alone does not establish eligibility",
+            "allowed_sources": ["bank/metric_app.csv", "bank/metric_container.csv",
+                "bank/trace_span.csv", "bank/log/log_service.csv",
+                "bank/metric/metric_app.csv", "bank/metric/metric_container.csv",
+                "bank/trace/trace_span.csv", "bank/log/log_service.csv"]}}
+
+
+def generated_sandbox_capability_text() -> str:
+    """Format prompt guidance from the same lists installed in the worker."""
+    return ("Allowed builtins are " + ", ".join(sorted(SAFE_BUILTIN_NAMES)) +
+            "; allowed import modules are " + ", ".join(sorted(ALLOWED_MODULES)) +
+            ". Imports must explicitly bind names such as math. Legacy typed helper signatures are in sandbox.typed_helper_api; immutable record helpers require authoring_profile='typed-records-v1' and are listed in sandbox.typed_record_helper_api")
 
 
 def _json_value(value: Any, label: str) -> Any:
@@ -154,8 +241,39 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     The source is never evaluated here. Syntax/signature/process isolation are
     enforced again by the generated-operator worker at execution time.
     """
+    if (isinstance(spec, Mapping) and spec.get("authoring_profile") in
+            {"typed-operator-ir-v1", "typed-operator-ir-v2"}):
+        from .m4_operator_ir import normalize_operator_ir_spec, OperatorIRError
+        compact_raw_fields = {"name", "version", "description", "family", "output_type",
+            "parameters", "authoring_profile", "program"}
+        legacy_raw_fields = compact_raw_fields | {"input_ports", "input_requirements"}
+        normalized_fields = legacy_raw_fields | {"declared_version", "program_sha256", "source_sha256",
+            "signature_sha256", "contract_hash", "kernel_abi_sha256", "interpreter_sha256", "policy_pins"}
+        is_normalized = "declared_version" in spec
+        if ((is_normalized and set(spec) != normalized_fields) or
+                (not is_normalized and set(spec) not in (compact_raw_fields, legacy_raw_fields))):
+            raise GeneratedSpecError("typed operator IR contains missing or unsupported fields")
+        try:
+            raw = {key: spec[key] for key in ("name", "description", "family", "input_ports",
+                "output_type", "parameters", "authoring_profile", "input_requirements", "program")
+                if key in spec}
+            raw["version"] = spec.get("declared_version", spec.get("version"))
+            canonical = normalize_operator_ir_spec(raw)
+        except (KeyError, OperatorIRError, TypeError, ValueError) as exc:
+            raise GeneratedSpecError(f"typed operator IR is invalid: {exc}") from exc
+        if is_normalized:
+            for field in ("program_sha256", "source_sha256", "signature_sha256",
+                          "contract_hash", "kernel_abi_sha256", "interpreter_sha256", "policy_pins"):
+                if spec[field] != canonical.get(field):
+                    raise GeneratedSpecError(f"typed operator IR {field} does not match its contents")
+            if (spec["version"] != canonical["version"] or
+                    spec["declared_version"] != canonical["declared_version"]):
+                raise GeneratedSpecError("typed operator IR version identity does not match its contents")
+        return canonical
     normalized_fields = {"declared_version", "source_sha256", "signature_sha256", "contract_hash"}
-    if isinstance(spec, Mapping) and set(spec) == SPEC_FIELDS | normalized_fields:
+    allowed_fields = SPEC_FIELDS | SPEC_OPTIONAL_FIELDS
+    if (isinstance(spec, Mapping) and normalized_fields <= set(spec) and
+            set(spec) <= allowed_fields | normalized_fields):
         declared = dict(spec)
         declared["version"] = declared.pop("declared_version")
         supplied_hashes = {name: declared.pop(name) for name in normalized_fields - {"declared_version"}}
@@ -171,8 +289,16 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         if any(canonical[name] != value for name, value in supplied_hashes.items()):
             raise GeneratedSpecError("normalized generated spec hashes do not match its contents")
         return canonical
-    if not isinstance(spec, Mapping) or set(spec) != SPEC_FIELDS:
-        raise GeneratedSpecError(f"generated spec must contain exactly {sorted(SPEC_FIELDS)}")
+    if (not isinstance(spec, Mapping) or set(spec) - allowed_fields or
+            not SPEC_FIELDS <= set(spec)):
+        raise GeneratedSpecError(
+            f"generated spec requires {sorted(SPEC_FIELDS)} and allows optional {sorted(SPEC_OPTIONAL_FIELDS)} only")
+    authoring_profile = spec.get("authoring_profile")
+    if authoring_profile is not None and authoring_profile != TYPED_RECORDS_PROFILE:
+        raise GeneratedSpecError(f"unsupported generated authoring_profile {authoring_profile!r}")
+    input_requirements = spec.get("input_requirements")
+    if authoring_profile == TYPED_RECORDS_PROFILE and input_requirements is None:
+        raise GeneratedSpecError("typed-records-v1 requires input_requirements for every declared port")
     name, declared_version, description, family = (spec.get(key) for key in
         ("name", "version", "description", "family"))
     if not isinstance(name, str) or not GENERATED_NAME.fullmatch(name):
@@ -222,6 +348,14 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         ports.append({"name": port_name, "type": port_type, "required": required,
                       "variadic": variadic, "minimum_items": minimum,
                       "maximum_items": maximum})
+
+    normalized_requirements: dict[str, dict[str, Any]] | None = None
+    if input_requirements is not None:
+        try:
+            from .m4_capabilities import validate_input_requirements
+            normalized_requirements = validate_input_requirements(input_requirements, ports)
+        except Exception as exc:
+            raise GeneratedSpecError(f"invalid input_requirements: {exc}") from exc
 
     raw_parameters = spec.get("parameters")
     if not isinstance(raw_parameters, Mapping) or len(raw_parameters) > 24:
@@ -284,7 +418,7 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     if len(functions) != 1:
         raise GeneratedSpecError("generated source must define exactly one operator function")
     try:
-        validate_sandbox_source(source)
+        validate_sandbox_source(source, authoring_profile=authoring_profile)
     except Exception as exc:
         raise GeneratedSpecError(f"generated source violates the sandbox syntax contract: {exc}") from exc
     _check_declared_thresholds(source)
@@ -292,6 +426,10 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     signature = {"name": name, "declared_version": declared_version,
         "description": description.strip(), "family": family, "input_ports": ports,
         "output_type": output_type, "parameters": parameters}
+    if authoring_profile is not None:
+        signature["authoring_profile"] = authoring_profile
+    if normalized_requirements is not None:
+        signature["input_requirements"] = normalized_requirements
     source_sha = hashlib.sha256(source.encode("utf-8")).hexdigest()
     signature_sha = hashlib.sha256(canonical_json(signature)).hexdigest()
     version_sha = hashlib.sha256(canonical_json({"signature": signature, "source_sha256": source_sha})).hexdigest()
@@ -322,6 +460,13 @@ def register_generated_specs(registry: OperatorRegistry, specs: list[Mapping[str
 
         def implementation(inputs: Mapping[str, Any], params: Mapping[str, Any], context: Any,
                            *, _spec: dict[str, Any] = spec) -> Any:
+            if _spec.get("authoring_profile") in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+                from .m4_operator_ir import (compact_operator_ir_inputs,
+                    compact_operator_ir_inputs_v2)
+                if _spec["authoring_profile"] == "typed-operator-ir-v1":
+                    inputs = compact_operator_ir_inputs(inputs)
+                else:
+                    inputs = compact_operator_ir_inputs_v2(inputs, _spec["program"])
             ports = {port["name"]: port for port in _spec["input_ports"]}
             wire_inputs = {}
             for name, value in inputs.items():
@@ -332,8 +477,22 @@ def register_generated_specs(registry: OperatorRegistry, specs: list[Mapping[str
                     wire_inputs[name] = json.loads(canonical_json(value).decode("utf-8"))
             wire_params = _jsonable(params)
             runtime_json = _jsonable(context.runtime_values)
-            result = run_generated_operator(_spec["source"], wire_inputs, wire_params,
-                runtime_json, _spec["output_type"], limits=sandbox_limits)
+            run_kwargs = {}
+            if _spec.get("authoring_profile") == TYPED_RECORDS_PROFILE:
+                run_kwargs = {"authoring_profile": TYPED_RECORDS_PROFILE,
+                              "typecheck_spec": _spec}
+            if _spec.get("authoring_profile") in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+                from .m4_operator_ir import trusted_runtime_context, trusted_runtime_context_v2
+                profile = _spec["authoring_profile"]
+                trusted_context = (trusted_runtime_context() if profile == "typed-operator-ir-v1"
+                    else trusted_runtime_context_v2(inputs=inputs))
+                result = run_generated_operator(None, wire_inputs, wire_params, runtime_json,
+                    _spec["output_type"], limits=sandbox_limits,
+                    authoring_profile=profile, typecheck_spec=_spec,
+                    ir_program=_spec["program"], trusted_context=trusted_context)
+            else:
+                result = run_generated_operator(_spec["source"], wire_inputs, wire_params,
+                    runtime_json, _spec["output_type"], limits=sandbox_limits, **run_kwargs)
             audit_row = {"operator": _spec["name"], "version": _spec["version"],
                 "source_sha256": _spec["source_sha256"], "ok": result.get("ok"),
                 "isolation": result.get("isolation"), "stdout": result.get("stdout", ""),

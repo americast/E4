@@ -19,14 +19,13 @@ from .dag import DAGValidationError, verify_dag
 from .executor import ExecutionFailure, SerialExecutor
 from .m4_controller import (M4ControllerError, M4ModelClient, M4_SYSTEM_PROMPT, _append_jsonl,
     _canonical_hash, _implementation_fingerprint, _materialize_seeds_for_registry, _plain, _write_json, build_m4_runtime, public_case_digest,
-    _validate_graph, data_operator_contract_schema, generated_spec_shape_example,
-    reject_identifier_literals, typed_contract_wire_schema,
+    _validate_graph, _logical_registry, _split_composite_specs, _safe_repair_artifact,
+    _reject_program_identifier_literals,
     validate_bank_answer)
 from .m4_data import M4QueryBudget, make_m4_registry
 from .m4_fixtures import (fixture_expected_top_component, synthetic_case_runtime,
                           write_synthetic_public_case)
-from .m4_generated import (generated_spec_contract_schema, register_generated_specs,
-                           validate_generated_spec)
+from .m4_composite import composite_spec_schema, normalize_composite_spec
 from .m4_library import (create_library_snapshot, playbook_graph_hash,
                          snapshot_library)
 from .model_client import LocalModelClient
@@ -101,10 +100,7 @@ def _schema_only_context(root: Path, registry: OperatorRegistry,
         "protected_runtime_values": policy["protected_runtime_values"],
         "runtime_override_contract": policy["model_runtime_overrides"],
         "registered_operators": registry.signatures(),
-        "typed_contract_wire_schema": typed_contract_wire_schema(),
-        "data_operator_contract_schema": data_operator_contract_schema(),
-        "generated_spec_contract_schema": generated_spec_contract_schema(),
-        "generated_spec_shape_example": generated_spec_shape_example(),
+        "composite_spec_schema": composite_spec_schema(),
         "fixed_bank_seed_examples": _materialize_seeds(seed_library, registry),
         "bootstrap_budgets": policy["bootstrap"],
         "public_query_and_worker_limits": policy["query_and_generation"],
@@ -119,33 +115,8 @@ def _official_candidates() -> tuple[str, ...]:
 
 
 def _prompt(context: Mapping[str, Any]) -> str:
-    return ("BOOTSTRAP CONTRACT\nGenerate a concise useful schema-specific addition; one operator and one playbook are enough "
-        "when justified. Two operators and four additional playbooks are hard maximums, not quotas. Generate using only this schema, these static candidate names, runtime contracts, registered operator "
-        "signatures, and fixed four Bank seeds. There are no case rows, incident IDs, observed per-case IDs, "
-        "counts, labels, prior outputs, or evaluator results in the prompt. Do not add unsupported trace success, "
-        "call type, root, service/database roles, aliases, or failure/status classifiers. You may propose "
-        "deterministic parameterized pattern checks over raw log.value excerpts, but do not invent source fields. Keep thresholds "
-        "bounded: Aggregates produced by Bank operators may exceed the 2 MiB generated-worker input cap; use "
-        "the registered bank.public.project operator to select declared scalar summaries with explicit filters, "
-        "offset 0..100000 and limit 1..256 before passing oversized summary aggregates to generated operators. It "
-        "preserves full-window row.value/support/identity/source/contributors and scalar details, omits non-scalar "
-        "details/metadata with explicit omitted-key and coverage records, does not recompute statistics, and caps "
-        "output at 512 KiB/4096-byte strings. It rejects native query pages and re-projection. Keep raw "
-        "bank.public.query pages for operators that need raw rows or log text. "
-        "as declared parameters or runtime fields; numeric literals other than 0 and 1 are rejected. New operators "
-        "must use evolved.<lower_snake> and the sandboxed operator(inputs,params,runtime) entrypoint. For typed inputs, "
-        "inputs is a port mapping of cache wire envelopes; read fields with contract_fields(inputs['port'],'Aggregate'). "
-        "contract_fields unwraps $fields and returns recursively read-only mapping values and immutable tuples; do not mutate them. "
-        "read_case_json/read_catalog_json have no mount for M4 generated operators and will fail if called. "
-        "For typed outputs return exact $type/$fields cache envelopes and nested $map/$tuple markers. Allowed imports "
-        "are math, statistics, itertools, collections; allowed builtins are abs,all,any,bool,dict,enumerate,float,int,len,list,max,min,range,round,set,sorted,str,sum,tuple,zip,print,Exception,ValueError and contract_fields. "
-        "Filesystem, network, reflection, classes, try/except, dynamic imports and recursion are unavailable. "
-        "Bounded for/while iteration over supplied data is permitted under the worker resource limits. "
-        "Propose only portable schema-specific utility/scoring operators and reusable analysis playbooks. Return exactly "
-        "{operators:[operator_spec],playbooks:[{name,dag}]}. Each operator spec has exactly "
-        "{name,version,description,family,input_ports,output_type,parameters,source}. Each DAG uses "
-        "{schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}}. Every node's inputs, params, and bindings must be JSON objects/maps (use {} when empty); inputs maps ports to node IDs, params maps parameter names to JSON values, bindings maps parameter names to runtime field names. Every playbook DAG must return the trusted versioned bank.answers.combine operator that produces RankedAnswer, never an intermediate Aggregate, CandidateSet, or ScoredCandidates. "
-        "Do not include validation outputs, expected answers, fixture IDs, target components, or labels.\n\n"
+    return ("BOOTSTRAP CONTRACT\nGenerate only closed reusable macros over the registered high-level operator catalog; these schema-only macros package existing calls and are not newly synthesized analysis operators. Stage 3 numerical synthesis uses the separate typed-operator-ir-v1 profile. Add no measurements, statistics, filters, arbitrary transformations, or new primitive analysis here. Return exactly "
+        "{operators:[composite_spec],playbooks:[{name,dag}]}. Every composite has authoring_profile='operator-dag-v1' and a finite e4-operator-dag/1 program containing calls to registered names/versions only. Python, source strings, expressions, and arbitrary computations are not allowed. Use schema-listed inputs, literal or declared parameter values, and runtime.field bindings only. Keep all macro expansions within the published node/depth limits. Use one composite and one useful playbook when justified; two operators and four additional playbooks remain hard maxima, not quotas. Use only this schema, runtime contracts, registered operator signatures, and fixed Bank seeds. No case rows, incident IDs, labels, prior outputs, or evaluator results are provided. Do not invent trace success, call type, root/service/database roles, aliases, or unsupported fields. Playbook DAGs use {schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}} and return through the trusted Bank RankedAnswer combiner. Do not include validation outputs, fixture IDs, target components, or labels.\n\n"
         "SCHEMA-ONLY BOOTSTRAP CONTEXT\n" +
         json.dumps(context, ensure_ascii=False, sort_keys=True, separators=(",", ":"), allow_nan=False))
 
@@ -161,14 +132,14 @@ def _validate_bundle(bundle: Any, context: Mapping[str, Any], registry: Operator
         raise M4ControllerError("bootstrap_budget", "bootstrap proposal count exceeds the frozen budget", static=True)
     normalized = []
     for spec in operators:
-        candidate = validate_generated_spec(spec)
-        reject_identifier_literals(candidate["source"], set(_official_candidates()))
+        candidate = normalize_composite_spec(spec, registry)
+        _reject_program_identifier_literals(candidate, set(_official_candidates()))
         normalized.append(candidate)
     names = [item["name"] for item in normalized]
     if len(names) != len(set(names)):
         raise M4ControllerError("bootstrap_duplicate_operator", "bootstrap operator names must be unique", static=True)
     version_mapping = {(item["name"], item["declared_version"]): item["version"] for item in normalized}
-    validation_registry = make_m4_registry(None, normalized, root=root)
+    validation_registry = _logical_registry(registry, normalized)
     normalized_books: list[dict[str, Any]] = []
     for index, item in enumerate(playbooks):
         if (not isinstance(item, Mapping) or set(item) != {"name", "dag"} or
@@ -176,19 +147,27 @@ def _validate_bundle(bundle: Any, context: Mapping[str, Any], registry: Operator
             raise M4ControllerError("bootstrap_playbook_schema", f"playbooks[{index}] must contain name and dag", static=True)
         from .m4_controller import _resolve_generated_versions
         document = _resolve_generated_versions(item["dag"], version_mapping)
+        from .m4_composite import expand_composite_dag
+        expansion = expand_composite_dag(document, normalized, validation_registry,
+            synthetic_case_runtime())
         normalized_books.append({"name": item["name"], "document": document,
+            "expanded_document": expansion.dag,
+            "composite_expansion": expansion.as_dict(),
             "provenance": {"source": "schema_only_bootstrap"}})
     runtime = synthetic_case_runtime()
     for book in normalized_books:
         try:
             _validate_graph(book["document"], validation_registry, runtime, stage="bootstrap")
+            primitive_verified = _validate_graph(book["expanded_document"], registry,
+                runtime, stage="bootstrap")
         except (M4ControllerError, DAGValidationError) as exc:
             raise M4ControllerError("bootstrap_playbook_static", f"{book['name']}: {exc}", static=True) from exc
     return normalized, normalized_books, version_mapping
 
 
 def _copy_fixture_policy(root: Path, fixture_root: Path) -> None:
-    for relative in ("config/bank_metric_kind_policy.json", "config/bank_dev_kpi_policy.json"):
+    for relative in ("config/bank_metric_kind_policy.json", "config/bank_dev_kpi_policy.json",
+                     "config/m4_runtime.json"):
         path = fixture_root / relative
         path.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(root / relative, path)
@@ -203,12 +182,20 @@ def _execute_synthetic_playbook(document: Mapping[str, Any], generated_specs: li
     case = write_synthetic_public_case(fixture_root, scenario=scenario,
                                        alpha_id=alpha_id, beta_id=beta_id)
     query_budget = M4QueryBudget(run_dir / "synthetic_audit" / index)
-    registry = make_m4_registry(case, generated_specs, root=fixture_root,
+    legacy_specs, composite_specs = _split_composite_specs(generated_specs)
+    registry = make_m4_registry(case, legacy_specs, root=fixture_root,
         audit_dir=run_dir / "synthetic_audit" / index,
         shared_query_budget=query_budget)
+    logical_registry = _logical_registry(registry, composite_specs)
     runtime = build_m4_runtime(case.alert, root=root)
     try:
-        verified = _validate_graph(document, registry, runtime, stage="bootstrap")
+        _validate_graph(document, logical_registry, runtime, stage="bootstrap")
+        from .m4_composite import expand_composite_dag
+        expansion = expand_composite_dag(document, composite_specs, logical_registry, runtime,
+            max_nodes=int(runtime.snapshot.values["max_nodes"]),
+            max_depth=int(runtime.snapshot.values["dag_depth"]))
+        expanded_document = expansion.dag
+        verified = _validate_graph(expanded_document, registry, runtime, stage="bootstrap")
         source_node = next(node.node_id for node in verified.nodes if node.operator.external_input)
         result = SerialExecutor(registry, CacheStore(run_dir / "synthetic_cache" / index,
             enabled=False)).execute_verified(verified, runtime,
@@ -221,6 +208,7 @@ def _execute_synthetic_playbook(document: Mapping[str, Any], generated_specs: li
         passed = (expected in top_ids) if scenario == "positive" else not top_ids
         return passed, {"status": "passed" if passed else "fixture_behavior_mismatch",
             "scenario": scenario, "top_components": top_ids,
+            "expanded_graph": expansion.report,
             "answer_digest": hashlib.sha256(canonical_json(result.answer)).hexdigest(),
             "query_budget": {"requests": query_budget.requests,
                              "rows": query_budget.rows, "bytes": query_budget.bytes}}
@@ -313,9 +301,10 @@ def run_bootstrap(*, profile_path: Path, run_dir: Path,
         while True:
             call_counter += 1
             current_prompt = prompt if repair_count == 0 else (prompt +
-                "\n\nStatic schema/typed-contract errors only; repair the bundle shape/spec or graph references. "
+                "\n\nStatic closed-DAG schema errors only; repair the bundle shape, operator signatures, or graph references. "
                 "No synthetic execution outcomes are available.\n" + json.dumps(errors, sort_keys=True) +
-                "\n\nPrevious response:\n" + previous + "\nReturn corrected JSON only.")
+                "\n\nPrevious response (executable source fields are omitted):\n" +
+                _safe_repair_artifact(previous) + "\nReturn corrected JSON only.")
             prompt_file = run_dir / "prompts" / f"bootstrap_call{call_counter}.txt"
             prompt_file.write_text(current_prompt, encoding="utf-8")
             call = bootstrap_model.complete(current_prompt, task_id="m4_schema_bootstrap", attempt=call_counter)
@@ -394,7 +383,16 @@ def run_bootstrap(*, profile_path: Path, run_dir: Path,
         normalized_by_key = {f"{spec['name']}@{spec['version']}": spec for spec in normalized_specs}
         for book in accepted_books:
             refs = _playbook_operator_keys(book["document"])
-            reachable_spec_keys.update(refs & set(normalized_by_key))
+            pending = list(refs & set(normalized_by_key))
+            while pending:
+                key = pending.pop()
+                if key in reachable_spec_keys:
+                    continue
+                reachable_spec_keys.add(key)
+                dependencies = normalized_by_key[key].get("dependencies", ())
+                for dependency in dependencies:
+                    if dependency in normalized_by_key and dependency not in reachable_spec_keys:
+                        pending.append(dependency)
             accepted_docs.append({"name": book["name"], "document": book["document"],
                 "provenance": {**book["provenance"],
                     "synthetic_outcomes": book["synthetic_outcomes"]}})

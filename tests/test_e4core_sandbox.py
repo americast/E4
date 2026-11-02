@@ -1,13 +1,219 @@
 import math
+import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
 
-from e4core.sandbox import (_validate_worker_response, probe_os_isolation,
+from e4core.sandbox import (DEFAULT_LIMITS, _validate_worker_response, probe_os_isolation,
                            run_generated_operator)
+from e4core.sandbox_worker import contract_fields
 
 
 class GeneratedOperatorSandboxTests(unittest.TestCase):
+    def test_contract_fields_preserves_nested_typed_envelopes(self):
+        window = {"$type": "Window", "$fields": {"name": "alert",
+            "start_ms_utc": 1, "end_ms_utc": 2}}
+        entity = {"$type": "EntityRef", "$fields": {
+            "role": "component", "identifier": "synthetic-service"}}
+        row = {"$type": "AggregateRow", "$fields": {
+            "entity": entity, "metric_key": "synthetic", "window": window,
+            "statistic": "median", "value": 1.0, "support": 1,
+            "source_tables": {"$tuple": ["synthetic.csv"]},
+            "contributing_entities": {"$tuple": [entity]},
+            "details": {"$map": {"ranking_eligible": True}}}}
+        aggregate_wire = {"$type": "Aggregate", "$fields": {
+            "window": window, "rows": {"$tuple": [row]},
+            "source_tables": {"$tuple": ["synthetic.csv"]},
+            "metadata": {"$map": {}}}}
+
+        aggregate = contract_fields(aggregate_wire, "Aggregate")
+        nested_row = aggregate["rows"][0]
+        self.assertEqual(nested_row["$type"], "AggregateRow")
+        with self.assertRaises(KeyError):
+            _ = nested_row["entity"]
+
+        row_fields = contract_fields(nested_row, "AggregateRow")
+        entity_fields = contract_fields(row_fields["entity"], "EntityRef")
+        self.assertEqual(entity_fields["identifier"], "synthetic-service")
+
+    def test_worker_exposes_published_isinstance_and_explicit_import_capabilities(self):
+        source = """import math
+def operator(inputs, params, runtime):
+    return math.sqrt(16) + int(isinstance(inputs, dict))
+"""
+        result = run_generated_operator(source, {"value": 1}, {}, {}, "number")
+        self.assertTrue(result["ok"], result)
+        self.assertEqual(result["result"], 5)
+
+    @unittest.skipUnless(os.environ.get("E4_RUN_SANDBOX_STRESS") == "1",
+                         "opt-in 15 MiB bubblewrap resource stress test")
+    def test_near_limit_nested_aggregates_reduce_to_small_typed_result(self):
+        def aggregate(name):
+            rows = [{"$map": {"entity_id": f"service-{index:04d}",
+                              "metric_value": index % 17,
+                              "note": "x" * 3350}}
+                    for index in range(2250)]
+            return {"$type": "Aggregate", "$fields": {
+                "window": {"$type": "Window", "$fields": {
+                    "name": name, "start_ms_utc": 1000, "end_ms_utc": 2000}},
+                "rows": {"$tuple": []}, "source_tables": {"$tuple": ["synthetic/metric.csv"]},
+                "metadata": {"$map": {"public_query": {"$map": {"rows_data": rows}}}}}}
+
+        source = '''def operator(inputs, params, runtime):
+    alert = contract_fields(inputs["alert"], "Aggregate")
+    reference = contract_fields(inputs["reference"], "Aggregate")
+    alert_rows = alert["metadata"]["public_query"]["rows_data"]
+    reference_rows = reference["metadata"]["public_query"]["rows_data"]
+    hits = 0
+    total = 0
+    for row in alert_rows:
+        value = row["metric_value"]
+        total += value
+        if value >= params["threshold"]:
+            hits += 1
+    baseline = sum(row["metric_value"] for row in reference_rows)
+    return {"$type": "Aggregate", "$fields": {
+        "window": alert["window"], "rows": {"$tuple": []},
+        "source_tables": {"$tuple": ["synthetic/metric.csv"]},
+        "metadata": {"$map": {"reduction": {"$map": {
+            "alert_rows": len(alert_rows), "reference_rows": len(reference_rows),
+            "threshold_hits": hits, "alert_total": total, "reference_total": baseline}}}}}}
+'''
+        inputs = {"alert": aggregate("alert"), "reference": aggregate("reference"),
+                  "candidates": {"$type": "CandidateSet", "$fields": {
+                      "candidates": {"$tuple": []}, "source": "synthetic"}}}
+        limits = {"input_bytes": 16 * 1024 * 1024}
+        request_bytes = len(json.dumps(
+            {"source": source, "inputs": inputs, "params": {"threshold": 8},
+             "runtime": {}, "output_type": "Aggregate",
+             "limits": {**DEFAULT_LIMITS, **limits}}, separators=(",", ":"),
+            allow_nan=False).encode())
+        self.assertGreater(request_bytes, 15_000_000)
+        self.assertLess(request_bytes, 16 * 1024 * 1024)
+
+        result = run_generated_operator(source, inputs, {"threshold": 8}, {},
+                                        "Aggregate", limits=limits)
+        self.assertTrue(result["ok"], result)
+        summary = result["result"]["$fields"]["metadata"]["$map"]["reduction"]["$map"]
+        self.assertEqual(summary, {"alert_rows": 2250, "reference_rows": 2250,
+                                   "threshold_hits": 1188, "alert_total": 17967,
+                                   "reference_total": 17967})
+
+        generic_default = run_generated_operator(source, inputs, {"threshold": 8}, {},
+            "Aggregate")
+        self.assertFalse(generic_default["ok"])
+        self.assertEqual(generic_default["error"]["code"], "input_limit")
+
+        oversized = run_generated_operator(source, inputs,
+            {"threshold": 8, "padding": "x" * (2 * 1024 * 1024)}, {},
+            "Aggregate", limits=limits)
+        self.assertFalse(oversized["ok"])
+        self.assertEqual(oversized["error"]["code"], "input_limit")
+
+    @unittest.skipUnless(os.environ.get("E4_RUN_SANDBOX_STRESS") == "1",
+                         "opt-in nested AggregateRow CPU/RSS characterization")
+    def test_nested_aggregate_row_stress_characterizes_cpu_budget(self):
+        row_count = 2950
+        sample_count = 28
+
+        def window(name):
+            start = 1_700_000_000_000 if name == "reference" else 1_700_001_800_000
+            return {"$type": "Window", "$fields": {"name": name,
+                "start_ms_utc": start, "end_ms_utc": start + 1_800_000}}
+
+        def aggregate(name):
+            win = window(name)
+            rows = []
+            for index in range(row_count):
+                entity = {"$type": "EntityRef", "$fields": {
+                    "role": "component", "identifier": f"service-{index:05d}"}}
+                start = win["$fields"]["start_ms_utc"]
+                buckets = [{"$tuple": [start + minute * 60_000,
+                                       float((index + minute) % 97)]}
+                           for minute in range(sample_count)]
+                raw_counts = [{"$tuple": [start + minute * 60_000,
+                                           (index + minute) % 5 + 1]}
+                              for minute in range(sample_count)]
+                rows.append({"$type": "AggregateRow", "$fields": {
+                    "entity": entity, "metric_key": "metric/metric_app.csv|mrt||",
+                    "window": win, "statistic": "median", "value": float(index % 97),
+                    "support": sample_count,
+                    "source_tables": {"$tuple": ["metric/metric_app.csv"]},
+                    "contributing_entities": {"$tuple": []},
+                    "details": {"$map": {
+                        "metric_kind": "latency", "unit": "ms", "source_field": "mrt",
+                        "source_table": "metric/metric_app.csv", "item_id": None,
+                        "bucket_samples": {"$tuple": buckets},
+                        "distinct_time_buckets": sample_count,
+                        "raw_rows_by_timestamp": {"$tuple": raw_counts},
+                        "comparison_policy": "same source field only; no conversion across Bank metrics"}}}})
+            return {"$type": "Aggregate", "$fields": {"window": win,
+                "rows": {"$tuple": rows},
+                "source_tables": {"$tuple": ["metric/metric_app.csv"]},
+                "metadata": {"$map": {}}}}
+
+        source = '''def operator(inputs, params, runtime):
+    alert = contract_fields(inputs["alert"], "Aggregate")
+    reference = contract_fields(inputs["reference"], "Aggregate")
+    alert_total = 0.0
+    reference_total = 0.0
+    sample_count = 0
+    for row_wire in alert["rows"]:
+        row = contract_fields(row_wire, "AggregateRow")
+        details = row["details"]
+        samples = details["bucket_samples"]
+        sample_count += len(samples) + len(details["raw_rows_by_timestamp"])
+        alert_total += sum(item[1] for item in samples)
+    for row_wire in reference["rows"]:
+        row = contract_fields(row_wire, "AggregateRow")
+        reference_total += sum(item[1] for item in row["details"]["bucket_samples"])
+    return {"$type":"Aggregate","$fields":{
+        "window":alert["window"],"rows":{"$tuple":[]},
+        "source_tables":{"$tuple":["metric/metric_app.csv"]},
+        "metadata":{"$map":{"reduction":{"$map":{
+            "alert_rows":len(alert["rows"]),"reference_rows":len(reference["rows"]),
+            "sample_count":sample_count,"alert_total":alert_total,
+            "reference_total":reference_total}}}}}}
+'''
+        inputs = {"alert": aggregate("alert"), "reference": aggregate("reference"),
+                  "candidates": {"$type": "CandidateSet", "$fields": {
+                      "candidates": {"$tuple": []}, "source": "synthetic"}}}
+        from e4core.m4_data import generated_sandbox_limits
+        m4_limits = generated_sandbox_limits()
+        limits = {"input_bytes": m4_limits["input_bytes"]}
+        request = {"source": source, "inputs": inputs, "params": {}, "runtime": {},
+                   "output_type": "Aggregate", "limits": {**DEFAULT_LIMITS, **m4_limits}}
+        request_bytes = len(json.dumps(request, separators=(",", ":"),
+                                    allow_nan=False).encode())
+        nested_tuple_objects = 2 * row_count * sample_count * 2
+        self.assertGreater(request_bytes, 14_000_000)
+        self.assertLess(request_bytes, 15_000_000)
+        self.assertGreater(nested_tuple_objects, 200_000)
+
+        bounded = run_generated_operator(source, inputs, {}, {}, "Aggregate",
+            limits={**m4_limits, "cpu_seconds": DEFAULT_LIMITS["cpu_seconds"],
+                    "wall_seconds": DEFAULT_LIMITS["wall_seconds"]})
+        self.assertFalse(bounded["ok"], bounded)
+        self.assertEqual(bounded["error"]["code"], "resource_limit")
+
+        production = run_generated_operator(source, inputs, {}, {}, "Aggregate",
+                                             limits=m4_limits)
+        self.assertTrue(production["ok"], production)
+        summary = production["result"]["$fields"]["metadata"]["$map"]["reduction"]["$map"]
+        self.assertEqual(summary, {"alert_rows": row_count, "reference_rows": row_count,
+                                   "sample_count": row_count * sample_count * 2,
+                                   "alert_total": 3_948_000.0,
+                                   "reference_total": 3_948_000.0})
+
+        generic_default = run_generated_operator(source, inputs, {}, {}, "Aggregate")
+        self.assertFalse(generic_default["ok"])
+        self.assertEqual(generic_default["error"]["code"], "input_limit")
+        over_cap = run_generated_operator(source, inputs,
+            {"padding": "x" * (3 * 1024 * 1024)}, {}, "Aggregate", limits=m4_limits)
+        self.assertFalse(over_cap["ok"])
+        self.assertEqual(over_cap["error"]["code"], "input_limit")
+
     def test_useful_operator_gets_independent_json_inputs(self):
         source = """def operator(inputs, params, runtime):
     scale = params['scale']

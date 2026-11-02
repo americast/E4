@@ -12,11 +12,9 @@ from e4core.m4_fixtures import fixture_expected_top_component
 from e4core.m4_library import load_library_snapshot
 from e4core.m4_controller import (M4ControllerError, reject_identifier_literals,
                                   data_operator_contract_schema,
-                                  generated_spec_shape_example,
                                   typed_contract_wire_schema)
 from e4core.m4_data import query_bank_public
 from e4core.m4_fixtures import write_synthetic_public_case
-from e4core.m4_generated import generated_spec_contract_schema, validate_generated_spec
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,62 +34,6 @@ def _copy_bootstrap_config(root: Path) -> Path:
     return profile
 
 
-def _typed_scorer_spec():
-    source = '''def operator(inputs, params, runtime):
-    reference = contract_fields(inputs["reference"], "Aggregate")
-    alert = contract_fields(inputs["alert"], "Aggregate")
-    candidate_set = contract_fields(inputs["candidates"], "CandidateSet")
-    before = {}
-    after = {}
-    for row in reference["metadata"]["public_query"]["rows_data"]:
-        raw = row["value"]
-        if raw != "" and raw != "None":
-            before.setdefault(row["cmdb_id"], []).append(float(raw))
-    for row in alert["metadata"]["public_query"]["rows_data"]:
-        raw = row["value"]
-        if raw != "" and raw != "None":
-            after.setdefault(row["cmdb_id"], []).append(float(raw))
-    candidates = []
-    for candidate_wire in candidate_set["candidates"]:
-        candidate = contract_fields(candidate_wire, "Candidate")
-        entity = contract_fields(candidate["entity"], "EntityRef")
-        identifier = entity["identifier"]
-        left = before.get(identifier, [])
-        right = after.get(identifier, [])
-        score = 0.0
-        support = min(len(left), len(right))
-        if left and right:
-            score = max(0.0, (sum(right) / len(right) - sum(left) / len(left)) * params["scale"])
-        eligible = score > 0.0 and support > 0
-        evidence = []
-        if support > 0:
-            evidence.append({"$type": "Evidence", "$fields": {
-                "source": "bank/metric_container.csv",
-                "window": alert["window"], "statistic": "synthetic_native_mean_delta",
-                "value": score, "contributing_entities": {"$tuple": [candidate["entity"]]},
-                "support": support, "details": {"$map": {"metric_key": "native_kpi",
-                    "normalized_effect": score, "p_value": 0.0 if eligible else 1.0,
-                    "direction": "higher_is_worse", "unit": "synthetic native value",
-                    "ranking_eligible": eligible}}}})
-        candidates.append({"$type": "ScoredCandidate", "$fields": {
-            "entity": candidate["entity"], "score": score, "category": None,
-            "evidence": {"$tuple": evidence}, "analysis_family": "bank_metric"}})
-    status = "ready" if any(item["$fields"]["score"] > 0.0 for item in candidates) else "abstained"
-    return {"$type": "ScoredCandidates", "$fields": {
-        "candidates": {"$tuple": candidates}, "scorer": "evolved.synthetic_metric_score",
-        "status": status, "status_details": {"$map": {}}}}
-'''
-    return {"name": "evolved.synthetic_metric_score", "version": "1",
-        "description": "Compare bounded public native metric aggregates by exact observed component.",
-        "family": "bank_metric",
-        "input_ports": [{"name": "reference", "type": "Aggregate"},
-                        {"name": "alert", "type": "Aggregate"},
-                        {"name": "candidates", "type": "CandidateSet"}],
-        "output_type": "ScoredCandidates",
-        "parameters": {"scale": {"type": "number", "default": 1.0}},
-        "source": source}
-
-
 def _generated_playbook(root: Path) -> dict:
     registry = make_m4_registry(None, [], root=root)
     versions = {}
@@ -104,22 +46,38 @@ def _generated_playbook(root: Path) -> dict:
     return {"name": "native_query_delta", "dag": {"schema_version": "e4-dag/1", "nodes": [
         {"id": "data", "operator": "case.telemetry", "version": versions["case.telemetry"],
          "inputs": {}, "params": {}, "bindings": {}},
-        {"id": "reference", "operator": "bank.public.query", "version": versions["bank.public.query"],
-         "inputs": {"data": "data"}, "params": {"table": "metric/metric_container.csv",
-             "window": "reference", "limit": 64, "offset": 0,
-             "fields": ["timestamp", "cmdb_id", "kpi_name", "value"]}, "bindings": {}},
-        {"id": "alert", "operator": "bank.public.query", "version": versions["bank.public.query"],
-         "inputs": {"data": "data"}, "params": {"table": "metric/metric_container.csv",
-             "window": "alert", "limit": 64, "offset": 0,
-             "fields": ["timestamp", "cmdb_id", "kpi_name", "value"]}, "bindings": {}},
-        {"id": "candidates", "operator": "bank.candidates.generate", "version": versions["bank.candidates.generate"],
-         "inputs": {"data": "data"}, "params": {}, "bindings": {}},
         {"id": "scores", "operator": "evolved.synthetic_metric_score", "version": "1",
-         "inputs": {"reference": "reference", "alert": "alert", "candidates": "candidates"},
+         "inputs": {"data": "data"},
          "params": {}, "bindings": {}},
         {"id": "answer", "operator": "bank.answers.combine", "version": versions["bank.answers.combine"],
          "inputs": {"scores": ["scores"]}, "params": {"limit": 5}, "bindings": {}}],
         "return": {"node": "answer"}}}
+
+
+def _composite_metric_scorer(root: Path, name="evolved.synthetic_metric_score"):
+    registry = make_m4_registry(None, [], root=root)
+    versions = {row["name"]: row["version"] for row in registry.signatures()}
+    return {"name": name, "version": "1",
+        "description": "Reusable composition of the registered Bank metric pipeline.",
+        "family": "bank_metric_pipeline",
+        "input_ports": [{"name": "data", "type": "Telemetry"}],
+        "output_type": "ScoredCandidates", "parameters": {},
+        "authoring_profile": "operator-dag-v1",
+        "program": {"schema_version": "e4-operator-dag/1", "nodes": [
+            {"id": "reference", "operator": "bank.metrics.aggregate",
+             "version": versions["bank.metrics.aggregate"],
+             "inputs": {"data": "$input.data"}, "params": {"window": "reference"}, "bindings": {}},
+            {"id": "alert", "operator": "bank.metrics.aggregate",
+             "version": versions["bank.metrics.aggregate"],
+             "inputs": {"data": "$input.data"}, "params": {"window": "alert"}, "bindings": {}},
+            {"id": "candidates", "operator": "bank.candidates.generate",
+             "version": versions["bank.candidates.generate"],
+             "inputs": {"data": "$input.data", "aggregates": ["reference", "alert"]},
+             "params": {}, "bindings": {}},
+            {"id": "scores", "operator": "bank.metrics.contrast",
+             "version": versions["bank.metrics.contrast"],
+             "inputs": {"reference": "reference", "alert": "alert", "candidates": "candidates"},
+             "params": {}, "bindings": {}}], "return": {"node": "scores"}}}
 
 
 class FakeBootstrapClient:
@@ -146,34 +104,17 @@ def _model_call(content, task_id, attempt, now):
 
 
 class M4BootstrapTests(unittest.TestCase):
-    def test_generated_operator_schema_matches_validator_and_is_published_in_both_prompts(self):
-        schema = generated_spec_contract_schema()
-        compact_schema = json.dumps(schema, ensure_ascii=False, sort_keys=True,
-                                    separators=(",", ":"))
-        self.assertLess(len(compact_schema.encode("utf-8")), 5000)
-        raw_spec = _typed_scorer_spec()
-        self.assertEqual(set(raw_spec), set(schema["top_level"]["required_fields"]))
-        ports = schema["top_level"]["fields"]["input_ports"]
-        self.assertEqual(ports["type"], "array")
-        self.assertEqual(ports["items"], "input_port")
-        self.assertEqual(ports["min_items"], 1)
-        self.assertEqual(ports["max_items"], 8)
-        self.assertEqual(set(raw_spec["input_ports"][0]), {"name", "type"})
-        self.assertIn("required", schema["input_ports"]["fields"])
-        self.assertIn("variadic", schema["input_ports"]["fields"])
-        self.assertEqual(schema["parameters"]["container"], "JSON object/map")
-        self.assertIn("entry_fields", schema["parameters"])
-        self.assertEqual(set(raw_spec["parameters"]["scale"]), {"type", "default"})
-        self.assertLessEqual(set(raw_spec["parameters"]["scale"]),
-                             set(schema["parameters"]["entry_allowed_fields"]))
-        self.assertIn("positive_integer", schema["parameters"]["value_semantics"])
-        normalized = validate_generated_spec(raw_spec)
-        self.assertIn(normalized["output_type"], schema["output_types"])
-        example = generated_spec_shape_example()
-        self.assertEqual(set(example), set(schema["top_level"]["required_fields"]))
-        self.assertIn("Shape-only", example["description"])
-        self.assertIn("output_type", validate_generated_spec(example))
-
+    def test_composite_dag_schema_is_published_without_legacy_python_contracts(self):
+        from e4core.m4_composite import composite_spec_schema
+        schema = composite_spec_schema()
+        self.assertEqual(schema["authoring_profile"], "operator-dag-v1")
+        required = set(schema["required_fields"])
+        self.assertEqual(required, {"name", "version", "description", "family", "input_ports",
+            "output_type", "parameters", "authoring_profile", "program"})
+        self.assertFalse(schema["additional_fields"])
+        self.assertEqual(schema["fields"]["program"]["schema_version"], "e4-operator-dag/1")
+        self.assertEqual(schema["limits"]["expanded_nodes"], 40)
+        self.assertEqual(schema["limits"]["expanded_depth"], 12)
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             profile = _copy_bootstrap_config(root)
@@ -181,10 +122,12 @@ class M4BootstrapTests(unittest.TestCase):
             result = run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",
                                    client=fake, root=root)
             bootstrap_prompt = fake.calls[0]
-            self.assertIn("generated_spec_contract_schema", bootstrap_prompt)
+            self.assertIn("composite_spec_schema", bootstrap_prompt)
             self.assertIn('"input_ports"', bootstrap_prompt)
-            self.assertIn('"entry_fields"', bootstrap_prompt)
-            self.assertIn("Shape-only pass-through example", bootstrap_prompt)
+            self.assertIn('"program"', bootstrap_prompt)
+            self.assertIn("e4-operator-dag/1", bootstrap_prompt)
+            self.assertNotIn('"source":', bootstrap_prompt)
+            self.assertNotIn('"typed_helper_api"', bootstrap_prompt)
 
             from e4core.m4_controller import _stage_prompt, build_m4_runtime
             from e4core.m4_data import M4QueryBudget
@@ -192,13 +135,25 @@ class M4BootstrapTests(unittest.TestCase):
             runtime = build_m4_runtime({"analysis_window_start_epoch_ms_utc": 0,
                 "alert_window_start_epoch_ms_utc": 1, "alert_window_end_epoch_ms_utc": 2}, root=root)
             policy = json.loads((root / "config/m4_runtime.json").read_text(encoding="utf-8"))
-            stage3_prompt = _stage_prompt("synthesize", digest={}, registry=registry,
+            evolve_prompt = _stage_prompt("evolve", digest={}, registry=registry,
                 snapshot=result["snapshot"], runtime=runtime, history=[], policy=policy,
                 query_budget=M4QueryBudget(None))
-            self.assertIn("EXACT GENERATED OPERATOR SPEC JSON SCHEMA", stage3_prompt)
-            self.assertIn('"input_ports"', stage3_prompt)
-            self.assertIn('"entry_fields"', stage3_prompt)
-            self.assertIn("Shape-only pass-through example", stage3_prompt)
+            serve_prompt = _stage_prompt("stage3_serve", digest={}, registry=registry,
+                snapshot=result["snapshot"], runtime=runtime, history=[], policy=policy,
+                query_budget=M4QueryBudget(None),
+                gap_record={"schema_version": "e4-capability-gaps/1"})
+            self.assertIn("PRIVATE TYPED-OPERATOR-IR SCHEMA AND KERNEL CATALOG", evolve_prompt)
+            self.assertIn('"authoring_profile":"typed-operator-ir-v1"', evolve_prompt)
+            self.assertIn('"program"', evolve_prompt)
+            self.assertNotIn('"source":', evolve_prompt)
+            self.assertNotIn('"typed_record_helper_api"', evolve_prompt)
+            self.assertIn("TRUSTED INPUT PRODUCER CAPABILITIES", evolve_prompt)
+            self.assertNotIn("PRIVATE TYPED-OPERATOR-IR SCHEMA", serve_prompt)
+            self.assertNotIn("Each operator spec has exactly", serve_prompt)
+            self.assertIn("Do not return new specs or change the gap record", serve_prompt)
+            self.assertIn("Return exactly {dag:", serve_prompt)
+            self.assertIn("DATA COVERAGE GUIDANCE", serve_prompt)
+            self.assertNotIn('"source":', serve_prompt)
 
     def test_synthetic_native_logs_cover_positive_stable_healthy_missing_and_renamed_entities(self):
         def error_rows(root, case, window, entity):
@@ -250,8 +205,8 @@ class M4BootstrapTests(unittest.TestCase):
             fake = FakeBootstrapClient(json.dumps({"operators": [], "playbooks": []}))
             result = run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",
                                    client=fake, root=root)
-            self.assertIn("data_operator_contract_schema", fake.calls[0])
-            self.assertIn("rows_data", fake.calls[0])
+            self.assertIn("composite_spec_schema", fake.calls[0])
+            self.assertNotIn("data_operator_contract_schema", fake.calls[0])
             from e4core.m4_controller import _stage_prompt, build_m4_runtime
             from e4core.m4_data import M4QueryBudget
             registry = make_m4_registry(None, [], root=root)
@@ -261,8 +216,29 @@ class M4BootstrapTests(unittest.TestCase):
             stage_prompt = _stage_prompt("synthesize", digest={}, runtime=runtime,
                 registry=registry, snapshot=result["snapshot"], history=[], policy=policy,
                 query_budget=M4QueryBudget(None))
-            self.assertIn("NATIVE QUERY AND PROJECTION DATA LAYOUT", stage_prompt)
-            self.assertIn("metadata.public_query.rows_data", stage_prompt)
+            self.assertIn("DATA COVERAGE GUIDANCE", stage_prompt)
+            self.assertIn("STAGE 3 SERVING CONTRACT", stage_prompt)
+            self.assertIn("atomic serving operators", stage_prompt)
+            self.assertNotIn('"source":', stage_prompt)
+
+    def test_bootstrap_rejects_and_redacts_raw_python_operator_source(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            profile = _copy_bootstrap_config(root)
+            invalid = {"operators": [{"name": "evolved.raw_source", "version": "1",
+                "description": "invalid source", "family": "fixture",
+                "input_ports": [{"name": "data", "type": "Aggregate"}],
+                "output_type": "Aggregate", "parameters": {},
+                "source": "def operator(inputs, params, runtime): return inputs['data']"}],
+                "playbooks": []}
+            fake = FakeBootstrapClient(json.dumps(invalid))
+            with self.assertRaises(M4ControllerError):
+                run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",
+                    client=fake, root=root)
+            self.assertEqual(len(fake.calls), 3)
+            self.assertNotIn("def operator(inputs, params, runtime)", fake.calls[1])
+            self.assertIn("rejected executable source omitted", fake.calls[1])
+            self.assertFalse((root / "bootstrap/library").exists())
 
     def test_bootstrap_cli_delegates_to_restricted_supervisor_with_launcher_profile(self):
         from scripts import run_m4_bootstrap
@@ -307,11 +283,11 @@ class M4BootstrapTests(unittest.TestCase):
             self.assertIn("bank.public.project", prompt)
             self.assertIn("maximum_public_query_rows_per_request", prompt)
 
-    def test_schema_bootstrap_executes_typed_generated_scorer_on_renamed_controls(self):
+    def test_schema_bootstrap_executes_closed_composite_on_renamed_controls(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             profile = _copy_bootstrap_config(root)
-            bundle = {"operators": [_typed_scorer_spec()],
+            bundle = {"operators": [_composite_metric_scorer(root)],
                       "playbooks": [_generated_playbook(root)]}
             fake = FakeBootstrapClient(json.dumps(bundle, ensure_ascii=False))
             result = run_bootstrap(profile_path=profile, run_dir=root / "bootstrap",

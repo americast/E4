@@ -1,0 +1,16 @@
+{
+  "schema_version": "e4-typed-operator-ir-v2-policy/1",
+  "authoring_profile": "typed-operator-ir-v2",
+  "ir_schema_version": "e4-typed-operator-ir/2",
+  "engine_abi": "e4-typed-operator-ir-v2-kernel-abi/1",
+  "primary_kpi_policy_path": "config/bank_dev_kpi_policy.json",
+  "primary_kpi_policy_semantics": "The historical primary-KPI 24-unique-timestamps-per-window selector remains unchanged and is reported separately. V2 observation of an allowlisted KPI for a computation does not imply that the primary selector accepted it.",
+  "support_semantics": {
+    "data_present": "Trusted finite source observations exist in the declared window/input.",
+    "computable": "The specific kernel's declared minimum inputs and support are available; arithmetic computability is not a reliability claim.",
+    "rankable": "Unknown unless the capability report can establish method-specific uncertainty/evidence under its declared estimand and hypothesis family. Unknown does not suppress a descriptive numeric feature or imply causal attribution; score eligibility remains an explicit kernel rule. Support alone never sets rankable."
+  },
+  "input_requirement_semantics": "Requirements are derived from reachable kernels in each exact IR program. KPI source columns are required only when that program uses a KPI kernel; univariate component-series computations do not require application KPI input.",
+  "log_summary_semantics": "Only trusted normalized full-window pattern summaries, per-window denominators, completeness/support counts, and source hashes are accepted. Pattern identifiers are exact hashes over normalized tokens; they do not label error, failure, or request outcome.",
+  "arbitrary_source_or_python": false
+}
