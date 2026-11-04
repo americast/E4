@@ -1,13 +1,26 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "e4-reproduction"
-version = "0.1.0"
-requires-python = ">=3.10,<3.11"
+name = "e4"
+version = "0.2.0"
+description = "A portable, extensible, typed Root-Cause Analysis (RCA) engine"
+readme = "README.md"
+requires-python = ">=3.10"
 dependencies = [
   "numpy==2.2.6",
   "scipy==1.15.3",
   "scikit-learn==1.7.2",
   "mypy==1.19.1",
+  "typing_extensions>=4.5.0",
 ]
+
+[project.scripts]
+e4 = "e4.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["e4*", "adapters*"]
 
 [tool.ruff]
 line-length = 100
