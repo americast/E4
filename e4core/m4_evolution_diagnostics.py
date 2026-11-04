@@ -703,6 +703,10 @@ def build_evolution_contribution_diagnostics(*, gap_record: Mapping[str, Any] | 
                 "kernel_abi_sha256": spec.get("kernel_abi_sha256"),
                 "interpreter_sha256": spec.get("interpreter_sha256"),
                 "policy_pins": _plain(spec.get("policy_pins", {}))})
+        elif spec.get("authoring_profile") == "typed-operator-code-v1":
+            entry.update({"kind": "typed_operator_code", "authoring_profile": spec["authoring_profile"],
+                "source_sha256": spec.get("source_sha256"),
+                "computation_contract_hash": spec.get("contract_hash")})
         outputs.append(entry)
 
     query_coverage = _query_coverage(run_dir)

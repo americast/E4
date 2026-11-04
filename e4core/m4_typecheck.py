@@ -21,8 +21,10 @@ from typing import Any, Mapping
 
 
 PROFILE = "typed-records-v1"
+OPERATOR_CODE_PROFILE = "typed-operator-code-v1"
 MYPY_VERSION = "1.19.1"
 MAX_SOURCE_BYTES = 65536
+OPERATOR_CODE_MAX_SOURCE_BYTES = 8192
 MAX_OUTPUT_BYTES = 16384
 CHECK_TIMEOUT_SECONDS = 8
 CHECK_CPU_SECONDS = 6
@@ -77,7 +79,10 @@ def _wire_type(output_type: str) -> str:
             "RankedAnswer": "RankedAnswerWire"}.get(output_type, "JSONValue")
 
 
-def _input_type(port: Mapping[str, Any]) -> str:
+def _input_type(port: Mapping[str, Any], profile: str = PROFILE) -> str:
+    if port.get("type") == "Telemetry" and profile == OPERATOR_CODE_PROFILE:
+        base = "TelemetryHandle"
+        return f"Sequence[{base}]" if port.get("variadic") else base
     if port.get("type") == "Telemetry":
         raise TypedAuthoringError("typed_input_not_supported",
             "typed-records-v1 currently requires structured Aggregate, CandidateSet, or ScoredCandidates input ports")
@@ -91,7 +96,7 @@ def _input_type(port: Mapping[str, Any]) -> str:
     return base
 
 
-def _checker_stub(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any]) -> str:
+def _checker_stub(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any], profile: str = PROFILE) -> str:
     from .sandbox_worker import (_TYPED_OPTIONAL_PARAMETERS, _TYPED_PARAMETER_TYPES,
         _TYPED_RETURN_TYPES, typed_record_helper_schema)
     ports = spec.get("input_ports")
@@ -99,7 +104,7 @@ def _checker_stub(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any]) ->
     if not isinstance(ports, list) or not isinstance(params, Mapping):
         raise TypedAuthoringError("typed_schema_error", "typed checker requires normalized input_ports and parameters")
     lines = [
-        "from typing import Mapping, Sequence, TypedDict, Protocol, Literal, overload",
+        "from typing import Mapping, Sequence, TypedDict, Protocol, Literal, overload, Generic, TypeVar",
         "from typing_extensions import NotRequired, ReadOnly, Required",
         "JSONValue = str | int | float | bool | None | list['JSONValue'] | tuple['JSONValue', ...] | Mapping[str, 'JSONValue']",
         "JSONMapping = Mapping[str, JSONValue]",
@@ -127,6 +132,27 @@ def _checker_stub(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any]) ->
         "class ScoredCandidatesView(Protocol):\n    @property\n    def candidates(self) -> Sequence[ScoredCandidateView]: ...\n    @property\n    def scorer(self) -> str: ...\n    @property\n    def status(self) -> Literal['ready', 'abstained']: ...\n    @property\n    def status_details(self) -> JSONMapping: ...",
         "class Runtime(Protocol):",
     ]
+    lines.append("    pass")
+    if profile == OPERATOR_CODE_PROFILE:
+        from .operator_code_api import (FIELD_TYPE_ALIASES, LOG_SOURCE_TABLES,
+            METRIC_SOURCE_TABLES, RECORD_FIELDS, SOURCE_TABLES, SPAN_SOURCE_TABLES)
+        lines += ["TelemetryHandle = TypedDict('TelemetryHandle', {'$type': Literal['TelemetryHandle'], '$fields': Mapping[str, JSONValue]})",
+            "Telemetry = TelemetryHandle", "Scalar = str | int | float | bool | None",
+            "GroupKey = tuple[Scalar, ...]",
+            "T = TypeVar('T', covariant=True)"]
+        for alias, values in (("SourceTable", sorted(SOURCE_TABLES)),
+                ("MetricSourceTable", METRIC_SOURCE_TABLES), ("SpanSourceTable", SPAN_SOURCE_TABLES),
+                ("LogSourceTable", LOG_SOURCE_TABLES), *sorted(FIELD_TYPE_ALIASES.items())):
+            literals = ", ".join(repr(value) for value in values)
+            lines.append(f"{alias} = Literal[{literals}]")
+        for record_name in ("TelemetryView", "CoverageView", "MetricPointView", "LogRecordView",
+                "SpanView", "SummaryResult", "AggregateGroupView"):
+            fields = RECORD_FIELDS[record_name]
+            body = [f"class {record_name}(Protocol):"]
+            body.extend(f"    @property\n    def {field_name}(self) -> {field_type}: ..."
+                for field_name, field_type in fields.items())
+            lines.append("\n".join(body))
+        lines.append("class QueryResult(Protocol, Generic[T]):\n    @property\n    def rows(self) -> Sequence[T]: ...\n    @property\n    def window(self) -> WindowView: ...\n    @property\n    def source_tables(self) -> Sequence[str]: ...\n    @property\n    def coverage(self) -> CoverageView: ...")
     runtime_fields = runtime_schema.get("fields", {})
     if not isinstance(runtime_fields, Mapping):
         raise TypedAuthoringError("typed_schema_error", "runtime schema fields must be an object")
@@ -152,7 +178,7 @@ def _checker_stub(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any]) ->
     for port in ports:
         if not isinstance(port, Mapping) or not isinstance(port.get("name"), str):
             raise TypedAuthoringError("typed_schema_error", "malformed normalized input port")
-        typ = _input_type(port)
+        typ = _input_type(port, profile)
         key = json.dumps(port["name"])
         if port.get("required", True):
             input_fields.append(f"{key}: {typ}")
@@ -196,10 +222,32 @@ def _checker_stub(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any]) ->
         elif name == "native_query_rows":
             return_type = "tuple[JSONMapping, ...]"
         lines.append(f"def {name}({', '.join(args)}) -> {return_type}: ...")
+    if profile == OPERATOR_CODE_PROFILE:
+        from .operator_code_api import HELPERS
+        for helper in HELPERS:
+            if helper["name"] in {"group_by", "top_k"}:
+                continue
+            parameters = helper["parameters"]
+            optional = set(helper.get("optional_parameters", ()))
+            if helper["name"] == "metric_points": optional |= {"entity_role", "entity_identifier", "source_field", "metric_key", "bomc_id", "item_id", "limit", "offset"}
+            if helper["name"] == "span_records": optional |= {"component_role", "component_identifier", "limit", "offset"}
+            if helper["name"] == "log_records": optional |= {"entity_identifier", "log_name", "limit", "offset"}
+            if helper["name"] == "aggregate_records": optional |= {"group_by", "time_bucket_ms", "quantile", "limit", "offset"}
+            if helper["name"] == "summarize": optional |= {"quantile"}
+            if helper["name"] == "top_k": optional |= {"descending"}
+            args = [f"{name}: {typ}" + (" = ..." if name in optional else "")
+                for name, typ in parameters.items()]
+            lines.append(f"def {helper['name']}({', '.join(args)}) -> {helper['returns']}: ...")
+        for row_type, field_type in (("MetricPointView", "MetricField"),
+                ("SpanView", "SpanField"), ("LogRecordView", "LogField")):
+            lines.append(f"@overload\ndef group_by(rows: Sequence[{row_type}], fields: Sequence[{field_type}]) -> Mapping[GroupKey, Sequence[{row_type}]]: ...")
+        for row_type, field_type in (("MetricPointView", "MetricField"),
+                ("SpanView", "SpanField"), ("LogRecordView", "LogField")):
+            lines.append(f"@overload\ndef top_k(rows: Sequence[{row_type}], field: {field_type}, k: int, descending: bool = ...) -> Sequence[{row_type}]: ...")
     return "\n".join(lines) + "\n"
 
 
-def _annotate_operator(source: str) -> str:
+def _annotate_operator(source: str, profile: str = PROFILE) -> str:
     try:
         tree = ast.parse(source)
     except SyntaxError as exc:
@@ -265,7 +313,9 @@ def _annotate_operator(source: str) -> str:
               "Window, EntityRef, Evidence, Candidate, CandidateSet, AggregateRow, Aggregate, "
               "ScoredCandidate, ScoredCandidates, scored_views, make_window, make_entity_ref, make_evidence, make_candidate, "
               "make_candidate_set, make_aggregate_row, make_aggregate, make_scored_candidate, "
-              "make_scored_candidates, entity_identifier, entity_id, native_query_rows\n").encode()
+        "make_scored_candidates, entity_identifier, entity_id, native_query_rows\n").encode()
+    if profile == OPERATOR_CODE_PROFILE:
+        prefix = prefix.replace(b"\n", b"\n", 1) + ("from _e4_typed_profile_api import TelemetryHandle, Telemetry, TelemetryView, CoverageView, MetricPointView, LogRecordView, SpanView, SummaryResult, AggregateGroupView, QueryResult, MetricField, SpanField, LogField, SourceField, Statistic, RecordType, SourceTable, MetricSourceTable, SpanSourceTable, LogSourceTable, Scalar, telemetry_view, metric_points, span_records, log_records, aggregate_records, group_by, summarize, top_k\n").encode()
     return (prefix + transformed).decode("utf-8")
 
 
@@ -288,11 +338,15 @@ def _limit_child():
 
 def check_generated_spec_types(spec: Mapping[str, Any], runtime_schema: Mapping[str, Any] | None = None) -> dict[str, Any]:
     """Run pinned Mypy on a checker-only, spec-annotated copy of a typed spec."""
-    if not isinstance(spec, Mapping) or spec.get("authoring_profile") != PROFILE:
-        raise TypedAuthoringError("typed_profile_required", f"spec must select {PROFILE}")
+    profile = spec.get("authoring_profile") if isinstance(spec, Mapping) else None
+    if profile not in {PROFILE, OPERATOR_CODE_PROFILE}:
+        raise TypedAuthoringError("typed_profile_required",
+            f"spec must select {PROFILE} or {OPERATOR_CODE_PROFILE}")
     source = spec.get("source")
-    if not isinstance(source, str) or not source.strip() or len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
-        raise TypedAuthoringError("typed_source_error", "source must be non-empty and at most 64 KiB")
+    source_limit = OPERATOR_CODE_MAX_SOURCE_BYTES if profile == OPERATOR_CODE_PROFILE else MAX_SOURCE_BYTES
+    if not isinstance(source, str) or not source.strip() or len(source.encode("utf-8")) > source_limit:
+        label = "8192 bytes" if profile == OPERATOR_CODE_PROFILE else "64 KiB"
+        raise TypedAuthoringError("typed_source_error", f"source must be non-empty and at most {label}")
     if runtime_schema is None:
         schema_path = Path(__file__).resolve().parents[1] / "config" / "runtime_schema.json"
         try:
@@ -301,7 +355,7 @@ def check_generated_spec_types(spec: Mapping[str, Any], runtime_schema: Mapping[
             raise TypedAuthoringError("typed_checker_unavailable", f"runtime schema unavailable: {exc}") from exc
     from .sandbox_worker import TYPED_RECORD_TYPE_NAMES, validate_source
     try:
-        validate_source(source, PROFILE)
+        validate_source(source, profile)
         _reject_directives(source)
     except TypedAuthoringError:
         raise
@@ -315,9 +369,9 @@ def check_generated_spec_types(spec: Mapping[str, Any], runtime_schema: Mapping[
     if actual_version != MYPY_VERSION:
         raise TypedAuthoringError("typed_checker_version_mismatch",
             f"expected mypy {MYPY_VERSION}, found {actual_version}")
-    stub = _checker_stub(spec, runtime_schema)
+    stub = _checker_stub(spec, runtime_schema, profile)
     try:
-        checked_source = _annotate_operator(source)
+        checked_source = _annotate_operator(source, profile)
     except TypedAuthoringError:
         raise
     try:
@@ -331,6 +385,9 @@ def check_generated_spec_types(spec: Mapping[str, Any], runtime_schema: Mapping[
     runtime_hash = hashlib.sha256(_canonical(runtime_schema)).hexdigest()
     cache_key = hashlib.sha256(_canonical({"source": source, "spec": {k: v for k, v in spec.items() if k != "source"},
         "runtime": runtime_hash, "stub": stub_hash, "mypy": actual_version,
+        "authoring_profile": profile,
+        "code_api": (__import__("e4core.operator_code_api", fromlist=["operator_code_contract_hash"])
+            .operator_code_contract_hash() if profile == OPERATOR_CODE_PROFILE else None),
         "flags": ["--strict", "--disallow-any-expr", "--disallow-any-explicit",
                   "--disallow-any-unimported", "--no-incremental", "--no-site-packages",
                   "--show-column-numbers"]})).hexdigest()

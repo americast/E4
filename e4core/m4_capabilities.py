@@ -170,12 +170,15 @@ class InputCapabilityError(ValueError):
         return {"code": self.code, "message": str(self), "details": self.details}
 
 
-def input_producer_capability_schema(registry: Any) -> dict[str, Any]:
+def input_producer_capability_schema(registry: Any, *,
+        operator_code_profile: bool = False) -> dict[str, Any]:
     """Compact prompt schema for trusted producers, bound to active signatures."""
     signatures = {(row["name"], row["version"]): row for row in registry.signatures()}
     producer_names = ("bank.public.query", "bank.metrics.aggregate",
         "bank.traces.aggregate", "bank.public.project", "bank.candidates.generate",
         "paper.input.prepare", "paper.backend.metric_conditions")
+    if operator_code_profile:
+        producer_names = ("case.telemetry", *producer_names)
     rows: list[dict[str, Any]] = []
     for name in producer_names:
         signature = next((row for (registered_name, _version), row in signatures.items()
@@ -184,24 +187,59 @@ def input_producer_capability_schema(registry: Any) -> dict[str, Any]:
             continue
         row: dict[str, Any] = {"name": name, "version": signature["version"],
             "output_type": signature["output_type"]}
-        if name == "bank.public.query":
+        if name == "case.telemetry" and operator_code_profile:
+            row.update({"source_columns": {
+                    "bank/metric_app.csv": ["timestamp", "tc", "rr", "sr", "cnt", "mrt"],
+                    "bank/metric_container.csv": ["timestamp", "cmdb_id", "kpi_name", "value"],
+                    "bank/trace_span.csv": ["timestamp", "cmdb_id", "parent_id", "span_id", "trace_id", "duration"],
+                    "bank/log/log_service.csv": ["log_id", "timestamp", "cmdb_id", "log_name", "value"]},
+                "statistics": ["raw"], "group_by": [],
+                "group_by_by_table": {"bank/metric_app.csv": ["app_kpi"],
+                    "bank/metric_container.csv": ["component"],
+                    "bank/trace_span.csv": ["component", "trace_id"],
+                    "bank/log/log_service.csv": ["component", "log_name"]},
+                "support_unit": "raw_row", "coverage": "full_window",
+                "data_semantics": "opaque typed Telemetry; query helper fields are the neutral typed source contract"})
+        elif name == "bank.public.query":
             row.update({"source_columns": "native rows from the selected table and fields parameter",
                 "statistics": ["raw"], "group_by": [], "support_unit": "raw_row",
                 "coverage": "page with explicit query coverage metadata"})
         elif name == "bank.metrics.aggregate":
-            row.update({"source_columns": {
-                    "metric/metric_app.csv": ["timestamp", "tc", "rr", "sr", "cnt", "mrt"],
-                    "metric/metric_container.csv": ["timestamp", "cmdb_id", "kpi_name", "value"]},
+            metric_columns = {
+                "metric/metric_app.csv": ["timestamp", "tc", "rr", "sr", "cnt", "mrt"],
+                "metric/metric_container.csv": ["timestamp", "cmdb_id", "kpi_name", "value"]}
+            metric_groups = {
+                "metric/metric_app.csv": ["app_kpi", "source_field", "bomc_id", "item_id"],
+                "metric/metric_container.csv": ["component", "source_field", "bomc_id", "item_id"]}
+            if operator_code_profile:
+                metric_columns.update({"bank/metric_app.csv": metric_columns["metric/metric_app.csv"],
+                    "bank/metric_container.csv": metric_columns["metric/metric_container.csv"]})
+                metric_groups.update({"bank/metric_app.csv": metric_groups["metric/metric_app.csv"],
+                    "bank/metric_container.csv": metric_groups["metric/metric_container.csv"]})
+            aggregate_fields = {"source_columns": metric_columns,
                 "statistics": ["median", "tail_quantile"],
-                "group_by": {"metric/metric_app.csv": ["app_kpi", "source_field", "bomc_id", "item_id"],
-                    "metric/metric_container.csv": ["component", "source_field", "bomc_id", "item_id"]},
+                "group_by": ([] if operator_code_profile else metric_groups),
                 "support_unit": "timestamp", "coverage": "full_window",
-                "retained_details": "median rows retain every timestamped bucket_samples entry for full-window IR analysis; source_hashes and case_data_sha256 identify the original inputs"})
+                "retained_details": ("typed aggregate records retain timestamped bucket_samples and source/data hashes"
+                    if operator_code_profile else
+                    "median rows retain every timestamped bucket_samples entry for full-window IR analysis; source_hashes and case_data_sha256 identify the original inputs")}
+            if operator_code_profile:
+                aggregate_fields["group_by_by_table"] = metric_groups
+            row.update(aggregate_fields)
         elif name == "bank.traces.aggregate":
-            row.update({"source_columns": {"trace/trace_span.csv": ["cmdb_id", "trace_id", "duration"]},
+            trace_columns = {"trace/trace_span.csv": ["cmdb_id", "trace_id", "duration"]}
+            trace_groups = {"trace/trace_span.csv": ["component"]}
+            if operator_code_profile:
+                trace_columns["bank/trace_span.csv"] = trace_columns["trace/trace_span.csv"]
+                trace_groups["bank/trace_span.csv"] = trace_groups["trace/trace_span.csv"]
+            trace_fields = {"source_columns": trace_columns,
                 "statistics": ["per_trace_median", "per_trace_mean", "per_trace_tail_quantile"],
-                "group_by": ["component"], "support_unit": "trace_id",
-                "coverage": "full_window; trace_values details retain per-trace summaries, not raw spans"})
+                "group_by": ([] if operator_code_profile else ["component"]), "support_unit": "trace_id",
+                "coverage": ("full_window; per-trace summaries do not expose raw spans" if operator_code_profile else
+                    "full_window; trace_values details retain per-trace summaries, not raw spans")}
+            if operator_code_profile:
+                trace_fields["group_by_by_table"] = trace_groups
+            row.update(trace_fields)
         elif name == "bank.public.project":
             row.update({"source_columns": "preserves upstream represented fields",
                 "statistics": "filters existing statistic rows; does not calculate new statistics",
@@ -227,12 +265,20 @@ def input_producer_capability_schema(registry: Any) -> dict[str, Any]:
             row.update({"source_columns": {}, "statistics": [],
                 "group_by": ["component"], "support_unit": None, "coverage": "full_window"})
         rows.append(row)
+    native_tables = dict(_table_schemas())
+    if operator_code_profile:
+        for alias, native in (("bank/metric_app.csv", "metric/metric_app.csv"),
+                ("bank/metric_container.csv", "metric/metric_container.csv"),
+                ("bank/trace_span.csv", "trace/trace_span.csv"),
+                ("bank/log/log_service.csv", "log/log_service.csv")):
+            if native in native_tables:
+                native_tables[alias] = native_tables[native]
     return {"schema_version": "e4-bank-input-capabilities/1",
         "source_column_semantics": "Fields actually exposed or represented in the producer output, qualified by canonical native table path; aggregate provenance does not mean raw rows are available.",
         "coverage_semantics": {"any": "no completeness guarantee required",
             "full_window": "all eligible groups in the declared source window are supplied",
             "page": "a bounded subset with explicit coverage/omission metadata; not full-window completeness"},
-        "native_tables": {table: list(columns) for table, columns in _table_schemas().items()},
+        "native_tables": {table: list(columns) for table, columns in native_tables.items()},
         "producers": rows,
         "declaration_limit": "These checks reject known schema and producer/consumer mismatches or coverage gaps; they do not prove that a registered computation is statistically appropriate or diagnostically correct."}
 
@@ -244,9 +290,17 @@ def _table_schemas() -> Mapping[str, tuple[str, ...]]:
 
 
 def validate_input_requirements(value: Any, ports: list[Mapping[str, Any]], *,
-        allow_table_specific: bool = False) -> dict[str, dict[str, Any]]:
+        allow_table_specific: bool = False,
+        allow_bank_aliases: bool = False) -> dict[str, dict[str, Any]]:
     """Validate exact per-port source/statistic/group/support/coverage declarations."""
     table_schemas = _table_schemas()
+    if allow_bank_aliases:
+        for alias, native in (("bank/metric_app.csv", "metric/metric_app.csv"),
+                ("bank/metric_container.csv", "metric/metric_container.csv"),
+                ("bank/trace_span.csv", "trace/trace_span.csv"),
+                ("bank/log/log_service.csv", "log/log_service.csv")):
+            if native in table_schemas:
+                table_schemas = {**table_schemas, alias: table_schemas[native]}
     names = {str(port["name"]) for port in ports}
     if not isinstance(value, Mapping) or set(value) != names:
         raise InputCapabilityError("input_requirements_ports",
@@ -326,16 +380,32 @@ def validate_input_requirements(value: Any, ports: list[Mapping[str, Any]], *,
     return normalized
 
 
-def _capability(node: VerifiedNode, upstream: Mapping[str, InputCapability]) -> InputCapability | None:
+def _capability(node: VerifiedNode, upstream: Mapping[str, InputCapability], *,
+        operator_code_profile: bool = False) -> InputCapability | None:
     table_schemas = _table_schemas()
     name = node.operator.name
     producer_key = node.operator.qualified_name
     if name == "case.telemetry":
+        source_columns = {table: frozenset(columns) for table, columns in table_schemas.items()}
+        group_by_by_table = {}
+        if operator_code_profile:
+            aliases = {"bank/metric_app.csv": "metric/metric_app.csv",
+                "bank/metric_container.csv": "metric/metric_container.csv",
+                "bank/trace_span.csv": "trace/trace_span.csv",
+                "bank/log/log_service.csv": "log/log_service.csv"}
+            for alias, native in aliases.items():
+                if native in table_schemas:
+                    source_columns[alias] = frozenset(table_schemas[native])
+                    group_by_by_table[alias] = frozenset({
+                        "bank/metric_app.csv": {"app_kpi"},
+                        "bank/metric_container.csv": {"component"},
+                        "bank/trace_span.csv": {"component", "trace_id"},
+                        "bank/log/log_service.csv": {"component", "log_name"}}[alias])
         return InputCapability(producer_key,
-            {table: frozenset(columns) for table, columns in table_schemas.items()},
+            source_columns,
             frozenset({"raw"}), frozenset({"component", "trace_id", "span_id", "timestamp"}),
             frozenset({"raw_row", "timestamp", "trace_id"}), "full_window", "telemetry", True,
-            {})
+            group_by_by_table)
     if name == "paper.input.prepare" and node.operator.output_type == "PaperStarterInput":
         return InputCapability(producer_key, {
             "metric/metric_app.csv": frozenset({"timestamp", "tc", "rr", "sr", "cnt", "mrt"}),
@@ -357,31 +427,51 @@ def _capability(node: VerifiedNode, upstream: Mapping[str, InputCapability]) -> 
         return InputCapability(producer_key, {table: columns}, frozenset({"raw"}), frozenset(),
             frozenset({"raw_row"}), "page", "native_rows", True, {})
     if name == "bank.metrics.aggregate":
-        return InputCapability(producer_key, {
+        source_columns = {
             # Aggregate retains timestamped bucket_samples and exact identity;
             # these represented fields are not exposed as raw rows.
             "metric/metric_app.csv": frozenset({"timestamp", "tc", "rr", "sr", "cnt", "mrt"}),
-            "metric/metric_container.csv": frozenset({"timestamp", "cmdb_id", "kpi_name", "value"})},
+            "metric/metric_container.csv": frozenset({"timestamp", "cmdb_id", "kpi_name", "value"})}
+        group_by_by_table = {
+            "metric/metric_app.csv": frozenset({"app_kpi", "source_field", "bomc_id", "item_id"}),
+            "metric/metric_container.csv": frozenset({"component", "source_field", "bomc_id", "item_id"})}
+        source_field_labels = {
+            "metric/metric_app.csv": {field: frozenset({field})
+                for field in ("rr", "sr", "cnt", "mrt")},
+            # metric_container.source_field values are case data (kpi_name),
+            # so the catalog does not infer a field label from the column name.
+            "metric/metric_container.csv": {}}
+        if operator_code_profile:
+            source_columns.update({
+                "bank/metric_app.csv": source_columns["metric/metric_app.csv"],
+                "bank/metric_container.csv": source_columns["metric/metric_container.csv"]})
+            group_by_by_table.update({
+                "bank/metric_app.csv": group_by_by_table["metric/metric_app.csv"],
+                "bank/metric_container.csv": group_by_by_table["metric/metric_container.csv"]})
+            source_field_labels.update({
+                "bank/metric_app.csv": source_field_labels["metric/metric_app.csv"],
+                "bank/metric_container.csv": source_field_labels["metric/metric_container.csv"]})
+        return InputCapability(producer_key, source_columns,
             frozenset({"median", "tail_quantile"}),
             frozenset({"component", "app_kpi", "source_table", "source_field", "bomc_id", "item_id"}),
             frozenset({"timestamp"}), "full_window", "aggregate_rows", True,
-            {"metric/metric_app.csv": frozenset({"app_kpi", "source_field", "bomc_id", "item_id"}),
-             "metric/metric_container.csv": frozenset({"component", "source_field", "bomc_id", "item_id"})},
-            {"metric/metric_app.csv": {field: frozenset({field})
-                for field in ("rr", "sr", "cnt", "mrt")},
-             # metric_container.source_field values are case data (kpi_name),
-             # so the catalog does not infer a field label from the column name.
-             "metric/metric_container.csv": {}})
+            group_by_by_table, source_field_labels)
     if name == "bank.traces.aggregate":
-        return InputCapability(producer_key,
+        source_columns = {
             # Rows are one summary per entity/statistic; trace_id/value pairs are
             # retained in details. Per-span timestamps/IDs are not exposed.
-            {"trace/trace_span.csv": frozenset({"cmdb_id", "trace_id", "duration"})},
+            "trace/trace_span.csv": frozenset({"cmdb_id", "trace_id", "duration"})}
+        group_by_by_table = {"trace/trace_span.csv": frozenset({"component"})}
+        if operator_code_profile:
+            source_columns["bank/trace_span.csv"] = source_columns["trace/trace_span.csv"]
+            group_by_by_table["bank/trace_span.csv"] = group_by_by_table["trace/trace_span.csv"]
+        return InputCapability(producer_key, source_columns,
             frozenset({"per_trace_median", "per_trace_mean", "per_trace_tail_quantile"}),
             frozenset({"component"}), frozenset({"trace_id"}),
             "full_window", "aggregate_rows", True,
-            {"trace/trace_span.csv": frozenset({"component"})},
-            {"trace/trace_span.csv": {"duration": frozenset({"duration"})}})
+            group_by_by_table,
+            {table: {"duration": frozenset({"duration"})}
+                for table in source_columns})
     if name == "bank.public.project":
         references = node.inputs.get("data", ())
         sources = [upstream.get(ref) for ref in references]
@@ -531,11 +621,13 @@ def check_typed_input_capabilities(verified: VerifiedDAG,
     """Check declared new-operator requirements against verified upstream producers."""
     typed_by_key = {(str(spec["name"]), str(spec["version"])): spec
                     for spec in typed_specs
-                    if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-ir-v1",
-                        "typed-operator-ir-v2"}
+                    if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-code-v1",
+                        "typed-operator-ir-v1", "typed-operator-ir-v2"}
                     or isinstance(spec.get("input_requirements"), Mapping)}
     if not typed_by_key:
         return []
+    operator_code_profile = any(spec.get("authoring_profile") == "typed-operator-code-v1"
+        for spec in typed_by_key.values())
     capabilities: dict[str, InputCapability] = {}
     reports: list[dict[str, Any]] = []
     for node in verified.nodes:
@@ -648,7 +740,7 @@ def check_typed_input_capabilities(verified: VerifiedDAG,
                         table: sorted(available.group_by_by_table.get(table, frozenset()))
                         for table in requirement["group_by_by_table"]}
                 reports.append(report_row)
-        cap = _capability(node, capabilities)
+        cap = _capability(node, capabilities, operator_code_profile=operator_code_profile)
         if cap is not None:
             capabilities[node.node_id] = cap
     return reports

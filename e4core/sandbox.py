@@ -33,6 +33,7 @@ DEFAULT_LIMITS = {
 _WORKER = Path(__file__).with_name("sandbox_worker.py")
 _IR_WORKER = Path(__file__).with_name("m4_operator_ir_worker.py")
 _IR_V2_WORKER = Path(__file__).with_name("m4_operator_ir_v2_worker.py")
+_OPERATOR_CODE_API = Path(__file__).with_name("operator_code_api.py")
 _IR_RESULT_TRANSPORT_VERSION = "e4-typed-ir-result/1"
 _IR_RESULT_TRANSPORT_CODEC = "zlib+base64"
 _IR_RESULT_MAX_BYTES = 1024 * 1024
@@ -171,7 +172,7 @@ def _bwrap_base() -> list[str]:
     bwrap = shutil.which("bwrap")
     python = "/usr/bin/python3.10"
     if (not bwrap or not os.path.exists(python) or not _WORKER.is_file() or
-            not _IR_WORKER.is_file() or not _IR_V2_WORKER.is_file()):
+            not _IR_WORKER.is_file() or not _IR_V2_WORKER.is_file() or not _OPERATOR_CODE_API.is_file()):
         raise RuntimeError("bubblewrap or Python 3.10 worker runtime is unavailable")
     args = [bwrap, "--unshare-all", "--die-with-parent",
             "--clearenv", "--setenv", "PATH", "/usr/bin", "--setenv", "LANG", "C.UTF-8",
@@ -186,7 +187,8 @@ def _bwrap_base() -> list[str]:
         args += ["--ro-bind", "/etc/ld.so.cache", "/etc/ld.so.cache"]
     args += ["--ro-bind", str(_WORKER), "/sandbox/worker.py",
              "--ro-bind", str(_IR_WORKER), "/sandbox/m4_operator_ir_worker.py",
-             "--ro-bind", str(_IR_V2_WORKER), "/sandbox/m4_operator_ir_v2_worker.py", "--", python, "-I", "-S",
+             "--ro-bind", str(_IR_V2_WORKER), "/sandbox/m4_operator_ir_v2_worker.py",
+             "--ro-bind", str(_OPERATOR_CODE_API), "/sandbox/operator_code_api.py", "--", python, "-I", "-S",
              "/sandbox/worker.py"]
     return args
 
@@ -280,12 +282,12 @@ def run_generated_operator(source: str | None, inputs: Any, params: Any, runtime
         raise ValueError("output_type must be a non-empty string")
     if authoring_profile is not None and authoring_profile not in {
             "typed-operator-ir-v1", "typed-operator-ir-v2"}:
-        from .m4_typecheck import PROFILE, check_generated_spec_types, TypedAuthoringError
-        if authoring_profile != PROFILE:
+        from .m4_typecheck import PROFILE, OPERATOR_CODE_PROFILE, check_generated_spec_types, TypedAuthoringError
+        if authoring_profile not in {PROFILE, OPERATOR_CODE_PROFILE}:
             return _failure("unsupported_authoring_profile",
                             f"unsupported authoring_profile {authoring_profile!r}", source)
-        if not isinstance(typecheck_spec, Mapping) or typecheck_spec.get("authoring_profile") != PROFILE:
-            return _failure("typed_spec_required", "typed-records-v1 execution requires its checked normalized spec", source)
+        if not isinstance(typecheck_spec, Mapping) or typecheck_spec.get("authoring_profile") != authoring_profile:
+            return _failure("typed_spec_required", f"{authoring_profile} execution requires its checked normalized spec", source)
         if typecheck_spec.get("source") != source or typecheck_spec.get("output_type") != output_type:
             return _failure("typed_spec_mismatch",
                 "typed execution source and output type must match the checked spec", source)

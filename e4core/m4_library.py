@@ -24,6 +24,8 @@ TOTAL_OPERATOR_CAP = 19
 LEGACY_CAPACITY_POLICY = "legacy-v1"
 PAPER_STARTER_CAPACITY_POLICY = "reconstructed-paper-starter-v1"
 _CAPACITY_POLICIES = {LEGACY_CAPACITY_POLICY, PAPER_STARTER_CAPACITY_POLICY}
+PAPER_STAGE3_AUTHORING_PROFILES = {"typed-operator-ir-v2", "typed-operator-code-v1"}
+LEGACY_PAPER_STAGE3_AUTHORING_PROFILE = "typed-operator-ir-v2"
 _PAPER_UTILITY_SIGNATURES = {
     "case.telemetry": ("Telemetry", "utility"),
     "paper.input.prepare": ("PaperStarterInput", "paper_data_access"),
@@ -97,6 +99,14 @@ class LibrarySnapshot:
     @property
     def playbooks(self) -> Mapping[str, Mapping[str, Any]]:
         return MappingProxyType({item["name"]: item for item in self.document["playbooks"]})
+
+
+def stage3_authoring_profile(snapshot: LibrarySnapshot) -> str:
+    """Resolve persisted paper authoring mode, keeping old snapshots on V2."""
+    policy = snapshot.document.get("policy", {})
+    if policy.get("capacity_policy") != PAPER_STARTER_CAPACITY_POLICY:
+        return "typed-operator-ir-v1"
+    return policy.get("stage3_authoring_profile", LEGACY_PAPER_STAGE3_AUTHORING_PROFILE)
 
 
 def operator_key(spec: Mapping[str, Any]) -> str:
@@ -540,6 +550,11 @@ def _validate_payload(payload: Any) -> None:
     capacity_policy = policy.get("capacity_policy", LEGACY_CAPACITY_POLICY)
     if capacity_policy not in _CAPACITY_POLICIES:
         raise LibraryIntegrityError("snapshot declares an unsupported capacity policy")
+    authoring_profile = policy.get("stage3_authoring_profile")
+    if (authoring_profile is not None and
+            (capacity_policy != PAPER_STARTER_CAPACITY_POLICY or
+             authoring_profile not in PAPER_STAGE3_AUTHORING_PROFILES)):
+        raise LibraryIntegrityError("snapshot declares an unsupported Stage 3 authoring profile")
     builtin_keys = {operator_key(row) for row in payload["operators"] if row["kind"] == "builtin"}
     expected_immutable = (builtin_keys if capacity_policy == LEGACY_CAPACITY_POLICY else
         {operator_key(row) for row in payload["operators"]
@@ -720,6 +735,7 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
                             builtin_specs: Sequence[Mapping[str, Any]] = (),
                             total_operator_cap: int = TOTAL_OPERATOR_CAP,
                             capacity_policy: str = LEGACY_CAPACITY_POLICY,
+                            stage3_authoring_profile: str | None = None,
                             verified_playbook_graph_hashes: Iterable[str] = ()) -> LibrarySnapshot:
     """Create the initial immutable deployment snapshot.
 
@@ -728,6 +744,10 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
     """
     if capacity_policy not in _CAPACITY_POLICIES:
         raise LibraryError(f"unsupported capacity policy: {capacity_policy}")
+    if (stage3_authoring_profile is not None and
+            (capacity_policy != PAPER_STARTER_CAPACITY_POLICY or
+             stage3_authoring_profile not in PAPER_STAGE3_AUTHORING_PROFILES)):
+        raise LibraryError("unsupported Stage 3 authoring profile for this capacity policy")
     if total_operator_cap != TOTAL_OPERATOR_CAP:
         raise LibraryError(f"frozen total operator cap is {TOTAL_OPERATOR_CAP}")
     parent_snapshot = None
@@ -824,6 +844,8 @@ def create_library_snapshot(seed_documents: Any, generated_specs: Sequence[Mappi
     if capacity_policy != LEGACY_CAPACITY_POLICY:
         policy["capacity_policy"] = capacity_policy
         policy["paper_counts"] = _paper_counts(operators)
+        if stage3_authoring_profile is not None:
+            policy["stage3_authoring_profile"] = stage3_authoring_profile
     creation_event = {"event": "snapshot_created", "parent_snapshot_id": parent_id,
         "bootstrap_operator_keys": sorted(operator_key(row) for row in seed_specs),
         "bootstrap_evicted_operator_keys": bootstrap_evicted,
@@ -978,6 +1000,12 @@ def admit_after_accepted(snapshot: LibrarySnapshot, generated_specs: Sequence[Ma
         raise LibraryConflictError("admission parent is no longer CURRENT")
     payload = _thaw(snapshot.document)
     capacity_policy = payload["policy"].get("capacity_policy", LEGACY_CAPACITY_POLICY)
+    if (capacity_policy == PAPER_STARTER_CAPACITY_POLICY and
+            payload["policy"].get("stage3_authoring_profile") is not None):
+        selected_profile = stage3_authoring_profile(snapshot)
+        if any(spec.get("authoring_profile") != selected_profile for spec in generated_specs
+                if not _is_composite_spec(spec)):
+            raise LibraryError("admission proposals differ from the snapshot Stage 3 authoring profile")
     if capacity_policy == PAPER_STARTER_CAPACITY_POLICY and len(generated_specs) > 3:
         raise LibraryError("paper-starter admissions accept at most three transient operator proposals")
     payload["parent_snapshot_id"] = snapshot.snapshot_id

@@ -211,6 +211,7 @@ def implementation_fingerprint() -> str:
         root / "config/paper_starter_playbooks.json",
         root / "config/paper_starter_runtime.json",
         root / "config/paper_bank_adaptations.json",
+        root / "config/paper_starter_authoring.json",
         root / "pyproject.toml",
         root / "requirements-m3.lock",
     ]

@@ -171,10 +171,24 @@ TYPED_RECORD_TYPE_NAMES = frozenset({
 })
 TYPED_ANNOTATION_ONLY_NAMES = frozenset({"Runtime", "Inputs", "Params", "Output", "JSONValue", "JSONMapping",
     "RuntimeWindow", "Window", "EntityRef", "Evidence", "Candidate", "CandidateSet",
-    "AggregateRow", "Aggregate", "ScoredCandidate", "ScoredCandidates", "Category", "Literal", "Optional"})
+    "AggregateRow", "Aggregate", "ScoredCandidate", "ScoredCandidates", "Category", "Literal", "Optional",
+})
+OPERATOR_CODE_ANNOTATION_ONLY_NAMES = TYPED_ANNOTATION_ONLY_NAMES | TYPED_RECORD_TYPE_NAMES | frozenset({
+    "Telemetry", "TelemetryHandle", "TelemetryView", "MetricPointView", "LogRecordView", "SpanView",
+    "CoverageView", "QueryResult", "SummaryResult", "AggregateGroupView", "MetricField", "SpanField",
+    "LogField", "SourceField", "Statistic", "RecordType", "SourceTable", "MetricSourceTable", "SpanSourceTable",
+    "LogSourceTable", "Scalar"})
 _RESERVED_WIRE_KEYS = frozenset({"$type", "$fields", "$map", "$tuple"})
 _MAX_HELPER_DEPTH = 40
 TYPED_RECORD_PROFILE = "typed-records-v1"
+TYPED_OPERATOR_CODE_PROFILE = "typed-operator-code-v1"
+OPERATOR_CODE_QUERY_LIMIT = 10_000
+OPERATOR_CODE_GROUP_LIMIT = 10_000
+OPERATOR_CODE_AGGREGATE_PAGE_LIMIT = 1_000
+OPERATOR_CODE_ARTIFACT_BYTES = 128 * 1024 * 1024
+OPERATOR_CODE_ARTIFACT_ROWS = 300_000
+OPERATOR_CODE_SOURCE_LIMIT = 8_192
+OPERATOR_CODE_STORE_ROOT = Path("/case")
 
 
 class LimitedText(io.TextIOBase):
@@ -208,8 +222,9 @@ def validate_source(source: str, authoring_profile: str | None = None) -> None:
     import ast
     import symtable
 
-    if not isinstance(source, str) or not source.strip() or len(source.encode("utf-8")) > 65536:
-        raise ValueError("source must be non-empty and at most 64 KiB")
+    source_limit = 8192 if authoring_profile == TYPED_OPERATOR_CODE_PROFILE else 65536
+    if not isinstance(source, str) or not source.strip() or len(source.encode("utf-8")) > source_limit:
+        raise ValueError(f"source must be non-empty and at most {source_limit} bytes")
     tree = ast.parse(source, mode="exec")
     funcs = [node for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))
              and node.name == "operator"]
@@ -230,14 +245,14 @@ def validate_source(source: str, authoring_profile: str | None = None) -> None:
             raise ValueError(f"source uses forbidden AST construct {type(node).__name__}{location}")
         if isinstance(node, ast.Attribute) and node.attr.startswith("_"):
             raise ValueError("private attribute access is restricted")
-        if authoring_profile == TYPED_RECORD_PROFILE:
+        if authoring_profile in {TYPED_RECORD_PROFILE, TYPED_OPERATOR_CODE_PROFILE}:
             if (isinstance(node, ast.Subscript) and isinstance(node.slice, ast.Constant) and
                     node.slice.value in _RESERVED_WIRE_KEYS):
-                raise ValueError("typed-records-v1 source must use typed helpers, not wire-format keys")
+                    raise ValueError(f"{authoring_profile} source must use typed helpers, not wire-format keys")
             if isinstance(node, ast.Dict) and any(
                     isinstance(key, ast.Constant) and key.value in _RESERVED_WIRE_KEYS
                     for key in node.keys):
-                raise ValueError("typed-records-v1 source must use typed constructors, not wire-format keys")
+                raise ValueError(f"{authoring_profile} source must use typed constructors, not wire-format keys")
         if isinstance(node, ast.Name) and (node.id.startswith("__") or node.id in {
                 "open", "eval", "exec", "compile", "globals", "locals", "getattr",
                 "setattr", "delattr", "vars", "input", "breakpoint", "memoryview"}):
@@ -256,8 +271,11 @@ def validate_source(source: str, authoring_profile: str | None = None) -> None:
     module_bindings = {symbol.get_name() for symbol in symbols.get_symbols()
                        if symbol.is_assigned() or symbol.is_imported()}
     available = set(SAFE_BUILTIN_NAMES) | set(HELPER_NAMES) | module_bindings
-    if authoring_profile == TYPED_RECORD_PROFILE:
+    if authoring_profile in {TYPED_RECORD_PROFILE, TYPED_OPERATOR_CODE_PROFILE}:
         available -= {"contract_fields", "aggregate_rows", "candidate_items"}
+    if authoring_profile in {TYPED_RECORD_PROFILE, TYPED_OPERATOR_CODE_PROFILE}:
+        if authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+            available -= {"read_case_json", "read_catalog_json"}
         annotation_names = set()
         for parent in ast.walk(tree):
             annotations = []
@@ -273,12 +291,21 @@ def validate_source(source: str, authoring_profile: str | None = None) -> None:
             for annotation in annotations:
                 annotation_names.update(id(item) for item in ast.walk(annotation))
         for node in ast.walk(tree):
+            annotation_only_names = (OPERATOR_CODE_ANNOTATION_ONLY_NAMES
+                if authoring_profile == TYPED_OPERATOR_CODE_PROFILE else TYPED_ANNOTATION_ONLY_NAMES)
             if (isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load) and
-                    node.id in TYPED_ANNOTATION_ONLY_NAMES and id(node) not in annotation_names):
+                    node.id in annotation_only_names and id(node) not in annotation_names):
                 raise ValueError(f"{node.id} is available only as a type annotation, not a runtime value")
-    if authoring_profile == TYPED_RECORD_PROFILE:
+    if authoring_profile in {TYPED_RECORD_PROFILE, TYPED_OPERATOR_CODE_PROFILE}:
         available |= set(TYPED_RECORD_HELPER_NAMES) | set(TYPED_RECORD_TYPE_NAMES)
-    elif authoring_profile is not None:
+    if authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+        available |= set(OPERATOR_CODE_HELPER_FUNCTIONS) | {
+            "TelemetryView", "MetricPointView", "LogRecordView", "SpanView",
+            "CoverageView", "QueryResult", "SummaryResult", "AggregateGroupView",
+            "MetricField", "SpanField", "LogField", "SourceField", "Statistic", "RecordType", "SourceTable",
+            "MetricSourceTable", "SpanSourceTable", "LogSourceTable", "Scalar",
+            "Telemetry", "TelemetryHandle", "Sequence", "Mapping"}
+    elif authoring_profile not in {None, TYPED_RECORD_PROFILE}:
         raise ValueError(f"unsupported authoring_profile {authoring_profile!r}")
     pending = [symbols]
     while pending:
@@ -391,6 +418,396 @@ class ScoredCandidateView(_RecordView):
 
 class ScoredCandidatesView(_RecordView):
     __slots__ = ()
+
+
+class OperatorCodeView:
+    """Read-only view with a per-record closed field set."""
+    __slots__ = ("_kind", "_values")
+
+    _FIELDS = {
+        "TelemetryView": {"case_id", "reference_window", "alert_window", "data_sha256", "source_tables", "point_count"},
+        "WindowView": {"name", "start_ms_utc", "end_ms_utc"},
+        "CoverageView": {"complete", "truncated", "offset", "next_offset", "total_matches", "support"},
+        "MetricPointView": {"source_table", "timestamp_ms_utc", "entity_role", "entity_identifier", "origin_row_id", "metric_key", "source_field", "metric_name", "representation", "bomc_id", "item_id", "value"},
+        "LogRecordView": {"source_table", "timestamp_ms_utc", "source_ref", "log_id", "entity_role", "entity_identifier", "log_name", "value"},
+        "SpanView": {"source_table", "timestamp_ms_utc", "source_ref", "trace_id", "span_id", "parent_id", "duration_value", "duration_status", "duration_unit", "call_type", "executing_component_role", "executing_component_identifier", "logical_service_role", "logical_service_identifier", "database_target_role", "database_target_identifier", "parent_resolved_in_clip", "parent_unresolved_in_clip"},
+        "QueryResult": {"rows", "window", "source_tables", "coverage"},
+        "SummaryResult": {"value", "support", "missing_count", "nonfinite_count", "invalid_count"},
+        "AggregateGroupView": {"key", "group_fields", "value", "support", "missing_count", "nonfinite_count", "invalid_count"},
+    }
+
+    def __init__(self, kind, values):
+        object.__setattr__(self, "_kind", kind)
+        object.__setattr__(self, "_values", MappingProxyType(dict(values)))
+
+    def __getattr__(self, name):
+        kind = object.__getattribute__(self, "_kind")
+        if name not in self._FIELDS[kind]:
+            raise AttributeError(f"{kind} has no field {name!r}")
+        return object.__getattribute__(self, "_values")[name]
+
+    def __setattr__(self, name, value):
+        raise TypeError("typed operator data views are read-only")
+
+
+def _handle_fields(value):
+    if not isinstance(value, Mapping) or value.get("$type") != "TelemetryHandle" or set(value) != {"$type", "$fields"}:
+        raise ValueError("expected opaque TelemetryHandle")
+    fields = value["$fields"]
+    required = {"case_id", "data_sha256", "reference_window", "alert_window", "source_tables", "point_count", "manifest_sha256"}
+    if not isinstance(fields, Mapping) or set(fields) != required:
+        raise ValueError("TelemetryHandle fields mismatch")
+    return fields
+
+
+def telemetry_view(value):
+    import hashlib as _hashlib
+    import json as _json
+    from pathlib import Path as _Path
+    fields = _handle_fields(value)
+    manifest_path = OPERATOR_CODE_STORE_ROOT / "operator_code_manifest.json"
+    if not manifest_path.is_file() or manifest_path.stat().st_size > 64 * 1024:
+        raise ValueError("typed public data manifest is unavailable")
+    raw = manifest_path.read_bytes()
+    if _hashlib.sha256(raw).hexdigest() != fields["manifest_sha256"]:
+        raise ValueError("typed public data manifest digest mismatch")
+    manifest = _json.loads(raw.decode("utf-8"))
+    if manifest.get("schema_version") != "e4-operator-code-data/2" or manifest.get("case_id") != fields["case_id"] or manifest.get("data_sha256") != fields["data_sha256"]:
+        raise ValueError("typed public data manifest identity mismatch")
+    if manifest.get("point_count") != fields["point_count"] or manifest.get("source_tables") != fields["source_tables"]:
+        raise ValueError("typed public data manifest counts or sources mismatch")
+    if manifest.get("reference_window") != fields["reference_window"] or manifest.get("alert_window") != fields["alert_window"]:
+        raise ValueError("typed public data manifest windows mismatch")
+    if set(manifest.get("files", {})) != {"metrics.jsonl", "spans.jsonl", "logs.jsonl"}:
+        raise ValueError("typed public data manifest artifact list is invalid")
+    return OperatorCodeView("TelemetryView", {"case_id": fields["case_id"], "data_sha256": fields["data_sha256"],
+        "reference_window": OperatorCodeView("WindowView", manifest["reference_window"]),
+        "alert_window": OperatorCodeView("WindowView", manifest["alert_window"]),
+        "source_tables": tuple(manifest["source_tables"]), "point_count": fields["point_count"],
+        "_manifest": manifest})
+
+
+def _operator_code_rows(telemetry, file_name):
+    import hashlib as _hashlib
+    import json as _json
+    from pathlib import Path as _Path
+    manifest = object.__getattribute__(telemetry, "_values").get("_manifest")
+    if not isinstance(manifest, Mapping):
+        raise ValueError("TelemetryView is not backed by a validated manifest")
+    if file_name not in {"metrics.jsonl", "spans.jsonl", "logs.jsonl"}:
+        raise ValueError("unsupported typed public data artifact")
+    file_meta = manifest["files"][file_name]
+    path = OPERATOR_CODE_STORE_ROOT / file_name
+    if not path.is_file() or path.stat().st_size != file_meta["bytes"] or path.stat().st_size > OPERATOR_CODE_ARTIFACT_BYTES:
+        raise ValueError("typed public data artifact size is invalid")
+    digest = _hashlib.sha256()
+    count = 0
+    with path.open("rb") as stream:
+        for line in stream:
+            digest.update(line)
+            row = _json.loads(line.decode("utf-8"))
+            if type(row) is not dict:
+                raise ValueError("typed public data artifact contains an unknown row")
+            count += 1
+            if count > file_meta["rows"] or count > OPERATOR_CODE_ARTIFACT_ROWS:
+                raise ValueError("typed public data artifact exceeds declared row count")
+    if count != file_meta["rows"] or digest.hexdigest() != file_meta["sha256"]:
+        raise ValueError("typed public data artifact row count or digest mismatch")
+    return path, manifest
+
+
+def _query_result(rows, total, kind, telemetry, window, offset, limit, source_table, support=None):
+    if type(limit) is not int or not 1 <= limit <= OPERATOR_CODE_QUERY_LIMIT or type(offset) is not int or offset < 0:
+        raise ValueError(f"query limit must be 1..{OPERATOR_CODE_QUERY_LIMIT} and offset a nonnegative integer")
+    window_name = window.name
+    if window_name not in {"reference", "alert"}:
+        raise ValueError("query window must be a typed reference or alert window")
+    truncated = offset + len(rows) < total
+    views = tuple(OperatorCodeView(kind, row) for row in rows)
+    coverage = OperatorCodeView("CoverageView", {"complete": not truncated and offset == 0,
+        "truncated": truncated, "offset": offset, "next_offset": offset + len(rows) if truncated else None,
+        "total_matches": total, "support": total if support is None else support})
+    return OperatorCodeView("QueryResult", {"rows": views, "window": window,
+        "source_tables": (source_table,), "coverage": coverage})
+
+
+def _window_matches(row, window):
+    return window.start_ms_utc <= row["timestamp_ms_utc"] < window.end_ms_utc
+
+
+def _validate_query(telemetry, source_table, window, source_namespace):
+    module = _load_operator_code_registry()
+    if source_table not in getattr(module, source_namespace):
+        raise ValueError("query source_table is outside the typed API registry")
+    telemetry_values = object.__getattribute__(telemetry, "_values")
+    if source_table not in telemetry_values["source_tables"]:
+        raise ValueError("query source_table is unavailable for this TelemetryHandle")
+    record_type = {"METRIC_SOURCE_TABLES": "metric", "SPAN_SOURCE_TABLES": "span",
+        "LOG_SOURCE_TABLES": "log"}[source_namespace]
+    manifest = telemetry_values["_manifest"]
+    if source_table not in manifest["record_sources"][record_type]:
+        raise ValueError("query record type is unavailable for this TelemetryHandle")
+    window_values = object.__getattribute__(window, "_values")
+    if object.__getattribute__(window, "_kind") != "WindowView":
+        raise ValueError("query requires a typed telemetry window")
+    if window_values["name"] == "reference":
+        trusted = object.__getattribute__(telemetry_values["reference_window"], "_values")
+    elif window_values["name"] == "alert":
+        trusted = object.__getattribute__(telemetry_values["alert_window"], "_values")
+    else:
+        raise ValueError("query window role is unavailable")
+    if (window_values["start_ms_utc"] != trusted["start_ms_utc"] or
+            window_values["end_ms_utc"] != trusted["end_ms_utc"]):
+        raise ValueError("query window does not match the TelemetryHandle")
+
+
+def metric_points(telemetry, source_table, window, entity_role=None, entity_identifier=None,
+                  source_field=None, metric_key=None, bomc_id=None, item_id=None, limit=10000, offset=0):
+    if type(limit) is not int or not 1 <= limit <= OPERATOR_CODE_QUERY_LIMIT or type(offset) is not int or offset < 0:
+        raise ValueError("query page limit or offset is invalid")
+    _validate_query(telemetry, source_table, window, "METRIC_SOURCE_TABLES")
+    path, manifest = _operator_code_rows(telemetry, "metrics.jsonl")
+    if source_table not in manifest["source_tables"] or source_table.endswith("trace_span.csv"):
+        raise ValueError("metric source_table is unavailable")
+    import json as _json
+    selected = []
+    total = 0
+    with path.open("rb") as stream:
+      for line in stream:
+        row = _json.loads(line.decode("utf-8"))
+        if row["source_table"] != source_table or not _window_matches(row, window): continue
+        if entity_role is not None and row["entity_role"] != entity_role: continue
+        if entity_identifier is not None and row["entity_identifier"] != entity_identifier: continue
+        if source_field is not None and row["source_field"] != source_field: continue
+        if metric_key is not None and row["metric_key"] != metric_key: continue
+        if bomc_id is not None and row["bomc_id"] != bomc_id: continue
+        if item_id is not None and row["item_id"] != item_id: continue
+        if total >= offset and len(selected) < limit:
+            selected.append({key: row[key] for key in OperatorCodeView._FIELDS["MetricPointView"]})
+        total += 1
+    return _query_result(selected, total, "MetricPointView", telemetry, window, offset, limit, source_table)
+
+
+def log_records(telemetry, source_table, window, entity_identifier=None, log_name=None, limit=10000, offset=0):
+    if source_table not in {"bank/log/log_service.csv", "log/log_service.csv"}:
+        raise ValueError("log source_table is unavailable")
+    _validate_query(telemetry, source_table, window, "LOG_SOURCE_TABLES")
+    if type(limit) is not int or not 1 <= limit <= OPERATOR_CODE_QUERY_LIMIT or type(offset) is not int or offset < 0:
+        raise ValueError("query limit must be 1..10000 and offset a nonnegative integer")
+    path, _manifest = _operator_code_rows(telemetry, "logs.jsonl")
+    import json as _json
+    selected = []; total = 0
+    with path.open("rb") as stream:
+      for line in stream:
+        row = _json.loads(line.decode("utf-8"))
+        if row["source_table"] != source_table or not _window_matches(row, window): continue
+        if entity_identifier is not None and row["entity_identifier"] != entity_identifier: continue
+        if log_name is not None and row["log_name"] != log_name: continue
+        if total >= offset and len(selected) < limit: selected.append(row)
+        total += 1
+    return _query_result(selected, total, "LogRecordView", telemetry, window, offset, limit, source_table)
+
+
+def span_records(telemetry, source_table, window, component_role=None,
+                 component_identifier=None, limit=10000, offset=0):
+    if type(limit) is not int or not 1 <= limit <= OPERATOR_CODE_QUERY_LIMIT or type(offset) is not int or offset < 0:
+        raise ValueError("query page limit or offset is invalid")
+    _validate_query(telemetry, source_table, window, "SPAN_SOURCE_TABLES")
+    path, manifest = _operator_code_rows(telemetry, "spans.jsonl")
+    if source_table not in manifest["source_tables"] or not source_table.endswith("trace_span.csv"):
+        raise ValueError("span source_table is unavailable")
+    import json as _json
+    selected = []; total = 0
+    with path.open("rb") as stream:
+      for line in stream:
+        row = _json.loads(line.decode("utf-8"))
+        if row["source_table"] != source_table or not _window_matches(row, window): continue
+        if component_identifier is not None and component_identifier not in (row["executing_component_identifier"], row["logical_service_identifier"], row["database_target_identifier"]): continue
+        if component_role is not None and component_role not in (row["executing_component_role"], row["logical_service_role"], row["database_target_role"]): continue
+        if total >= offset and len(selected) < limit:
+            selected.append({key: row[key] for key in OperatorCodeView._FIELDS["SpanView"]})
+        total += 1
+    return _query_result(selected, total, "SpanView", telemetry, window, offset, limit, source_table)
+
+
+def _summarize_items(values, statistic, quantile=None):
+    if statistic not in {"count", "distinct", "sum", "mean", "min", "max", "quantile"}:
+        raise ValueError("unsupported generic summary statistic")
+    valid = []; missing = nonfinite = invalid = 0
+    for value in values:
+        if value is None:
+            missing += 1
+        elif type(value) in (int, float, str, bool):
+            if type(value) is float and not math.isfinite(value):
+                nonfinite += 1
+            else:
+                valid.append(value)
+        else:
+            raise ValueError("summary contains a non-scalar value")
+    if statistic in {"sum", "mean", "min", "max", "quantile"} and any(type(value) not in (int, float) for value in valid):
+        raise ValueError("numeric summaries require numeric values")
+    if statistic == "count": result = len(valid)
+    elif statistic == "distinct": result = len(set(valid))
+    elif not valid: result = None
+    elif statistic == "sum": result = sum(valid)
+    elif statistic == "mean": result = sum(valid) / len(valid)
+    elif statistic == "min": result = min(valid)
+    elif statistic == "max": result = max(valid)
+    else:
+        if type(quantile) not in (int, float) or not 0 <= quantile <= 1:
+            raise ValueError("quantile must be within [0, 1]")
+        ordered = sorted(float(value) for value in valid)
+        position = float(quantile) * (len(ordered) - 1)
+        lower = int(math.floor(position)); upper = int(math.ceil(position))
+        result = ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+    return result, len(valid), missing, nonfinite, invalid
+
+
+def group_by(rows, fields):
+    if not fields or any(field not in OperatorCodeView._FIELDS.get(object.__getattribute__(row, "_kind"), set()) for row in rows for field in fields):
+        raise ValueError("group_by fields must be known scalar fields on every row")
+    groups = {}
+    for row in rows:
+        values = object.__getattribute__(row, "_values")
+        key = tuple(values[field] for field in fields)
+        if any(value is not None and type(value) not in (str, int, float, bool) for value in key):
+            raise ValueError("group_by fields must contain only scalar values")
+        groups.setdefault(key, []).append(row)
+        if len(groups) > OPERATOR_CODE_GROUP_LIMIT:
+            raise ValueError("group_by exceeds the 10000-group bound")
+    return MappingProxyType({key: tuple(value) for key, value in groups.items()})
+
+
+def summarize(values, statistic, quantile=None):
+    value, support, missing, nonfinite, invalid = _summarize_items(values, statistic, quantile)
+    return OperatorCodeView("SummaryResult", {"value": value, "support": support,
+        "missing_count": missing, "nonfinite_count": nonfinite, "invalid_count": invalid})
+
+
+def aggregate_records(telemetry, source_table, window, record_type, field, statistic,
+                      group_by=(), time_bucket_ms=None, quantile=None, limit=1000, offset=0):
+    if type(limit) is not int or not 1 <= limit <= OPERATOR_CODE_AGGREGATE_PAGE_LIMIT or type(offset) is not int or offset < 0:
+        raise ValueError("aggregate page limit must be 1..1000 and offset a nonnegative integer")
+    if record_type not in {"metric", "span", "log"}:
+        raise ValueError("record_type must be metric, span, or log")
+    source_namespace = {"metric": "METRIC_SOURCE_TABLES", "span": "SPAN_SOURCE_TABLES",
+        "log": "LOG_SOURCE_TABLES"}[record_type]
+    _validate_query(telemetry, source_table, window, source_namespace)
+    file_name, view_type = {"metric": ("metrics.jsonl", "MetricPointView"),
+        "span": ("spans.jsonl", "SpanView"), "log": ("logs.jsonl", "LogRecordView")}[record_type]
+    path, manifest = _operator_code_rows(telemetry, file_name)
+    if source_table not in manifest["source_tables"]:
+        raise ValueError("aggregate source_table is unavailable")
+    allowed_source = {"metric": not source_table.endswith("trace_span.csv"),
+        "span": source_table.endswith("trace_span.csv"),
+        "log": source_table in {"bank/log/log_service.csv", "log/log_service.csv"}}[record_type]
+    if not allowed_source:
+        raise ValueError("aggregate record_type does not match source_table")
+    known_fields = OperatorCodeView._FIELDS[view_type]
+    if field not in known_fields or any(name not in known_fields for name in group_by):
+        raise ValueError("aggregate field or grouping column is unavailable for this record type")
+    if type(time_bucket_ms) is not int and time_bucket_ms is not None:
+        raise ValueError("time_bucket_ms must be a positive integer")
+    if time_bucket_ms is not None and time_bucket_ms <= 0:
+        raise ValueError("time_bucket_ms must be a positive integer")
+    if len(set(group_by)) != len(group_by):
+        raise ValueError("aggregate grouping fields must be unique")
+    groups = {}; total_rows = 0
+    import json as _json
+    with path.open("rb") as stream:
+        for line in stream:
+            row = _json.loads(line.decode("utf-8"))
+            if row["source_table"] != source_table or not _window_matches(row, window): continue
+            total_rows += 1
+            key_values = [row[name] for name in group_by]
+            out_fields = list(group_by)
+            if time_bucket_ms is not None:
+                bucket = window.start_ms_utc + ((row["timestamp_ms_utc"] - window.start_ms_utc) // time_bucket_ms) * time_bucket_ms
+                key_values.append(bucket); out_fields.append("time_bucket_start_ms_utc")
+            key = tuple(key_values)
+            entry = groups.setdefault(key, {"values": [], "support": 0, "missing": 0, "nonfinite": 0, "invalid": 0, "fields": tuple(out_fields)})
+            entry["support"] += 1
+            if field == "duration_value":
+                status = row["duration_status"]
+                if status == "nonfinite": entry["nonfinite"] += 1; continue
+                if status == "invalid": entry["invalid"] += 1; continue
+                if status == "missing": entry["missing"] += 1; continue
+            value = row[field]
+            if value is None: entry["missing"] += 1
+            elif type(value) is float and not math.isfinite(value): entry["nonfinite"] += 1
+            else: entry["values"].append(value)
+            if len(groups) > OPERATOR_CODE_GROUP_LIMIT:
+                raise ValueError("aggregate exceeds the 10000-group resource bound; use coarser grouping")
+    if not group_by and time_bucket_ms is None and not groups:
+        groups[()] = {"values": [], "support": 0, "missing": 0, "nonfinite": 0, "invalid": 0, "fields": ()}
+    computed = []
+    for key in sorted(groups, key=lambda item: tuple((type(value).__name__, repr(value)) for value in item)):
+        entry = groups[key]
+        value, valid, missing_extra, nonfinite_extra, invalid_extra = _summarize_items(entry["values"], statistic, quantile)
+        computed.append({"key": key, "group_fields": entry["fields"], "value": value,
+            "support": entry["support"], "missing_count": entry["missing"] + missing_extra,
+            "nonfinite_count": entry["nonfinite"] + nonfinite_extra,
+            "invalid_count": entry["invalid"] + invalid_extra})
+    total_groups = len(computed)
+    selected = computed[offset:offset + limit]
+    truncated = offset + len(selected) < total_groups
+    coverage = OperatorCodeView("CoverageView", {"complete": offset == 0 and not truncated,
+        "truncated": truncated, "offset": offset, "next_offset": offset + len(selected) if truncated else None,
+        "total_matches": total_groups, "support": total_rows})
+    result_rows = tuple(OperatorCodeView("AggregateGroupView", row) for row in selected)
+    return OperatorCodeView("QueryResult", {"rows": result_rows, "window": window,
+        "source_tables": (source_table,), "coverage": coverage})
+
+
+def top_k(rows, field, k, descending=True):
+    if type(k) is not int or not 1 <= k <= OPERATOR_CODE_QUERY_LIMIT or type(descending) is not bool:
+        raise ValueError("top_k requires a bounded k and a boolean direction")
+    if any(field not in OperatorCodeView._FIELDS.get(object.__getattribute__(row, "_kind"), set()) for row in rows):
+        raise ValueError("top_k field must be known on all rows")
+    return tuple(sorted(rows, key=lambda row: (getattr(row, field) is not None, getattr(row, field)), reverse=descending)[:k])
+
+
+OPERATOR_CODE_HELPER_FUNCTIONS = {"telemetry_view": telemetry_view, "metric_points": metric_points,
+    "span_records": span_records, "log_records": log_records, "group_by": group_by,
+    "summarize": summarize, "top_k": top_k, "aggregate_records": aggregate_records}
+
+_OPERATOR_CODE_API_MODULE = None
+
+
+def _load_operator_code_registry():
+    global _OPERATOR_CODE_API_MODULE
+    if _OPERATOR_CODE_API_MODULE is None:
+        import importlib.util as _importlib_util
+        from pathlib import Path as _Path
+        path = _Path("/sandbox/operator_code_api.py")
+        spec = _importlib_util.spec_from_file_location("_trusted_operator_code_api", path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError("typed operator code API registry is unavailable")
+        module = _importlib_util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+        schema = module.typed_operator_code_api()
+        helper_names = {row["name"] for row in schema["helpers"]}
+        if helper_names != set(OPERATOR_CODE_HELPER_FUNCTIONS):
+            raise RuntimeError("typed operator code helper metadata and worker functions differ")
+        if set(schema["record_fields"]) != set(OperatorCodeView._FIELDS):
+            raise RuntimeError("typed operator code record type registry differs from worker views")
+        for name, fields in schema["record_fields"].items():
+            if set(fields) != OperatorCodeView._FIELDS[name]:
+                raise RuntimeError(f"typed operator code field registry differs for {name}")
+        if set(schema["source_tables"]) != set(module.SOURCE_TABLES):
+            raise RuntimeError("typed operator code source table registry is inconsistent")
+        if schema["api_sha256"] != module.operator_code_contract_hash():
+            raise RuntimeError("typed operator code API registry hash mismatch")
+        expected_limits = {"query_rows": OPERATOR_CODE_QUERY_LIMIT,
+            "groups": OPERATOR_CODE_GROUP_LIMIT,
+            "aggregate_page_rows": OPERATOR_CODE_AGGREGATE_PAGE_LIMIT,
+            "artifact_bytes": OPERATOR_CODE_ARTIFACT_BYTES,
+            "artifact_rows": OPERATOR_CODE_ARTIFACT_ROWS}
+        if schema.get("resource_limits") != expected_limits or schema.get("source_limit_bytes") != OPERATOR_CODE_SOURCE_LIMIT:
+            raise RuntimeError("typed operator code API and worker budgets differ")
+        _OPERATOR_CODE_API_MODULE = module
+    return _OPERATOR_CODE_API_MODULE
 
 
 _RECORD_VIEW_TYPES = {record_type: view_type for record_type, view_type in (
@@ -1213,7 +1630,7 @@ def main():
                     "type": type(exc).__name__}, "stdout": "", "stderr": ""},
                 allow_nan=False, separators=(",", ":")))
         return
-    if authoring_profile not in (None, TYPED_RECORD_PROFILE):
+    if authoring_profile not in (None, TYPED_RECORD_PROFILE, TYPED_OPERATOR_CODE_PROFILE):
         raise ValueError(f"unsupported authoring_profile {authoring_profile!r}")
     validate_source(request["source"], authoring_profile)
     import ast
@@ -1267,13 +1684,24 @@ def main():
         namespace.update(TYPED_RECORD_HELPER_FUNCTIONS)
         namespace.update({name: globals()[name] for name in TYPED_RECORD_TYPE_NAMES
                           if name in globals()})
+    elif authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+        _load_operator_code_registry()
+        namespace.pop("read_case_json", None)
+        namespace.pop("read_catalog_json", None)
+        namespace.update({name: helper for name, helper in TYPED_HELPER_FUNCTIONS.items()
+                          if name not in {"aggregate_rows", "candidate_items"}})
+        namespace.update(TYPED_RECORD_HELPER_FUNCTIONS)
+        namespace.update(OPERATOR_CODE_HELPER_FUNCTIONS)
+        namespace.update({name: OperatorCodeView for name in (
+            "TelemetryView", "MetricPointView", "LogRecordView", "SpanView",
+            "CoverageView", "QueryResult", "SummaryResult", "AggregateGroupView")})
     else:
         namespace["contract_fields"] = contract_fields
         namespace.update(TYPED_HELPER_FUNCTIONS)
     source = request["source"]
     tree = ast.parse(source, mode="exec")
     code = compile(tree, "<generated-operator>", "exec",
-                   dont_inherit=authoring_profile != TYPED_RECORD_PROFILE, optimize=2)
+                   dont_inherit=authoring_profile not in {TYPED_RECORD_PROFILE, TYPED_OPERATOR_CODE_PROFILE}, optimize=2)
     out = LimitedText(limits["stdout_bytes"])
     err = LimitedText(limits["stderr_bytes"])
     try:

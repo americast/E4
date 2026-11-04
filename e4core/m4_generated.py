@@ -18,6 +18,9 @@ from .sandbox_worker import (ALLOWED_MODULES, HELPER_API, HELPER_NAMES, SAFE_BUI
                              TYPED_RECORD_PROFILE, typed_record_helper_schema,
                              typed_record_helper_guidance,
                              validate_source as validate_sandbox_source)
+from .operator_code_api import (PROFILE as TYPED_OPERATOR_CODE_PROFILE,
+    MAX_SOURCE_BYTES as TYPED_OPERATOR_CODE_MAX_SOURCE_BYTES,
+    operator_code_contract_hash, typed_operator_code_api, typed_operator_code_guidance)
 
 
 def generated_contract_fields_guidance() -> str:
@@ -37,6 +40,7 @@ def _published_typed_helper_api() -> dict[str, Any]:
 GENERATED_NAME = re.compile(r"^evolved\.[a-z][a-z0-9_]{0,62}$")
 VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 PORT_TYPES = {"Aggregate", "CandidateSet", "PaperStarterInput", "ScoredCandidates"}
+TYPED_OPERATOR_CODE_PORT_TYPES = {"Aggregate", "CandidateSet", "ScoredCandidates", "Telemetry"}
 OUTPUT_TYPES = {"Aggregate", "CandidateSet", "ScoredCandidates"}
 PARAMETER_TYPES = {"string", "boolean", "integer", "positive_integer", "number", "string_list"}
 SPEC_FIELDS = {"name", "version", "description", "family", "input_ports", "output_type",
@@ -207,6 +211,34 @@ def typed_profile_contract_schema() -> dict[str, Any]:
                 "bank/trace/trace_span.csv", "bank/log/log_service.csv"]}}
 
 
+def typed_operator_code_contract_schema() -> dict[str, Any]:
+    """Prompt schema for new Python operators over typed, bounded data APIs."""
+    schema = typed_profile_contract_schema()
+    schema["authoring_profile"] = TYPED_OPERATOR_CODE_PROFILE
+    schema["optional_fields"]["authoring_profile"] = {
+        "type": "string", "enum": [TYPED_OPERATOR_CODE_PROFILE],
+        "meaning": "Selects statically checked Python operator authoring; required for new Stage 3 operators."}
+    schema["optional_fields"]["input_requirements"]["required_for"] = TYPED_OPERATOR_CODE_PROFILE
+    schema["optional_fields"]["input_requirements"]["port_fields"]["group_by_by_table"] = (
+        "optional mapping from each required source table to its own nonempty grouping dimensions; use instead of flat group_by when tables expose different groups")
+    schema["input_ports"]["fields"]["type"]["enum"] = sorted(TYPED_OPERATOR_CODE_PORT_TYPES)
+    schema["source"]["max_utf8_bytes"] = TYPED_OPERATOR_CODE_MAX_SOURCE_BYTES
+    schema["source"]["constraints"] = [
+        "Defines exactly one synchronous operator(inputs, params, runtime) function.",
+        "Obvious statistical decision cutoffs must use declared params/runtime fields; ordinary math constants and structural 0/1 checks are allowed."]
+    output_api = typed_record_helper_schema()
+    schema["typed_output_record_api"] = {
+        "schema_version": output_api["schema_version"],
+        "helpers": [row for row in output_api["helpers"] if row["name"].startswith("make_")],
+        "record_fields": output_api["record_fields"],
+        "semantics": "Use typed constructors for Aggregate, CandidateSet, and ScoredCandidates outputs; raw wire envelope construction and metadata unwrapping are not authoring APIs."}
+    schema["typed_operator_code_api"] = typed_operator_code_api()
+    schema["typed_operator_code_guidance"] = typed_operator_code_guidance()
+    schema["output_constraints"]["source_provenance"] = (
+        "The host pins validated source and computation identity from the registered spec; authored family labels do not create consensus groups.")
+    return schema
+
+
 def generated_sandbox_capability_text() -> str:
     """Format prompt guidance from the same lists installed in the worker."""
     return ("Allowed builtins are " + ", ".join(sorted(SAFE_BUILTIN_NAMES)) +
@@ -233,6 +265,73 @@ def _check_declared_thresholds(source: str) -> None:
                 and node.value not in (0, 1)):
             raise GeneratedSpecError(
                 "numeric constants other than 0 and 1 must be declared as operator parameters or runtime fields")
+
+
+_STAT_DECISION_NAME = re.compile(
+    r"(?:p[_-]?value|alpha|cutoff|threshold|support|significance|effect|minimum|"
+    r"min[_-]?(?:support|samples?|blocks?|rows?)|sample[_-]?count|block[_-]?count|resamples?)",
+    re.IGNORECASE)
+
+
+def _check_code_statistical_cutoffs(source: str) -> None:
+    """Reject simple authored statistical decision cutoffs; this is a narrow AST heuristic."""
+    try:
+        tree = ast.parse(source, mode="exec")
+    except SyntaxError as exc:
+        raise GeneratedSpecError(f"generated source has invalid syntax: {exc}") from exc
+    numeric_aliases: dict[str, int | float] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            value = node.value
+            if isinstance(value, ast.Constant) and type(value.value) in (int, float):
+                targets = (node.targets if isinstance(node, ast.Assign) else [node.target])
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        numeric_aliases[target.id] = value.value
+                        if _STAT_DECISION_NAME.search(target.id) and value.value not in (0, 1):
+                            raise GeneratedSpecError(
+                                "statistical decision cutoffs must come from declared params/runtime fields; ordinary math constants are allowed")
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            value = node.value
+            if isinstance(value, ast.Name) and value.id in numeric_aliases:
+                targets = (node.targets if isinstance(node, ast.Assign) else [node.target])
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        numeric_aliases[target.id] = numeric_aliases[value.id]
+                        if (_STAT_DECISION_NAME.search(target.id) and
+                                numeric_aliases[target.id] not in (0, 1)):
+                            raise GeneratedSpecError(
+                                "statistical decision cutoffs must come from declared params/runtime fields; ordinary math constants are allowed")
+
+    def name_of(node: ast.AST) -> str | None:
+        if isinstance(node, ast.Name):
+            return node.id
+        if isinstance(node, ast.Attribute):
+            return node.attr
+        if isinstance(node, ast.Subscript):
+            key = node.slice
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                return key.value
+        return None
+
+    def hardcoded_value(node: ast.AST) -> bool:
+        if isinstance(node, ast.Constant) and type(node.value) in (int, float):
+            return node.value not in (0, 1)
+        if isinstance(node, ast.Name) and node.id in numeric_aliases:
+            return numeric_aliases[node.id] not in (0, 1)
+        return False
+
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Compare):
+            continue
+        operands = [node.left, *node.comparators]
+        for left, right in zip(operands, operands[1:]):
+            left_name, right_name = name_of(left), name_of(right)
+            if (_STAT_DECISION_NAME.search(left_name or "") and hardcoded_value(right) or
+                    _STAT_DECISION_NAME.search(right_name or "") and hardcoded_value(left)):
+                raise GeneratedSpecError(
+                    "statistical decision cutoffs must come from declared params/runtime fields; ordinary math constants are allowed")
 
 
 def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
@@ -294,11 +393,12 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         raise GeneratedSpecError(
             f"generated spec requires {sorted(SPEC_FIELDS)} and allows optional {sorted(SPEC_OPTIONAL_FIELDS)} only")
     authoring_profile = spec.get("authoring_profile")
-    if authoring_profile is not None and authoring_profile != TYPED_RECORDS_PROFILE:
+    if authoring_profile is not None and authoring_profile not in {
+            TYPED_RECORDS_PROFILE, TYPED_OPERATOR_CODE_PROFILE}:
         raise GeneratedSpecError(f"unsupported generated authoring_profile {authoring_profile!r}")
     input_requirements = spec.get("input_requirements")
-    if authoring_profile == TYPED_RECORDS_PROFILE and input_requirements is None:
-        raise GeneratedSpecError("typed-records-v1 requires input_requirements for every declared port")
+    if authoring_profile in {TYPED_RECORDS_PROFILE, TYPED_OPERATOR_CODE_PROFILE} and input_requirements is None:
+        raise GeneratedSpecError(f"{authoring_profile} requires input_requirements for every declared port")
     name, declared_version, description, family = (spec.get(key) for key in
         ("name", "version", "description", "family"))
     if not isinstance(name, str) or not GENERATED_NAME.fullmatch(name):
@@ -329,8 +429,11 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         if port_name in names:
             raise GeneratedSpecError(f"duplicate input port {port_name}")
         names.add(port_name)
-        if port_type not in PORT_TYPES:
+        if (port_type not in PORT_TYPES and
+                not (port_type == "Telemetry" and authoring_profile == TYPED_OPERATOR_CODE_PROFILE)):
             raise GeneratedSpecError(f"unsupported generated input type {port_type!r}")
+        if authoring_profile == TYPED_OPERATOR_CODE_PROFILE and port_type not in TYPED_OPERATOR_CODE_PORT_TYPES:
+            raise GeneratedSpecError(f"typed-operator-code-v1 does not support input type {port_type!r}")
         required = raw.get("required", True)
         variadic = raw.get("variadic", False)
         minimum = raw.get("minimum_items", 1)
@@ -353,9 +456,18 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
     if input_requirements is not None:
         try:
             from .m4_capabilities import validate_input_requirements
-            normalized_requirements = validate_input_requirements(input_requirements, ports)
+            normalized_requirements = validate_input_requirements(input_requirements, ports,
+                allow_table_specific=authoring_profile == TYPED_OPERATOR_CODE_PROFILE,
+                allow_bank_aliases=authoring_profile == TYPED_OPERATOR_CODE_PROFILE)
         except Exception as exc:
             raise GeneratedSpecError(f"invalid input_requirements: {exc}") from exc
+    if authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+        if not normalized_requirements or not any(
+                requirement["source_columns"] or requirement["statistics"] or
+                requirement["group_by"] or requirement.get("group_by_by_table") or
+                requirement["support_unit"] is not None or requirement["coverage"] != "any"
+                for requirement in normalized_requirements.values()):
+            raise GeneratedSpecError("typed-operator-code-v1 must declare at least one meaningful per-port data requirement")
 
     raw_parameters = spec.get("parameters")
     if not isinstance(raw_parameters, Mapping) or len(raw_parameters) > 24:
@@ -408,8 +520,10 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
                 raise GeneratedSpecError(f"parameter {param_name} default is outside its choices")
 
     source = spec.get("source")
-    if not isinstance(source, str) or not source.strip() or len(source.encode("utf-8")) > MAX_SOURCE_BYTES:
-        raise GeneratedSpecError("generated source must contain 1 to 65536 UTF-8 bytes")
+    source_limit = (TYPED_OPERATOR_CODE_MAX_SOURCE_BYTES
+        if authoring_profile == TYPED_OPERATOR_CODE_PROFILE else MAX_SOURCE_BYTES)
+    if not isinstance(source, str) or not source.strip() or len(source.encode("utf-8")) > source_limit:
+        raise GeneratedSpecError(f"generated source must contain 1 to {source_limit} UTF-8 bytes")
     try:
         tree = ast.parse(source, mode="exec")
     except SyntaxError as exc:
@@ -421,7 +535,10 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         validate_sandbox_source(source, authoring_profile=authoring_profile)
     except Exception as exc:
         raise GeneratedSpecError(f"generated source violates the sandbox syntax contract: {exc}") from exc
-    _check_declared_thresholds(source)
+    if authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+        _check_code_statistical_cutoffs(source)
+    else:
+        _check_declared_thresholds(source)
 
     signature = {"name": name, "declared_version": declared_version,
         "description": description.strip(), "family": family, "input_ports": ports,
@@ -432,17 +549,32 @@ def validate_generated_spec(spec: Mapping[str, Any]) -> dict[str, Any]:
         signature["input_requirements"] = normalized_requirements
     source_sha = hashlib.sha256(source.encode("utf-8")).hexdigest()
     signature_sha = hashlib.sha256(canonical_json(signature)).hexdigest()
-    version_sha = hashlib.sha256(canonical_json({"signature": signature, "source_sha256": source_sha})).hexdigest()
+    if authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+        source_identity = hashlib.sha256(ast.dump(tree, annotate_fields=True,
+            include_attributes=False).encode("utf-8")).hexdigest()
+        version_sha = hashlib.sha256(canonical_json({"signature": signature,
+            "source_ast_sha256": source_identity,
+            "typed_data_api_sha256": operator_code_contract_hash()})).hexdigest()
+    else:
+        version_sha = hashlib.sha256(canonical_json({"signature": signature,
+            "source_sha256": source_sha})).hexdigest()
     normalized = {**signature, "version": f"{declared_version}+{version_sha[:16]}",
         "declared_version": declared_version, "source": source,
         "source_sha256": source_sha, "signature_sha256": signature_sha,
         "contract_hash": version_sha}
+    if authoring_profile == TYPED_OPERATOR_CODE_PROFILE:
+        from .m4_typecheck import check_generated_spec_types
+        try:
+            check_generated_spec_types(normalized)
+        except Exception as exc:
+            raise GeneratedSpecError(f"generated operator failed typed Python static checking: {exc}") from exc
     return normalized
 
 
 def register_generated_specs(registry: OperatorRegistry, specs: list[Mapping[str, Any]], *,
                              audit_dir: Path | None = None,
-                             sandbox_limits: Mapping[str, Any] | None = None) -> list[dict[str, Any]]:
+                             sandbox_limits: Mapping[str, Any] | None = None,
+                             public_data_root: Path | None = None) -> list[dict[str, Any]]:
     """Validate and register dynamic implementations that execute only in bwrap."""
     normalized_specs = [validate_generated_spec(spec) for spec in specs]
     if audit_dir is not None:
@@ -467,32 +599,42 @@ def register_generated_specs(registry: OperatorRegistry, specs: list[Mapping[str
                     inputs = compact_operator_ir_inputs(inputs)
                 else:
                     inputs = compact_operator_ir_inputs_v2(inputs, _spec["program"])
-            ports = {port["name"]: port for port in _spec["input_ports"]}
-            wire_inputs = {}
-            for name, value in inputs.items():
-                if ports[name]["variadic"]:
-                    wire_inputs[name] = [json.loads(canonical_json(item).decode("utf-8"))
-                                         for item in value]
-                else:
-                    wire_inputs[name] = json.loads(canonical_json(value).decode("utf-8"))
             wire_params = _jsonable(params)
             runtime_json = _jsonable(context.runtime_values)
-            run_kwargs = {}
-            if _spec.get("authoring_profile") == TYPED_RECORDS_PROFILE:
-                run_kwargs = {"authoring_profile": TYPED_RECORDS_PROFILE,
-                              "typecheck_spec": _spec}
-            if _spec.get("authoring_profile") in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
-                from .m4_operator_ir import trusted_runtime_context, trusted_runtime_context_v2
-                profile = _spec["authoring_profile"]
-                trusted_context = (trusted_runtime_context() if profile == "typed-operator-ir-v1"
-                    else trusted_runtime_context_v2(inputs=inputs))
-                result = run_generated_operator(None, wire_inputs, wire_params, runtime_json,
-                    _spec["output_type"], limits=sandbox_limits,
-                    authoring_profile=profile, typecheck_spec=_spec,
-                    ir_program=_spec["program"], trusted_context=trusted_context)
+            if _spec.get("authoring_profile") == TYPED_OPERATOR_CODE_PROFILE:
+                from .operator_code_api import prepare_operator_code_inputs
+                with prepare_operator_code_inputs(inputs,
+                        public_data_root=public_data_root,
+                        input_ports=_spec["input_ports"]) as prepared:
+                    result = run_generated_operator(_spec["source"], prepared.wire_inputs,
+                        wire_params, runtime_json, _spec["output_type"], limits=sandbox_limits,
+                        case_dir=prepared.case_dir, authoring_profile=TYPED_OPERATOR_CODE_PROFILE,
+                        typecheck_spec=_spec, trusted_context=prepared.trusted_context)
             else:
-                result = run_generated_operator(_spec["source"], wire_inputs, wire_params,
-                    runtime_json, _spec["output_type"], limits=sandbox_limits, **run_kwargs)
+                ports = {port["name"]: port for port in _spec["input_ports"]}
+                wire_inputs = {}
+                for name, value in inputs.items():
+                    if ports[name]["variadic"]:
+                        wire_inputs[name] = [json.loads(canonical_json(item).decode("utf-8"))
+                                             for item in value]
+                    else:
+                        wire_inputs[name] = json.loads(canonical_json(value).decode("utf-8"))
+                run_kwargs = {}
+                if _spec.get("authoring_profile") == TYPED_RECORDS_PROFILE:
+                    run_kwargs = {"authoring_profile": TYPED_RECORDS_PROFILE,
+                                  "typecheck_spec": _spec}
+                if _spec.get("authoring_profile") in {"typed-operator-ir-v1", "typed-operator-ir-v2"}:
+                    from .m4_operator_ir import trusted_runtime_context, trusted_runtime_context_v2
+                    profile = _spec["authoring_profile"]
+                    trusted_context = (trusted_runtime_context() if profile == "typed-operator-ir-v1"
+                        else trusted_runtime_context_v2(inputs=inputs))
+                    result = run_generated_operator(None, wire_inputs, wire_params, runtime_json,
+                        _spec["output_type"], limits=sandbox_limits,
+                        authoring_profile=profile, typecheck_spec=_spec,
+                        ir_program=_spec["program"], trusted_context=trusted_context)
+                else:
+                    result = run_generated_operator(_spec["source"], wire_inputs, wire_params,
+                        runtime_json, _spec["output_type"], limits=sandbox_limits, **run_kwargs)
             audit_row = {"operator": _spec["name"], "version": _spec["version"],
                 "source_sha256": _spec["source_sha256"], "ok": result.get("ok"),
                 "isolation": result.get("isolation"), "stdout": result.get("stdout", ""),

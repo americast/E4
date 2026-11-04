@@ -78,15 +78,18 @@ The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-i
 
 ## Current results
 
-Accuracy measures ground-truth inclusion in the top three, averaged across decoding seeds 42 and 43 on the same ten Bank incidents. E4 rows are cumulative stage prefixes. Token cost includes input and output tokens for all model calls and repairs, relative to the same-seed T2 baseline (100%).
+The historical E4 rows below are from the **kernel-constrained variant** in commit `7de48fe`. The new typed operator-code variant has one completed seed42 evaluation; its authoring-interface fixes and planned simplification are pending.
 
-| Method | Mean accuracy | Token cost (% of T2; seed42) |
+Accuracy measures ground-truth inclusion in the top three on ten Bank incidents. Historical rows average decoding seeds 42 and 43; the operator-code row is seed42 only. Historical E4 rows are cumulative stage prefixes. Token cost includes input and output tokens for all model calls and repairs, relative to the same-seed T2 baseline (100%).
+
+| Method | Accuracy | Token cost (% of T2; seed42) |
 |---|---:|---:|
 | E4: retrieval | 30.0% | 4.2% |
 | E4: retrieval + adaptation | 55.0% | 8.1% |
 | E4: retrieval + adaptation + evolution | 70.0% | 11.4% |
+| E4: typed operator-code variant (seed42 only) | 50.0% | 14.7% |
 | T2: up to three diagnoses | 40.0% | 100.0% |
 
-Final E4 accuracy is 80% for seed42 and 60% for seed43. Cost covers seed42 only because T2 seed43 token usage is incomplete. These exploratory runs reuse ten distinct incidents and do not establish statistical significance.
+Historical final E4 accuracy is 80% for seed42 and 60% for seed43. The operator-code run scored 20% after retrieval and 50% after adaptation; all five evolution attempts failed proposal validation, adding no successes. Cost covers seed42 only because T2 seed43 token usage is incomplete. These exploratory runs reuse ten distinct incidents and do not establish statistical significance.
 
 See the [verified results](docs/BANK_CURRENT_RESULTS.md) for per-seed counts, token totals and result hashes.

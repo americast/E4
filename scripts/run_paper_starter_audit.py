@@ -27,11 +27,11 @@ if str(ROOT) not in sys.path:
 PAPER_AUDIT_CONFIG_FILES = (
     "paper_starter_catalog.json", "paper_starter_playbooks.json",
     "paper_starter_runtime.json", "paper_bank_adaptations.json",
-    "typed_operator_ir_v2_policy.json",
+    "typed_operator_ir_v2_policy.json", "paper_starter_authoring.json",
 )
 
 from e4core.cache import implementation_fingerprint
-from e4core.m4_library import load_library_snapshot, snapshot_library
+from e4core.m4_library import load_library_snapshot, snapshot_library, stage3_authoring_profile
 from e4core.m5_evaluation import EvaluationSession
 from e4core.m5_manifest import _manifest_files
 
@@ -101,8 +101,12 @@ def _load_freeze(path: Path) -> tuple[dict[str, Any], Path]:
     snapshot = snapshot_library(bank_root)
     if snapshot.snapshot_id != doc.get("initial_library_snapshot_id"):
         raise AuditError("frozen paper Bank library identity changed")
+    selected_authoring = stage3_authoring_profile(snapshot)
+    if (doc.get("stage3_authoring_profile", "typed-operator-ir-v2") != selected_authoring):
+        raise AuditError("freeze receipt authoring profile differs from the persisted Bank snapshot policy")
     origin = snapshot_library(ROOT / doc["canonical_origin_path"])
-    if (origin.snapshot_id != doc.get("canonical_origin", {}).get("snapshot_id") or
+    if (stage3_authoring_profile(origin) != selected_authoring or
+        origin.snapshot_id != doc.get("canonical_origin", {}).get("snapshot_id") or
             len(origin.playbooks) != 11 or
             origin.document["policy"]["paper_counts"]["diagnostic_operator_count"] != 19):
         raise AuditError("immutable canonical origin snapshot no longer verifies as 19 diagnostics and 11 DAGs")
@@ -134,6 +138,7 @@ def prepare(freeze_path: Path, *, audit_root: Path | None = None) -> Path:
         "freeze_run_id": freeze["run_id"],
         "initial_library_path": freeze["initial_library_path"],
         "initial_library_snapshot_id": freeze["initial_library_snapshot_id"],
+        "stage3_authoring_profile": freeze.get("stage3_authoring_profile", "typed-operator-ir-v2"),
         "canonical_origin_snapshot_id": freeze["canonical_origin"]["snapshot_id"],
         "source_fingerprint": freeze["e4_implementation_fingerprint"],
         "source_inventory_sha256": freeze["repository_source_inventory_sha256"],
@@ -218,6 +223,7 @@ def _validate_server_receipt(path: Path, manifest: Mapping[str, Any], shard: str
             tokenizer.get("case_ids") != manifest["case_ids"] or
             tokenizer.get("source_fingerprint") != manifest["source_fingerprint"] or
             tokenizer.get("initial_library_snapshot_id") != manifest["initial_library_snapshot_id"] or
+            tokenizer.get("stage3_authoring_profile", "typed-operator-ir-v2") != manifest.get("stage3_authoring_profile", "typed-operator-ir-v2") or
             tokenizer.get("freeze_manifest_sha256") != manifest["freeze_manifest_sha256"]):
         raise AuditError("tokenizer preflight receipt does not prove current-profile fit with the 8192-token reserve")
     prompt_archive = ROOT / tokenizer.get("prompt_archive_path", "")
@@ -263,7 +269,11 @@ def preflight(freeze_path: Path, output_dir: Path, *, backend: str) -> dict[str,
         raise AuditError("preflight library differs from the immutable freeze")
     profile_path = ROOT / freeze["model_profile_path"]
     profile = json.loads(profile_path.read_text(encoding="utf-8"))
-    client = M4ModelClient(profile, base_url=endpoint, harness_profile=PROFILE)
+    from e4core.m4_library import stage3_authoring_profile
+    selected_authoring = stage3_authoring_profile(snapshot)
+    harness_profile = ("reconstructed-paper-starter-v1-typed-operator-code-v1"
+        if selected_authoring == "typed-operator-code-v1" else PROFILE)
+    client = M4ModelClient(profile, base_url=endpoint, harness_profile=harness_profile)
     if client.max_generation_tokens != int(profile["max_generation_tokens"]):
         raise AuditError("tokenizer preflight generation reserve differs from the frozen Gemma profile")
     if client.context_tokens != int(profile["context_tokens"]):
@@ -325,6 +335,7 @@ def preflight(freeze_path: Path, output_dir: Path, *, backend: str) -> dict[str,
         "freeze_manifest_path": str(freeze_path.relative_to(ROOT)),
         "freeze_manifest_sha256": _sha(freeze_path), "source_fingerprint": implementation_fingerprint(),
         "initial_library_snapshot_id": snapshot.snapshot_id,
+        "stage3_authoring_profile": selected_authoring,
         "model_profile_sha256": _sha(profile_path), "backend": backend,
         "prompts": archive})
     report = {"schema_version": "e4-paper-starter-tokenizer-preflight/1",
@@ -332,6 +343,7 @@ def preflight(freeze_path: Path, output_dir: Path, *, backend: str) -> dict[str,
         "profile_sha256": _sha(profile_path), "source_fingerprint": implementation_fingerprint(),
         "freeze_manifest_sha256": _sha(freeze_path),
         "initial_library_snapshot_id": snapshot.snapshot_id,
+        "stage3_authoring_profile": selected_authoring,
         "case_ids": freeze["scored_case_ids"], "prompt_count": len(records),
         "context_tokens": client.context_tokens, "context_reserve_tokens": client.max_generation_tokens,
         "prompt_phases": ["select", "compose", "evolve", "stage3_serve"],
@@ -515,6 +527,7 @@ def _verify_audit(audit_dir: Path) -> tuple[dict[str, Any], Path]:
     freeze, _ = _load_freeze(freeze_path)
     if (manifest.get("freeze_manifest_sha256") != _sha(freeze_path) or
             manifest.get("initial_library_snapshot_id") != freeze.get("initial_library_snapshot_id") or
+            manifest.get("stage3_authoring_profile") != freeze.get("stage3_authoring_profile", "typed-operator-ir-v2") or
             manifest.get("source_fingerprint") != implementation_fingerprint() or
             status.get("manifest_sha256") != _sha(manifest_path) or
             status.get("case_ids") != manifest.get("case_ids") or

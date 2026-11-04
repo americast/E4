@@ -150,11 +150,19 @@ def _runtime_source_pins() -> dict[str, str]:
         "paper_starter_playbooks_sha256": _sha((ROOT / "config/paper_starter_playbooks.json").read_bytes()),
         "paper_starter_runtime_sha256": _sha((ROOT / "config/paper_starter_runtime.json").read_bytes()),
         "paper_bank_adaptations_sha256": _sha((ROOT / "config/paper_bank_adaptations.json").read_bytes()),
+        "paper_starter_authoring_sha256": _sha((ROOT / "config/paper_starter_authoring.json").read_bytes()),
     }
     return sources
 
 
 def freeze(output_root: Path) -> Path:
+    authoring_config_path = ROOT / "config/paper_starter_authoring.json"
+    authoring_config = json.loads(authoring_config_path.read_text(encoding="utf-8"))
+    if (authoring_config.get("schema_version") != "e4-paper-starter-authoring/1" or
+            authoring_config.get("stage3_authoring_profile") not in
+                {"typed-operator-ir-v2", "typed-operator-code-v1"}):
+        raise RuntimeError("paper starter authoring config has an unsupported profile")
+    stage3_authoring_profile = authoring_config["stage3_authoring_profile"]
     source_inventory_before = _manifest_files(ROOT)
     fixture_validation = validate_starter_fixture_suite()
     if not fixture_validation.get("passed") or fixture_validation.get("canonical_book_count") != 11:
@@ -250,6 +258,7 @@ def freeze(output_root: Path) -> Path:
          **source_pins,
          "inventory_sha256": canonical_source["inventory_sha256"]}, canonical_root,
         builtin_specs=origin_rows, capacity_policy=PAPER_STARTER_CAPACITY_POLICY,
+        stage3_authoring_profile=stage3_authoring_profile,
     )
     bank_snapshot = create_library_snapshot(
         {"examples": active_books}, [], [],
@@ -258,6 +267,7 @@ def freeze(output_root: Path) -> Path:
          **source_pins,
          "diagnostic_operator_names": sorted(active_names)}, bank_root,
         builtin_specs=selected_rows, capacity_policy=PAPER_STARTER_CAPACITY_POLICY,
+        stage3_authoring_profile=stage3_authoring_profile,
     )
     if len(canonical_snapshot.playbooks) != 11:
         raise RuntimeError("canonical origin snapshot did not retain all eleven DAG templates")
@@ -291,6 +301,7 @@ def freeze(output_root: Path) -> Path:
         "run_id": run_id,
         "profile": PROFILE,
         "capacity_policy": PAPER_STARTER_CAPACITY_POLICY,
+        "stage3_authoring_profile": stage3_authoring_profile,
         "runtime_source_pins": source_pins,
         "initial_library_path": str(bank_root.relative_to(ROOT)),
         "initial_library_snapshot_id": bank_snapshot.snapshot_id,

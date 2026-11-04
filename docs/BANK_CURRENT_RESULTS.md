@@ -1,5 +1,7 @@
 # Verified Bank results
 
+**Scope correction, 3 November:** the historical results below measure the kernel-constrained implementation in commit `7de48fe`. Its evolved operator bodies were composed from a fixed numerical-kernel catalog. The paper describes newly authored operator implementations behind typed data-access interfaces. The new typed operator-code path has now been evaluated separately; see the November 4 update at the end. The historical numbers remain valid for the constrained variant and do not validate full paper-style operator synthesis.
+
 The `paired_r6_final` evaluation completed on 1 November 2026 at approximately 21:15 UTC. All four five-case chains exited successfully. The host combiner verified both ten-case results, and the independent watcher verified their recorded hashes. There were no infrastructure-aborted chains in this run.
 
 | Seed | Retrieval | Through adaptation | Through evolution | Historical T2 |
@@ -46,3 +48,26 @@ The artifact root is `artifacts/escalation_fixes/parallel_scored_20261030/` on t
 | Frozen operations runner | `parallel_runner_v5.py` | `8ccb901658a35033cb07363c2c1abd004282b4e9ca4653ce910f67ebe175ccf3` |
 
 The watcher summary is `monitor_r6_final/final_summary.json`; its verification errors array is empty and `accuracy_valid` is true. Earlier failed launches and partial trials remain separate and are not silently replaced by these results.
+
+## November 4: Python operator-code variant, seed42
+
+The separate `typed-operator-code-v1` evaluation completed both fixed five-case chains with no worker timeouts or nonzero worker exit codes. The official combiner verified the frozen case order, library lineages, server/tokenizer receipts and trusted feedback ledgers.
+
+| Seed / variant | Retrieval | Through adaptation | Through evolution |
+| --- | ---: | ---: | ---: |
+| 42 / typed Python operator code | 2/10 | 5/10 | 5/10 |
+
+Adaptation rescued three of eight prior misses. All five cases reaching evolution failed proposal validation before serving/executing new Python operators, so evolution added no successes. Across the 15 EVOLVE responses, first reported blockers were four malformed JSON responses, five invalid names and six incomplete input requirement declarations. These failures expose an authoring-interface problem; they do not establish diagnostic superiority of the kernel catalog. See [the diagnosis](NON_KERNEL_EVOLUTION_DIAGNOSIS_20261104.md) and [the simplification proposal and handoff](SIMPLIFICATION_PROPOSAL.md).
+
+The run used **38 model calls**, **654,559 prompt tokens** and **127,453 completion tokens**, totaling **782,012 tokens**, or **14.7%** of the recorded T2 seed42 denominator of 5,314,218 tokens. The separate engineering canary is excluded from these figures. Seed43 has not run for this variant, so there is no new two-seed mean or significance claim.
+
+The evaluated candidate is on `ssinha97@dgxstation.cc.gatech.edu` at `/raid/ssinha97/E4/artifacts/operator_code_fix_20261103/execution_candidate_20261104`. Paths below are relative to that candidate:
+
+```text
+artifacts/operator_code_canary/final_freezes/20261104T054005Z-cd185022/freeze_manifest.json
+artifacts/operator_code_evaluation/seed42/audits/20261104T060301Z-bc016eb2/combined_bank10_result.json
+```
+
+Combined-result SHA256: `c39242c269383c777b926ef434b8ad8d3705cbc6796058cd0f46f11fd8eab9e1`.
+
+The simplification and diagnosed interface fixes are pending. Preserve this completed trajectory when evaluating a future source revision.

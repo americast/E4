@@ -38,7 +38,7 @@ from .m4_library import (LibrarySnapshot, admit_after_accepted,
                          assert_library_registry_compatible,
                          canonicalize_playbook_graph, generated_specs_from_snapshot,
                          playbook_graph_hash, _playbook_operator_keys, record_library_invocation,
-                         snapshot_library)
+                         snapshot_library, stage3_authoring_profile)
 from .model_client import LocalModelClient
 from .registry import OperatorRegistry, OperatorSpec, PortSpec
 from .runtime import ParameterSpec
@@ -105,6 +105,11 @@ PAPER_M4_SYSTEM_PROMPTS = {
     "evolve": M4_SYSTEM_PROMPT + "\n\nPaper Stage 3 evolution uses `typed-operator-ir-v2`: author only genuinely new atomic operators and a capability gap. Do not diagnose or output a serving DAG, runtime overrides, answer, or ranking. Use only the closed V2 kernel catalog and trusted capability report; host derives fixed input ports and requirements. `starter_input` is required only for reachable log kernels. V1 bodies are provided for novelty comparison/replay, but new proposals must use V2. No Python, source strings, imports, unsupported fields, case/entity literals, labels, or invented thresholds. Ground the gap in a public limitation and explain the distinct supported statistic/source/window. If no useful extension exists, return an empty proposal with capability/operator arrays; never rename or duplicate a prior body.",
     "stage3_serve": M4_SYSTEM_PROMPT + "\n\nServe: use active typed registry and validated gap; preserve answer/evidence contracts. Normalize each scorer's eligible nonnegative scores by maximum; deduplicate exact validated computation/data fingerprints; average per trusted semantic group with bounded weights. All generated IR scorers share one capped group; host-pinned program digests identify validated computations; family labels add no votes. Association is noncausal; unsupported stays unknown.",
 }
+PAPER_CODE_M4_SYSTEM_PROMPTS = {
+    "compose": PAPER_M4_SYSTEM_PROMPTS["compose"],
+    "evolve": M4_SYSTEM_PROMPT + "\n\nPaper Stage 3 EVOLVE authors new Python operators using typed-operator-code-v1. Propose genuine source functions over declared typed inputs and the bounded neutral-data API, with new typed signatures/parameters/output and per-port data requirements. Do not return a serving DAG, diagnosis, ranking, or answer. Do not restrict work to prewritten kernels or high-level operator compositions. Ground the gap in an observed prior limitation and cite exact plan references. The host checks typing, source policy, novelty structure, and actual upstream data capabilities. A canonical AST duplicate check is structural only, not a proof of mathematical novelty. Every new scorer is host-pinned to its source/computation and shares one capped generated-analysis consensus group; family labels cannot create votes.",
+    "stage3_serve": M4_SYSTEM_PROMPT + "\n\nPaper Stage 3 SERVE composes only registered operators into a typed DAG. Newly authored Python operators are validated registered atoms; never author source or add high-level composites here. Preserve trusted evidence/support/source semantics. Normalize, deduplicate and combine using host-stamped computation identities and the single capped generated-analysis group.",
+}
 _ACTIVE_M4_SYSTEM_PROMPT: contextvars.ContextVar[str | None] = contextvars.ContextVar(
     "active_m4_system_prompt", default=None)
 
@@ -152,6 +157,8 @@ class M4ModelClient(LocalModelClient):
     def system_prompt_for_stage(stage: str, *, harness_profile: str = "legacy-m4") -> str:
         if stage == "synthesize":
             stage = "stage3_serve"
+        if harness_profile == "reconstructed-paper-starter-v1-typed-operator-code-v1":
+            return PAPER_CODE_M4_SYSTEM_PROMPTS.get(stage, M4_SYSTEM_PROMPT)
         if harness_profile == "reconstructed-paper-starter-v1":
             return PAPER_M4_SYSTEM_PROMPTS.get(stage, M4_SYSTEM_PROMPT)
         return M4_EVOLUTION_SYSTEM_PROMPTS.get(stage, M4_SYSTEM_PROMPT)
@@ -1535,6 +1542,8 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
 
     profile = snapshot.document.get("policy", {}).get("capacity_policy", "legacy-m4")
     paper_profile = profile == "reconstructed-paper-starter-v1"
+    paper_code_profile = (paper_profile and
+        stage3_authoring_profile(snapshot) == "typed-operator-code-v1")
     terminal_operator = "paper.answers.weighted_consensus" if paper_profile else "bank.answers.combine"
     v2_selector_status_rows: list[dict[str, Any]] = []
     v2_selector_policy_sha256: str | None = None
@@ -1587,6 +1596,12 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
             "Trace parents are local and do not prove complete tracing. Logs expose only normalized bounded templates "
             "and support. Do not infer fault categories, aliases, or causality. "
             + paper_override_guidance)
+        if paper_code_profile:
+            common = common.replace("Logs expose only normalized bounded templates and support.",
+                "Bank log rows are exposed as typed public records with verified source provenance; raw metadata envelopes are unavailable.")
+            common += (" New source operators read declared typed inputs. Telemetry, when present, is available only "
+                "through the published query helpers; the host supplies an opaque handle and verified bounded public row store. Inspect result coverage; "
+                "do not treat incomplete queries as absence or infer unprovided trace success/log severity.")
         common += ("\n\nTRUSTED CONSENSUS WEIGHT CATALOG\n" +
             json.dumps(consensus_weight_catalog(), ensure_ascii=False, sort_keys=True, separators=(",", ":")))
         case_capabilities = policy.get("_paper_case_capabilities", {})
@@ -1699,7 +1714,7 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
                 json.dumps(parameter_catalog, ensure_ascii=False, sort_keys=True, separators=(",", ":")) +
                 "\nOnly the exact string in a selector enum entry's `value` field is a parameter value; case-support fields are not emitted.")
     if evolution_stage:
-        if paper_profile and stage == "evolve":
+        if paper_profile and stage == "evolve" and not paper_code_profile:
             from .m4_prompt_catalog import pack_registered_signature_catalog
             registered_signature_section = (
                 "\n\nREGISTERED HIGH-LEVEL OPERATOR CAPABILITIES (lossless columnar catalog; "
@@ -1914,6 +1929,37 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
             "Keep the fully expanded graph within max_nodes/dag_depth from protected runtime. The controller expands every composite before execution." +
             adaptation_guidance + "\n\n" + _dag_json_shape_guidance(terminal_operator=terminal_operator))
     if stage == "evolve":
+        if paper_code_profile:
+            from .m4_generated import typed_operator_code_contract_schema
+            source_specs = generated_specs_from_snapshot(snapshot)
+            prior_bodies = []
+            for old in source_specs:
+                body = old.get("source") if isinstance(old.get("source"), str) else old.get("program")
+                if not isinstance(body, (str, Mapping)):
+                    continue
+                prior_bodies.append({"name": old["name"], "version": old["version"],
+                    "authoring_profile": old.get("authoring_profile"),
+                    "source_sha256": old.get("source_sha256"),
+                    "program_sha256": old.get("program_sha256"), "body": _plain(body)})
+            prior_body_text = json.dumps(prior_bodies, ensure_ascii=False,
+                sort_keys=True, separators=(",", ":"), allow_nan=False)
+            prior_plans = _bounded_plan_history([{**row["plan_summary"], "stage": row["stage"]}
+                for row in history if isinstance(row.get("plan_summary"), Mapping)
+                and isinstance(row.get("stage"), str)])
+            schema = typed_operator_code_contract_schema()
+            return (common +
+                "\n\nPRIOR ANALYSIS PLANS (copy exact {stage, dag_sha256} references into the gap record)\n" +
+                json.dumps(prior_plans, ensure_ascii=False, sort_keys=True, separators=(",", ":")) +
+                "\n\nRETAINED OPERATOR BODIES (complete lossless body for every retained generated source/program; comparison only; the model client tokenizes the complete rendered message before dispatch and rejects requests above its context budget without truncation)\n" +
+                prior_body_text +
+                "\n\nTRUSTED REGISTERED OPERATOR CONTRACTS\n" + registered_signature_section +
+                "\n\nTRUSTED PRODUCER CAPABILITY CONTRACTS\n" +
+                json.dumps(input_producer_capability_schema(registry,
+                    operator_code_profile=True), ensure_ascii=False,
+                    sort_keys=True, separators=(",", ":")) +
+                "\n\nTYPED PYTHON OPERATOR AUTHORING CONTRACT\n" +
+                json.dumps(schema, ensure_ascii=False, sort_keys=True, separators=(",", ":")) +
+                "\n\nSTAGE 3 EVOLVE: author genuinely new Python `operator(inputs, params, runtime)` functions using only the published typed records and bounded neutral-data API. The source implements its own statistic/relationship; the API offers generic typed queries/grouping/summaries, not fixed analysis kernels. Return exactly {gap_record:{schema_version:'e4-capability-gaps/1',prior_plans:[...],capabilities:[...]},operators:[...]}. Each operator object follows the complete typed Python spec schema, including exact input_ports, params, output_type, authoring_profile='typed-operator-code-v1', per-port input_requirements, and source. For ScoredCandidates use the published typed output constructors and generic worker scorer `typed-operator-code-v1`; the host stamps registered identity. Propose at most three operators. Each capability maps one-to-one to its operator and describes the observed gap and computational difference. Cite one or more exact prior plan references when available. Inspect every retained source/program body above and do not repeat an identical canonical Python AST under a new name; this structural novelty check is not mathematical semantic equivalence. Do not output a DAG, runtime overrides, diagnosis, answer, or ranking. No filesystem/network IO or dynamic execution; imports must be statically bound to the allowlisted modules. Do not decode raw metadata/wire formats, embed case/entity literals, or refer to host-private paths. A typed input declaration must be satisfiable by actual registered upstream producers; no impossible or invented capability claims. If no useful source extension exists, return capabilities:[] and operators:[]; never force a duplicate.\n")
         from .m4_operator_ir import (trusted_runtime_context,
             typed_operator_ir_schema)
         if paper_profile:
@@ -2062,14 +2108,21 @@ def _stage_prompt(stage: str, *, digest: Mapping[str, Any], registry: OperatorRe
     if stage == "stage3_serve":
         no_extension = (isinstance(gap_record, Mapping) and
                         gap_record.get("capabilities") == [])
-        use_guidance = ("No useful extension was validated. Diagnose using the current registered catalog and prior plans; you may use any registered operators or composites and must not invent or reference a proposed composite. The stage-3 serving call still gets its ordinary diagnosis opportunity." if no_extension else
-                        "Use the validated gap record and every proposed composite in the logical DAG.")
+        if paper_code_profile:
+            use_guidance = ("No useful extension was validated. Diagnose using the current registered catalog and prior plans; you may use any registered operators or composites and must not invent or reference a proposed operator. The stage-3 serving call still gets its ordinary diagnosis opportunity." if no_extension else
+                            "Use the validated gap record and every proposed new operator as registered atomic calls in the serving DAG.")
+        else:
+            # Preserve the legacy V1/V2 serving prompt exactly for old snapshots.
+            use_guidance = ("No useful extension was validated. Diagnose using the current registered catalog and prior plans; you may use any registered operators or composites and must not invent or reference a proposed composite. The stage-3 serving call still gets its ordinary diagnosis opportunity." if no_extension else
+                            "Use the validated gap record and every proposed composite in the logical DAG.")
         coverage_sentence = ("If query coverage is partial, no-match is not full-window absence."
             if not paper_profile else
             "If typed input coverage is partial or a capability is unsupported, no-match is not evidence of full-window absence.")
         if paper_profile:
             serve_instructions = ("STAGE 3 SERVE: diagnose root cause; retain at most five leads with the fault in the first three and distinguish fault from symptom. " +
-                use_guidance + " Use registered signatures; proposed IR operators are atomic calls, stored macros remain usable. Do not author specs or revise the gap. " +
+                use_guidance + (" Use registered signatures; proposed Python operators are atomic calls, and existing registered operators/macros remain usable. Do not author source/specs or revise the gap. "
+                    if paper_code_profile else
+                    " Use registered signatures; proposed IR operators are atomic calls, stored macros remain usable. Do not author specs or revise the gap. ") +
                 coverage_sentence + " Preserve evidence eligibility, support, and source attribution. Return exactly {dag:{schema_version:'e4-dag/1',nodes:[{id,operator,version,inputs,params,bindings}],return:{node}},runtime_overrides:object}; node maps are objects and the terminal is the trusted " + terminal_operator + " combiner.")
         else:
             serve_instructions = ("STAGE 3 SERVE PHASE: diagnose the incident root cause and retain up to five leads; success requires the fault component in the first three. Distinguish faults from symptoms. " +
@@ -2838,6 +2891,19 @@ def _snapshot_source_pins(snapshot: LibrarySnapshot, root: Path, policy_path: Pa
             "paper_starter_runtime_sha256": sha256_file(root / "config/paper_starter_runtime.json"),
             "paper_bank_adaptations_sha256": sha256_file(root / "config/paper_bank_adaptations.json"),
         })
+        selected_authoring = stage3_authoring_profile(snapshot)
+        if selected_authoring == "typed-operator-code-v1":
+            authoring_path = root / "config/paper_starter_authoring.json"
+            try:
+                authoring_config = json.loads(authoring_path.read_text(encoding="utf-8"))
+            except Exception as exc:
+                raise M4ControllerError("library_source_mismatch",
+                    "paper-starter authoring config is required by the persisted code-profile snapshot") from exc
+            if (authoring_config.get("schema_version") != "e4-paper-starter-authoring/1" or
+                    authoring_config.get("stage3_authoring_profile") != selected_authoring):
+                raise M4ControllerError("library_authoring_profile_mismatch",
+                    "authoring config differs from the profile pinned in the snapshot policy")
+            expected["paper_starter_authoring_sha256"] = sha256_file(authoring_path)
     for key, value in expected.items():
         if provenance.get(key) != value:
             raise M4ControllerError("library_source_mismatch",
@@ -2859,7 +2925,18 @@ def _candidate_spec_mapping(specs: list[Mapping[str, Any]], registry: OperatorRe
     normalized: list[dict[str, Any]] = []
     mapping: dict[tuple[str, str], str] = {}
     names = set()
-    body_hashes = {str(spec.get("program_sha256")) for spec in active_ir_specs}
+    body_hashes = {str(spec.get("program_sha256")) for spec in active_ir_specs
+        if isinstance(spec.get("program_sha256"), str)}
+    source_body_hashes = set()
+    for prior in active_ir_specs:
+        source = prior.get("source")
+        if isinstance(source, str):
+            try:
+                tree = ast.parse(source, mode="exec")
+            except SyntaxError:
+                continue
+            source_body_hashes.add(hashlib.sha256(
+                ast.dump(tree, annotate_fields=True, include_attributes=False).encode("utf-8")).hexdigest())
     for raw in specs:
         try:
             if (not isinstance(raw, Mapping) or
@@ -2884,13 +2961,24 @@ def _candidate_spec_mapping(specs: list[Mapping[str, Any]], registry: OperatorRe
         key = (spec["name"], spec["declared_version"])
         if key in mapping or spec["name"] in names:
             raise M4ControllerError("generated_spec_duplicate", "Stage 3 specs must have unique names and declared versions", static=True)
-        if spec["program_sha256"] in body_hashes:
+        if (isinstance(spec.get("program_sha256"), str) and
+                spec["program_sha256"] in body_hashes):
             raise M4ControllerError("stage3_ir_duplicate_body",
                 "Stage 3 IR body exactly matches a retained synthesized operator", static=True,
                 details={"operator": spec["name"], "program_sha256": spec["program_sha256"]})
         mapping[key] = spec["version"]
         names.add(spec["name"])
-        body_hashes.add(spec["program_sha256"])
+        if isinstance(spec.get("program_sha256"), str):
+            body_hashes.add(spec["program_sha256"])
+        if isinstance(spec.get("source"), str):
+            tree = ast.parse(spec["source"], mode="exec")
+            source_body_sha = hashlib.sha256(
+                ast.dump(tree, annotate_fields=True, include_attributes=False).encode("utf-8")).hexdigest()
+            if source_body_sha in source_body_hashes:
+                raise M4ControllerError("stage3_source_duplicate_body",
+                    "Stage 3 Python source has the same canonical AST as a retained authored body; this structural check does not establish mathematical equivalence",
+                    static=True, details={"operator": spec["name"], "canonical_ast_sha256": source_body_sha})
+            source_body_hashes.add(source_body_sha)
         normalized.append(spec)
     return normalized, mapping
 
@@ -3094,8 +3182,11 @@ def _normalize_gap_record_draft(gap_record: Any, specs: list[Mapping[str, Any]],
                     "Satisfy the operator's host-validated input requirements and abstain when "
                     "available typed support is insufficient."),
                 "validation_expectation": (
-                    "Pass static IR checks, bounded execution, typed output, provenance, support, "
-                    "and case admission checks; no diagnostic success is assumed."),
+                    ("Pass static Python typing/source checks, bounded execution, typed output, "
+                     "host-pinned source/data provenance, support, and admission checks; no diagnostic success is assumed."
+                     if spec.get("authoring_profile") == "typed-operator-code-v1" else
+                     "Pass static IR checks, bounded execution, typed output, provenance, support, "
+                     "and case admission checks; no diagnostic success is assumed.")),
                 "closest_existing_operators": [
                     {"name": str(row["name"]), "version": str(row["version"])}
                     for row in closest_rows],
@@ -3136,7 +3227,7 @@ def _validate_gap_record(gap_record: Any, specs: list[Mapping[str, Any]],
     if not specs and capabilities:
         raise M4ControllerError("stage3_gap_empty_mapping", "an empty extension must have capabilities:[]", static=True)
     if specs and not capabilities:
-        raise M4ControllerError("stage3_gap_empty_mapping", "proposed composites require matching capability records", static=True)
+        raise M4ControllerError("stage3_gap_empty_mapping", "proposed operators require matching capability records", static=True)
     seen_plans: set[tuple[str, str]] = set()
     for reference in prior_plans:
         if (not isinstance(reference, Mapping) or set(reference) != {"stage", "dag_sha256"} or
@@ -3227,8 +3318,12 @@ def _reject_program_identifier_literals(composite: Mapping[str, Any],
         while stack:
             current = stack.pop()
             if isinstance(current, str) and current.strip().casefold() in forbidden:
-                raise M4ControllerError("composite_identifier_literal",
-                    "composite parameters cannot embed an incident or exact observed component ID",
+                code_profile = composite.get("authoring_profile") == "typed-operator-code-v1"
+                raise M4ControllerError("operator_parameter_identifier_literal" if code_profile else
+                        "composite_identifier_literal",
+                    ("authored parameter defaults/choices cannot embed an incident or exact observed component ID"
+                     if code_profile else
+                     "composite parameters cannot embed an incident or exact observed component ID"),
                     static=True, details={"operator": composite.get("name"),
                         "node_id": node_id})
             if isinstance(current, Mapping):
@@ -3248,6 +3343,19 @@ def _reject_program_identifier_literals(composite: Mapping[str, Any],
             constants.append(parameter.get("default"))
         constants.extend(parameter.get("choices", ()))
         visit_parameter_values(constants, f"parameter:{name}")
+    source = composite.get("source")
+    if isinstance(source, str):
+        try:
+            tree = ast.parse(source, mode="exec")
+        except SyntaxError:
+            return
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                if node.value.strip().casefold() in forbidden:
+                    raise M4ControllerError("source_identifier_literal",
+                        "authored source cannot embed an incident or exact observed component ID",
+                        static=True, details={"operator": composite.get("name"),
+                            "line": getattr(node, "lineno", None)})
 
 
 def _resolve_generated_versions(document: Any, mapping: Mapping[tuple[str, str], str]) -> dict[str, Any]:
@@ -3337,6 +3445,8 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
         last_snapshot = snapshot
         _snapshot_source_pins(snapshot, root, policy_path)
         paper_profile = snapshot.document.get("policy", {}).get("capacity_policy") == "reconstructed-paper-starter-v1"
+        paper_authoring_profile = (stage3_authoring_profile(snapshot) if paper_profile else None)
+        paper_code_profile = paper_profile and paper_authoring_profile == "typed-operator-code-v1"
         specs = generated_specs_from_snapshot(snapshot)
         legacy_specs, active_composite_specs = _split_composite_specs(specs)
         query_budget = M4QueryBudget(run_dir / "audit")
@@ -3364,16 +3474,18 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
         if not profile_path.is_relative_to(root):
             raise M4ControllerError("profile_path", "M4 model profile must remain inside project root")
         profile = json.loads(profile_path.read_text(encoding="utf-8"))
+        model_harness_profile = ("reconstructed-paper-starter-v1-typed-operator-code-v1"
+            if paper_code_profile else "reconstructed-paper-starter-v1" if paper_profile else "legacy-m4")
         model = client or M4ModelClient(profile,
             base_url=os.environ.get("E4_BASE_URL"),
             request_timeout=float(policy["serving"]["model_timeout_seconds"]),
-            harness_profile=("reconstructed-paper-starter-v1" if paper_profile else "legacy-m4"))
+            harness_profile=model_harness_profile)
         if isinstance(model, M4ModelClient):
-            model.harness_profile = ("reconstructed-paper-starter-v1" if paper_profile else "legacy-m4")
+            model.harness_profile = model_harness_profile
         paper_ir_capability_report_path: Path | None = None
         paper_ir_capability_report_sha256: str | None = None
         paper_ir_capability_summary_sha256: str | None = None
-        if paper_profile:
+        if paper_profile and not paper_code_profile:
             from .m4_operator_ir import operator_ir_capability_report
             capability_runtime = build_m4_runtime(case.alert, root=root, policy_path=policy_path)
             paper_ir_capability_report = operator_ir_capability_report(
@@ -3388,6 +3500,8 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                     _paper_v2_capability_prompt_summary(paper_ir_capability_report)}
             paper_ir_capability_summary_sha256 = _canonical_hash(
                 policy["_paper_ir_capability_prompt_summary"])
+        if paper_code_profile:
+            policy = {**policy, "_paper_stage3_authoring_profile": paper_authoring_profile}
         run_doc = {"schema_version": "e4-m4-diagnostic-run/1", "case_id": case_id,
             "split": split, "profile_path": str(profile_path),
             "profile_sha256": sha256_file(profile_path), "profile": profile,
@@ -3520,20 +3634,22 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                             raise M4ControllerError("stage3_operator_budget", "Stage 3 operator proposals exceed the frozen limit", static=True)
                         normalized_new_specs, version_map = _candidate_spec_mapping(
                             raw_specs, registry, runtime, active_composite_specs,
-                            [spec for spec in specs if spec.get("authoring_profile") in
-                                {"typed-operator-ir-v1", "typed-operator-ir-v2"}],
+                            specs,
                             allowed_authoring_profiles=(
-                                ("typed-operator-ir-v2",) if paper_profile else
+                                (paper_authoring_profile,) if paper_profile else
                                 ("typed-operator-ir-v1",)))
                         for ir_spec in normalized_new_specs:
+                            identity_hash = ir_spec.get("program_sha256") or ir_spec.get("source_sha256")
                             composite_validation_checks.append({"operator": ir_spec["name"],
                                 "version": ir_spec["version"],
-                                "program_sha256": ir_spec["program_sha256"], "status": "passed"})
+                                "program_sha256": ir_spec.get("program_sha256"),
+                                "source_sha256": ir_spec.get("source_sha256"), "status": "passed"})
                             _append_jsonl(admission_checks_path, {
                                 "phase": "evolve", "call_attempt": call_attempt,
                                 "call_id": evolve_call_id, "operator": ir_spec["name"],
-                                "source_sha256": ir_spec["program_sha256"],
-                                "check_kind": "closed_program_static", "status": "passed",
+                                "source_sha256": identity_hash,
+                                "check_kind": ("typed_python_static" if ir_spec.get("authoring_profile") == "typed-operator-code-v1"
+                                    else "closed_program_static"), "status": "passed",
                                 "code": None, "line": None, "column": None,
                                 "elapsed_ms": 0, "cache_hit": False,
                                 "checker_context_sha256": None})
@@ -3591,9 +3707,15 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                 if evolved_ok:
                     for composite in normalized_new_specs:
                         safe_name = composite["name"].replace(".", "_")
-                        program_path = run_dir / "operators" / (
-                            f"{safe_name}_{composite['program_sha256'][:16]}.json")
-                        _write_json(program_path, composite)
+                        if isinstance(composite.get("source"), str):
+                            source_path = run_dir / "operators" / (
+                                f"{safe_name}_{composite['source_sha256'][:16]}.py")
+                            source_path.parent.mkdir(parents=True, exist_ok=True)
+                            source_path.write_text(composite["source"], encoding="utf-8")
+                        else:
+                            program_path = run_dir / "operators" / (
+                                f"{safe_name}_{composite['program_sha256'][:16]}.json")
+                            _write_json(program_path, composite)
                 if not evolved_ok:
                     write_stage3_diagnostics(gap_record=evolved_gap or {},
                         new_specs=normalized_new_specs, dag_document=None, verified=None,
@@ -3702,7 +3824,7 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                         verified = (_validate_graph(expanded_document, primitive_registry,
                             runtime_for_stage, stage=stage) if composite_expansion else logical_verified)
                         active_typed_specs = [spec for spec in specs
-                            if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-ir-v1", "typed-operator-ir-v2"}
+                            if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-code-v1", "typed-operator-ir-v1", "typed-operator-ir-v2"}
                             or isinstance(spec.get("input_requirements"), Mapping)]
                         try:
                             input_capability_checks = check_typed_input_capabilities(
@@ -3735,7 +3857,7 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                         if paper_profile:
                             _reject_exact_prior_paper_plan(expanded_document, history)
                         active_typed_specs = [spec for spec in specs
-                            if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-ir-v1", "typed-operator-ir-v2"}
+                            if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-code-v1", "typed-operator-ir-v1", "typed-operator-ir-v2"}
                             or isinstance(spec.get("input_requirements"), Mapping)]
                         try:
                             input_capability_checks = check_typed_input_capabilities(
@@ -3811,7 +3933,7 @@ def run_diagnostic(case_id: str, *, library_root: Path, run_dir: Path,
                                         "prior_matches": previous_expressions[returned_expression]})
                         capability_started = time.perf_counter()
                         active_typed_specs = [spec for spec in [*specs, *normalized_new_specs]
-                            if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-ir-v1", "typed-operator-ir-v2"}
+                            if spec.get("authoring_profile") in {"typed-records-v1", "typed-operator-code-v1", "typed-operator-ir-v1", "typed-operator-ir-v2"}
                             or isinstance(spec.get("input_requirements"), Mapping)]
                         try:
                             input_capability_checks = check_typed_input_capabilities(

@@ -1469,12 +1469,13 @@ def register_paper_starter(registry: OperatorRegistry, *,
         input_kwargs: Mapping[str, Any] | None = None,
         starter_input: PaperStarterInput | None = None,
         generated_specs: Sequence[Mapping[str, Any]] = (),
-        audit_dir: Path | None = None) -> OperatorRegistry:
+        audit_dir: Path | None = None,
+        root: Path = ROOT) -> OperatorRegistry:
     """Register the reconstructed 19-row catalog, optionally filtered for Bank."""
     input_kwargs = dict(input_kwargs or {})
-    runtime_policy = json.loads((ROOT / "config/paper_starter_runtime.json").read_text(encoding="utf-8"))
+    runtime_policy = json.loads((root / "config/paper_starter_runtime.json").read_text(encoding="utf-8"))
     metric_policy_digest = load_bank_metric_policy(
-        ROOT / "config/bank_metric_kind_policy.json").sha256
+        root / "config/bank_metric_kind_policy.json").sha256
     input_spec = OperatorSpec("paper.input.prepare", "1", (PortSpec("data", "Telemetry"),),
         "PaperStarterInput", {"analysis_block_minutes": ParameterSpec("analysis_block_minutes", "positive_integer",
             default=int(runtime_policy["analysis_block_minutes"]), has_default=True,
@@ -1620,13 +1621,16 @@ def register_paper_starter(registry: OperatorRegistry, *,
         name = spec.get("name")
         if not isinstance(name, str): continue
         profile_name = spec.get("authoring_profile")
-        digest = spec.get("program_sha256") or spec.get("source_sha256") or spec.get("signature_sha256")
+        digest = (spec.get("program_sha256") or
+            (spec.get("contract_hash") if profile_name == "typed-operator-code-v1" else None) or
+            spec.get("source_sha256") or spec.get("signature_sha256"))
         if not isinstance(digest, str):
             # Normalized snapshot specs carry source-bound signatures; if no
             # fingerprint exists, the proposed scorer is not admitted here.
             continue
         group = ("generated_metric_ir" if profile_name in
-            ("typed-operator-ir-v1", "typed-operator-ir-v2") else "generated_operator")
+            ("typed-operator-ir-v1", "typed-operator-ir-v2", "typed-operator-code-v1")
+            else "generated_operator")
         generated_semantics[name] = (group, digest)
     _register_op(registry, "paper.answers.weighted_consensus", "RankedAnswer",
         (PortSpec("scores", "ScoredCandidates", variadic=True, minimum_items=1),),
@@ -1706,23 +1710,30 @@ def register_paper_starter(registry: OperatorRegistry, *,
         from .m4_data import generated_sandbox_limits
         from .m4_generated import register_generated_specs
         normalized_generated = register_generated_specs(registry, list(generated_specs), audit_dir=audit_dir,
-            sandbox_limits=generated_sandbox_limits(ROOT))
-        # Typed IR worker wire output uses a generic scorer tag for legacy
-        # compatibility. In this opt-in profile, stamp its validated operator
-        # identity at the trusted host boundary before consensus sees it.
+            sandbox_limits=generated_sandbox_limits(root),
+            public_data_root=root / "data/prepared/bank/public")
+        # Generated workers return a generic profile tag. Stamp the validated
+        # registered identity at this host boundary before consensus sees it.
         for spec in normalized_generated:
             if spec.get("output_type") != "ScoredCandidates": continue
             registered = registry.require(spec["name"], spec["version"])
             original_implementation = registered.implementation
             if original_implementation is None: continue
             expected_worker_scorer = ("typed-operator-ir-v2" if
-                spec.get("authoring_profile") == "typed-operator-ir-v2" else "typed-operator-ir-v1")
+                spec.get("authoring_profile") == "typed-operator-ir-v2" else
+                "typed-operator-code-v1" if spec.get("authoring_profile") == "typed-operator-code-v1"
+                else "typed-operator-ir-v1")
             def named_scoring_implementation(inputs, params, context,
                     implementation=original_implementation, scorer_name=spec["name"],
-                    expected_scorer=expected_worker_scorer):
+                    expected_scorer=expected_worker_scorer,
+                    authoring_profile=spec.get("authoring_profile")):
                 result = implementation(inputs, params, context)
-                if isinstance(result, ScoredCandidates) and result.scorer == expected_scorer:
-                    return replace(result, scorer=scorer_name)
+                if isinstance(result, ScoredCandidates):
+                    if (authoring_profile == "typed-operator-code-v1" and
+                            result.scorer != expected_scorer):
+                        raise PaperStarterError("typed operator code returned an untrusted scorer identity")
+                    if result.scorer == expected_scorer:
+                        return replace(result, scorer=scorer_name)
                 return result
             registry._operators[(registered.name, registered.version)] = replace(
                 registered, implementation=named_scoring_implementation)
@@ -1757,7 +1768,7 @@ def make_paper_starter_registry(*, bank_only: bool = False,
     registry = register_paper_starter(registry, bank_only=bank_only,
         include_conditional_dependencies=include_conditional_dependencies,
         input_kwargs=input_kwargs, starter_input=starter_input,
-        generated_specs=generated_specs, audit_dir=audit_dir)
+        generated_specs=generated_specs, audit_dir=audit_dir, root=root)
     if active_operator_keys is None:
         return registry
     selected = OperatorRegistry()
