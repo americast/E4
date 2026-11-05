@@ -80,6 +80,14 @@ class LibraryManager:
     def load_from_dir(cls, directory: Path | str, registry: OperatorRegistry | None = None) -> LibraryManager:
         p = Path(directory)
         mgr = cls(registry=registry)
+        op_file = p / "operators.json"
+        if op_file.is_file():
+            raw_ops = json.loads(op_file.read_text(encoding="utf-8"))
+            for op_data in raw_ops:
+                spec = OperatorSpec.from_dict(op_data)
+                if not mgr.registry.has(spec.name, spec.version):
+                    mgr.registry.register(spec)
+
         pb_file = p / "playbooks.json"
         if pb_file.is_file():
             raw = json.loads(pb_file.read_text(encoding="utf-8"))
@@ -98,6 +106,9 @@ class LibraryManager:
     def save_to_dir(self, directory: Path | str) -> None:
         p = Path(directory)
         p.mkdir(parents=True, exist_ok=True)
+        op_file = p / "operators.json"
+        ops_payload = [op.as_dict() for op in self.registry.all_operators()]
+        op_file.write_text(json.dumps(ops_payload, indent=2), encoding="utf-8")
         pb_file = p / "playbooks.json"
         payload = [pb.as_dict() for pb in self._playbooks.values()]
         pb_file.write_text(json.dumps(payload, indent=2), encoding="utf-8")

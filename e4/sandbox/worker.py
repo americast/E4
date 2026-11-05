@@ -10,6 +10,7 @@ import time
 from typing import Any, Mapping
 
 from e4.sandbox.ast_validator import SAFE_BUILTINS, validate_source
+from e4.types import RankedAnswer
 from e4.sandbox.views import (
     Aggregate,
     AggregateGroupView,
@@ -199,6 +200,23 @@ def _deserialize_input(val: Any) -> Any:
     return val
 
 
+def _validate_runtime_output_type(result: Any, expected_type: str) -> None:
+    if not expected_type or expected_type == "Any":
+        return
+    if expected_type == "Aggregate":
+        if not (isinstance(result, (Aggregate, AggregateView)) or (hasattr(result, "rows") and hasattr(result, "window"))):
+            raise TypeError(f"Operator returned {type(result).__name__}, expected declared output_type 'Aggregate'")
+    elif expected_type == "CandidateSet":
+        if not (isinstance(result, (CandidateSet, CandidateSetView)) or (hasattr(result, "candidates") and not hasattr(result, "scores"))):
+            raise TypeError(f"Operator returned {type(result).__name__}, expected declared output_type 'CandidateSet'")
+    elif expected_type == "ScoredCandidates":
+        if not (isinstance(result, (ScoredCandidates, ScoredCandidatesView)) or (hasattr(result, "candidates") and hasattr(result, "scorer"))):
+            raise TypeError(f"Operator returned {type(result).__name__}, expected declared output_type 'ScoredCandidates'")
+    elif expected_type == "RankedAnswer":
+        if not (isinstance(result, RankedAnswer) or (hasattr(result, "candidates") and hasattr(result, "scores"))):
+            raise TypeError(f"Operator returned {type(result).__name__}, expected declared output_type 'RankedAnswer'")
+
+
 def _serialize_output(val: Any) -> Any:
     if hasattr(val, "as_dict"):
         return {"$type": type(val).__name__, "$fields": val.as_dict()}
@@ -221,6 +239,16 @@ def main() -> None:
     raw_inputs = payload.get("inputs", {})
     params = payload.get("params", {})
     runtime_dict = payload.get("runtime", {})
+    output_type = payload.get("output_type")
+
+    # Install memory limit if configured
+    memory_limit_mb = payload.get("memory_limit_mb")
+    if memory_limit_mb:
+        try:
+            bytes_limit = int(memory_limit_mb) * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_AS, (bytes_limit, bytes_limit))
+        except Exception:
+            pass
 
     # Validate AST security in child process
     try:
@@ -312,6 +340,8 @@ def main() -> None:
         t0 = time.monotonic()
         result = op_fn(inputs, params, runtime_obj)
         elapsed_ms = int((time.monotonic() - t0) * 1000)
+        if output_type:
+            _validate_runtime_output_type(result, output_type)
     except Exception as exc:
         json.dump({"ok": False, "error": f"Operator execution failed: {type(exc).__name__}: {exc}"}, sys.stdout)
         sys.exit(0)

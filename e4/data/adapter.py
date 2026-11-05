@@ -57,20 +57,28 @@ class BaseDatasetAdapter(ABC):
         ref_w, alt_w = self.get_windows()
         schema = self.get_schema()
         records: list[TelemetryRecord] = []
+        truncated_tables: set[str] = set()
+        is_truncated = False
         for table in schema.tables:
             for w in (ref_w, alt_w):
                 count = 0
                 for r in self.stream_records(table.name, w):
-                    records.append(r)
                     count += 1
-                    if count >= max_records_per_table:
-                        break
+                    if count <= max_records_per_table:
+                        records.append(r)
+                    else:
+                        is_truncated = True
+                        truncated_tables.add(table.name)
         return TelemetryView(
             case_id="adapter_case",
             reference_window=ref_w,
             alert_window=alt_w,
             records=records,
             source_tables=[t.name for t in schema.tables],
+            metadata={
+                "truncated": is_truncated,
+                "truncated_tables": list(truncated_tables),
+            },
         )
 
 

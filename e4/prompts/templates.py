@@ -75,6 +75,9 @@ Incident '{case_id}' requires novel analytical capabilities not present in the e
 Prior Attempts:
 {prior_attempts}
 
+Available Baseline Operators in Library:
+{available_operators}
+
 Public Telemetry Digest:
 {public_digest}
 
@@ -226,10 +229,12 @@ def format_evolve_prompt(
     prior_attempts: Sequence[Mapping[str, Any]],
     public_digest: Mapping[str, Any],
     dataset_schema: Mapping[str, Any],
+    available_operators: Sequence[Mapping[str, Any]] | None = None,
 ) -> str:
     return EVOLVE_TEMPLATE.format(
         case_id=case_id,
         prior_attempts=json.dumps(prior_attempts, indent=2),
+        available_operators=json.dumps(available_operators or [], indent=2),
         public_digest=json.dumps(public_digest, indent=2),
         dataset_schema=json.dumps(dataset_schema, indent=2),
         reference_example=METRIC_ANOMALY_EXAMPLE,

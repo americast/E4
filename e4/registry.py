@@ -107,11 +107,13 @@ class OperatorSpec:
     external_input: bool = False
     authoring_profile: str | None = None
     source: str | None = None
+    input_requirements: Mapping[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "inputs", tuple(self.inputs))
         object.__setattr__(self, "parameters", MappingProxyType(dict(self.parameters)))
         object.__setattr__(self, "estimator_names", tuple(self.estimator_names))
+        object.__setattr__(self, "input_requirements", _freeze(dict(self.input_requirements)))
         if self.external_input and (self.inputs or self.implementation is not None):
             raise ValueError("External input operators must have no DAG inputs or implementation")
 
@@ -130,7 +132,52 @@ class OperatorSpec:
             "parameters": {k: v.as_dict() for k, v in self.parameters.items()},
             "description": self.description,
             "authoring_profile": self.authoring_profile,
+            "source": self.source,
+            "input_requirements": _jsonable(self.input_requirements),
         }
+
+    @classmethod
+    def from_dict(cls, data: Mapping[str, Any]) -> OperatorSpec:
+        inputs = tuple(
+            PortSpec(
+                name=p["name"],
+                value_type=p.get("type", p.get("value_type", "Any")),
+                required=p.get("required", True),
+                variadic=p.get("variadic", False),
+                minimum_items=p.get("minimum_items", 1),
+                maximum_items=p.get("maximum_items"),
+            )
+            for p in data.get("inputs", [])
+        )
+        params = {
+            k: ParameterSpec(
+                name=k,
+                value_type=v.get("type", "string"),
+                required=v.get("required", False),
+                nullable=v.get("nullable", False),
+                default=v.get("default"),
+                has_default=v.get("has_default", "default" in v),
+                runtime_field=v.get("runtime_field"),
+                estimator=v.get("estimator"),
+                description=v.get("description", ""),
+                choices=tuple(v.get("choices", ())),
+                constraints=v.get("constraints", {}),
+            )
+            for k, v in data.get("parameters", {}).items()
+        }
+        return cls(
+            name=data["name"],
+            version=str(data.get("version", "1")),
+            inputs=inputs,
+            output_type=data.get("output_type", "Aggregate"),
+            parameters=params,
+            family=data.get("family", "utility"),
+            external_input=data.get("external_input", False),
+            description=data.get("description", ""),
+            authoring_profile=data.get("authoring_profile"),
+            source=data.get("source"),
+            input_requirements=data.get("input_requirements", {}),
+        )
 
 
 class OperatorRegistry:

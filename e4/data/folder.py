@@ -117,9 +117,6 @@ class FolderTelemetrySource(BaseDatasetAdapter):
                     if val and val.strip():
                         discovered.add((entity_role, val.strip()))
 
-        if not discovered:
-            discovered.add((entity_role, "default_service"))
-
         return [EntityRef(role=r, identifier=i) for r, i in sorted(discovered)]
 
     def stream_records(self, table_name: str, window: Window) -> Iterator[TelemetryRecord]:
@@ -150,9 +147,10 @@ class FolderTelemetrySource(BaseDatasetAdapter):
                 if not raw_ts:
                     continue
                 try:
-                    ts = int(float(raw_ts))
                     if ts_unit == "s":
-                        ts *= 1000
+                        ts = int(round(float(raw_ts) * 1000))
+                    else:
+                        ts = int(round(float(raw_ts)))
                 except (ValueError, TypeError):
                     continue
 
@@ -185,6 +183,9 @@ class FolderTelemetrySource(BaseDatasetAdapter):
                         dur = float(dur_str) if dur_str is not None else None
                     except ValueError:
                         dur = None
+                    succ_col = table_config.get("success_col")
+                    raw_succ = row.get(succ_col) if succ_col else row.get("success")
+                    succ = str(raw_succ).lower() in ("true", "1", "yes", "t") if raw_succ is not None and raw_succ != "" else None
                     yield SpanRecord(
                         source_table=table_name,
                         timestamp_ms_utc=ts,
@@ -192,7 +193,7 @@ class FolderTelemetrySource(BaseDatasetAdapter):
                         span_id=span_id,
                         parent_id=parent_id,
                         duration_ms=dur,
-                        success=True,
+                        success=succ,
                         executing_component=ent,
                     )
                 elif rtype == "log":

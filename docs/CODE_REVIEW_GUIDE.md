@@ -108,6 +108,7 @@ flowchart TD
         ├── test_adapters.py    # Conformance tests for BankAdapter & DemoServiceAdapter
         ├── test_dag_and_sandbox.py  # AST validation, Mypy checks, SubprocessRunner
         ├── test_engine.py      # 10-line engine test and setup CLI test
+        ├── test_review_repairs.py   # Regression tests covering R01-R16 review fixes
         └── test_vertical_slice.py   # Full 3-stage loop: retrieve -> compose -> evolve -> admit -> reuse
 ```
 
@@ -248,17 +249,21 @@ All new tests are located in `tests/test_e4/`:
 ### 6.2 Programmatic Usage (10 Lines of Python)
 ```python
 from adapters.bank_adapter import BankAdapter
-from adapters.bank_library import build_bank_operator_registry, build_seed_playbook
+from adapters.bank_library import build_bank_registry, get_bank_seed_playbook
 from e4 import DiagnosisEngine, GroundTruthOracle
+from e4.controller.library import LibraryManager
 
 adapter = BankAdapter("/localscratch/ssinha97/E4/data/prepared/bank/public/cases/bank-20210304T1800-utc8")
+lib = LibraryManager(registry=build_bank_registry())
+lib.add_playbook(get_bank_seed_playbook())
+
 engine = DiagnosisEngine(
-    registry=build_bank_operator_registry(),
-    seed_playbooks=[build_seed_playbook()],
+    model=my_model_client,
+    library=lib,
     oracle=GroundTruthOracle(ground_truth_entities=["cartservice"]),
 )
 result = engine.diagnose(adapter)
-print(f"Accepted: {result.accepted}, Top Cause: {result.top_entity_id}")
+print(f"Status: {result.status}, Top Candidates: {result.top_candidates}")
 ```
 
 ### 6.3 Using the CLI

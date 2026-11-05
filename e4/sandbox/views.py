@@ -226,6 +226,7 @@ class TelemetryView:
         alert_window: Window | WindowView | Mapping[str, Any],
         records: Sequence[TelemetryRecord],
         source_tables: Sequence[str] | None = None,
+        metadata: Mapping[str, Any] | None = None,
     ):
         self.case_id = case_id
         if hasattr(reference_window, "start_ms_utc"):
@@ -253,6 +254,9 @@ class TelemetryView:
         for r in self._records:
             tables.add(r.source_table)
         self.source_tables = tuple(sorted(tables))
+        self.metadata = dict(metadata or {})
+        self.truncated = bool(self.metadata.get("truncated", False))
+        self.truncated_tables = set(self.metadata.get("truncated_tables", ()))
 
     @property
     def point_count(self) -> int:
@@ -276,6 +280,7 @@ class TelemetryView:
                 for r in self._records
             ],
             "source_tables": list(self.source_tables),
+            "metadata": dict(self.metadata),
         }
 
 
@@ -295,6 +300,7 @@ def telemetry_view(telemetry: Any) -> TelemetryView:
             alert_window=alt_w,
             records=telemetry.get("records", ()),
             source_tables=telemetry.get("source_tables"),
+            metadata=telemetry.get("metadata", {}),
         )
     raise TypeError(f"Cannot convert {type(telemetry).__name__} to TelemetryView")
 
@@ -350,10 +356,11 @@ def metric_points(
             )
         row_idx += 1
 
-    truncated = total > (offset + limit)
-    next_offset = (offset + limit) if truncated else None
+    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    truncated = (total > (offset + limit)) or table_truncated
+    next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
-        complete=not truncated,
+        complete=(not truncated) and (not table_truncated),
         truncated=truncated,
         offset=offset,
         next_offset=next_offset,
@@ -419,10 +426,11 @@ def span_records(
                 )
             )
 
-    truncated = total > (offset + limit)
-    next_offset = (offset + limit) if truncated else None
+    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    truncated = (total > (offset + limit)) or table_truncated
+    next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
-        complete=not truncated,
+        complete=(not truncated) and (not table_truncated),
         truncated=truncated,
         offset=offset,
         next_offset=next_offset,
@@ -479,10 +487,11 @@ def log_records(
                 )
             )
 
-    truncated = total > (offset + limit)
-    next_offset = (offset + limit) if truncated else None
+    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    truncated = (total > (offset + limit)) or table_truncated
+    next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
-        complete=not truncated,
+        complete=(not truncated) and (not table_truncated),
         truncated=truncated,
         offset=offset,
         next_offset=next_offset,
@@ -522,7 +531,18 @@ def aggregate_records(
         key_parts: list[Any] = []
 
         if record_type == "metric" and isinstance(r, MetricRecord):
-            val = r.value
+            if field == "value":
+                val = r.value
+            elif field in ("timestamp", "timestamp_ms_utc"):
+                val = float(r.timestamp_ms_utc)
+            elif field in r.details:
+                try:
+                    val = float(r.details[field])
+                except (ValueError, TypeError):
+                    val = None
+            else:
+                raise ValueError(f"Field '{field}' does not exist on MetricRecord")
+
             for gfield in group_by:
                 if gfield in ("entity", "entity_identifier"):
                     key_parts.append(r.entity.identifier)
@@ -530,30 +550,79 @@ def aggregate_records(
                     key_parts.append(r.entity.role)
                 elif gfield in ("metric_name", "metric_key"):
                     key_parts.append(r.metric_name)
+                elif gfield in ("timestamp", "timestamp_ms_utc"):
+                    key_parts.append(r.timestamp_ms_utc)
                 elif gfield in r.details:
                     key_parts.append(r.details[gfield])
                 else:
-                    key_parts.append(None)
+                    raise ValueError(f"Grouping field '{gfield}' does not exist on MetricRecord")
         elif record_type == "span" and isinstance(r, SpanRecord):
-            val = r.duration_ms
+            if field in ("duration", "duration_ms"):
+                val = r.duration_ms
+            elif field in ("timestamp", "timestamp_ms_utc"):
+                val = float(r.timestamp_ms_utc)
+            elif field == "success":
+                val = 1.0 if r.success is True else (0.0 if r.success is False else None)
+            elif field in r.details:
+                try:
+                    val = float(r.details[field])
+                except (ValueError, TypeError):
+                    val = None
+            else:
+                raise ValueError(f"Field '{field}' does not exist on SpanRecord")
+
             for gfield in group_by:
-                if gfield in ("component", "executing_component", "entity_identifier"):
+                if gfield in ("component", "executing_component", "entity", "entity_identifier"):
                     key_parts.append(r.executing_component.identifier if r.executing_component else None)
+                elif gfield == "entity_role":
+                    key_parts.append(r.executing_component.role if r.executing_component else None)
+                elif gfield == "logical_service":
+                    key_parts.append(r.logical_service.identifier if r.logical_service else None)
+                elif gfield == "database_target":
+                    key_parts.append(r.database_target.identifier if r.database_target else None)
+                elif gfield in ("trace_id", "span_id", "parent_id", "call_type"):
+                    key_parts.append(getattr(r, gfield, None))
+                elif gfield in ("timestamp", "timestamp_ms_utc"):
+                    key_parts.append(r.timestamp_ms_utc)
+                elif gfield == "success":
+                    key_parts.append(r.success)
                 elif gfield in r.details:
                     key_parts.append(r.details[gfield])
                 else:
-                    key_parts.append(None)
+                    raise ValueError(f"Grouping field '{gfield}' does not exist on SpanRecord")
         elif record_type == "log" and isinstance(r, LogRecord):
-            val = 1
+            if field == "count":
+                val = 1.0
+            elif field in ("timestamp", "timestamp_ms_utc"):
+                val = float(r.timestamp_ms_utc)
+            elif field == "value":
+                try:
+                    val = float(r.value) if r.value is not None else None
+                except (ValueError, TypeError):
+                    val = None
+            elif field in r.details:
+                try:
+                    val = float(r.details[field])
+                except (ValueError, TypeError):
+                    val = None
+            else:
+                raise ValueError(f"Field '{field}' does not exist on LogRecord")
+
             for gfield in group_by:
                 if gfield in ("entity", "entity_identifier"):
                     key_parts.append(r.entity.identifier if r.entity else None)
+                elif gfield == "entity_role":
+                    key_parts.append(r.entity.role if r.entity else None)
                 elif gfield == "log_name":
                     key_parts.append(r.log_name)
+                elif gfield == "severity":
+                    key_parts.append(r.severity)
+                elif gfield in ("timestamp", "timestamp_ms_utc"):
+                    key_parts.append(r.timestamp_ms_utc)
                 elif gfield in r.details:
                     key_parts.append(r.details[gfield])
                 else:
-                    key_parts.append(None)
+                    raise ValueError(f"Grouping field '{gfield}' does not exist on LogRecord")
 
         if time_bucket_ms and time_bucket_ms > 0:
             bucket = (r.timestamp_ms_utc // time_bucket_ms) * time_bucket_ms
@@ -583,10 +652,11 @@ def aggregate_records(
             )
         )
 
-    truncated = total > (offset + limit)
-    next_offset = (offset + limit) if truncated else None
+    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    truncated = (total > (offset + limit)) or table_truncated
+    next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
-        complete=not truncated,
+        complete=(not truncated) and (not table_truncated),
         truncated=truncated,
         offset=offset,
         next_offset=next_offset,
@@ -611,7 +681,7 @@ def group_by(rows: Sequence[Any], fields: Sequence[str]) -> Mapping[tuple[Any, .
             elif isinstance(r, Mapping) and f in r:
                 key_parts.append(r[f])
             else:
-                key_parts.append(None)
+                raise ValueError(f"Grouping field '{f}' not found on record {type(r).__name__}")
         k = tuple(key_parts)
         if k not in grouped:
             grouped[k] = []

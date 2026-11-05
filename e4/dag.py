@@ -123,6 +123,18 @@ def _validate_parameter_value(
         )
 
 
+def _resolve_runtime_field(runtime: Any, field_name: str) -> Any:
+    if runtime is None:
+        return None
+    if isinstance(runtime, Mapping) and field_name in runtime:
+        return runtime[field_name]
+    if hasattr(runtime, "snapshot") and hasattr(runtime.snapshot, "values") and field_name in runtime.snapshot.values:
+        return runtime.snapshot.values[field_name]
+    if hasattr(runtime, field_name):
+        return getattr(runtime, field_name)
+    return None
+
+
 def verify_dag(
     document: Mapping[str, Any],
     registry: OperatorRegistry,
@@ -242,6 +254,18 @@ def verify_dag(
                         nid,
                         {"expected": port_spec.value_type, "actual": src_op.output_type},
                     )
+                # Check input requirements satisfiability
+                if op.input_requirements and port_name in op.input_requirements:
+                    reqs = op.input_requirements[port_name]
+                    if isinstance(reqs, Mapping):
+                        req_output_type = reqs.get("output_type")
+                        if req_output_type and req_output_type != src_op.output_type and req_output_type != "Any":
+                            raise DAGValidationError(
+                                "input_requirement_mismatch",
+                                f"Port '{port_name}' requires output_type '{req_output_type}', but '{src}' produces '{src_op.output_type}'",
+                                nid,
+                                {"expected": req_output_type, "actual": src_op.output_type},
+                            )
                 adj[src].append(nid)
                 in_degree[nid] += 1
 
@@ -305,9 +329,7 @@ def verify_dag(
                 bval = bindings[pname]
                 if bval.startswith("runtime.") and runtime is not None:
                     rfield = bval.removeprefix("runtime.")
-                    rval = getattr(runtime, rfield, None)
-                    if hasattr(runtime, "snapshot") and rfield in runtime.snapshot.values:
-                        rval = runtime.snapshot.values[rfield]
+                    rval = _resolve_runtime_field(runtime, rfield)
                     if rval is not None:
                         _validate_parameter_value(pspec, rval, nid, pname)
             elif pspec.has_default:
@@ -381,10 +403,9 @@ class SerialExecutor:
             for pname, bval in node.bindings.items():
                 if pname not in node_params and bval.startswith("runtime.") and runtime is not None:
                     rfield = bval.removeprefix("runtime.")
-                    if hasattr(runtime, "snapshot") and rfield in runtime.snapshot.values:
-                        node_params[pname] = runtime.snapshot.values[rfield]
-                    elif hasattr(runtime, rfield):
-                        node_params[pname] = getattr(runtime, rfield)
+                    rval = _resolve_runtime_field(runtime, rfield)
+                    if rval is not None:
+                        node_params[pname] = rval
 
             t0 = time.monotonic()
             if op.implementation is not None:

@@ -12,6 +12,36 @@ from ..sandbox.typechecker import TypeCheckError, check_operator_types
 from .schemas import validate_proposal_bundle
 
 
+def _parse_bundle(raw: Any) -> tuple[dict[str, Any] | None, str | None]:
+    if isinstance(raw, Mapping):
+        return dict(raw), None
+    if not isinstance(raw, str):
+        return None, f"Expected JSON string or mapping, got {type(raw).__name__}"
+    clean = raw.strip()
+    try:
+        return json.loads(clean), None
+    except Exception:
+        pass
+    if "```" in clean:
+        parts = clean.split("```")
+        for i in range(1, len(parts), 2):
+            block = parts[i].strip()
+            if block.startswith("json"):
+                block = block[4:].strip()
+            try:
+                return json.loads(block), None
+            except Exception:
+                continue
+    first_brace = clean.find("{")
+    last_brace = clean.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        try:
+            return json.loads(clean[first_brace : last_brace + 1]), None
+        except Exception:
+            pass
+    return None, f"Failed to parse JSON response: {clean[:100]}..."
+
+
 class StaticRepairController:
     """Manages bounded repair attempts for operator proposals with batched error reporting."""
 
@@ -71,8 +101,15 @@ class StaticRepairController:
                 k: ParameterSpec(
                     name=k,
                     value_type=v.get("type", "string"),
+                    required=v.get("required", False),
+                    nullable=v.get("nullable", False),
                     default=v.get("default"),
-                    has_default="default" in v,
+                    has_default=v.get("has_default", "default" in v),
+                    runtime_field=v.get("runtime_field"),
+                    estimator=v.get("estimator"),
+                    description=v.get("description", ""),
+                    choices=tuple(v.get("choices", ())),
+                    constraints=v.get("constraints", {}),
                 )
                 for k, v in op_doc.get("parameters", {}).items()
             }
@@ -87,6 +124,7 @@ class StaticRepairController:
                     authoring_profile="typed-operator-code-v1",
                     source=source,
                     description=op_doc.get("description", ""),
+                    input_requirements=dict(op_doc.get("input_requirements", {})),
                 )
             )
 
@@ -94,61 +132,43 @@ class StaticRepairController:
 
     def attempt_repairs(
         self,
-        initial_bundle: Mapping[str, Any],
+        initial_bundle: str | Mapping[str, Any],
         query_model_fn: Callable[[str], str],
         dataset_schema: Any = None,
     ) -> tuple[bool, list[OperatorSpec], list[str], int]:
-        """Run repair loop up to max_repairs, preserving rejected source in feedback."""
-        current_bundle = initial_bundle
-        attempt = 0
+        """Run repair loop up to max_repairs, accurately counting model calls."""
+        current_raw: Any = initial_bundle
+        repairs_used = 0
         all_errors: list[str] = []
 
-        while attempt <= self.max_repairs:
-            errors, specs = self.validate_and_typecheck(current_bundle, dataset_schema)
+        while repairs_used <= self.max_repairs:
+            bundle_dict, parse_err = _parse_bundle(current_raw)
+            if parse_err is not None:
+                errors = [parse_err]
+                specs: list[OperatorSpec] = []
+            else:
+                errors, specs = self.validate_and_typecheck(bundle_dict or {}, dataset_schema)
+
             if not errors and specs:
-                return True, specs, [], attempt
+                return True, specs, [], repairs_used
 
             all_errors = errors
-            attempt += 1
-            if attempt > self.max_repairs:
+            if repairs_used >= self.max_repairs:
                 break
 
             # Collect sources to preserve in repair prompt
             rejected_sources: dict[str, str] = {}
-            if isinstance(current_bundle, Mapping):
-                for op in current_bundle.get("proposed_operators", []):
+            if isinstance(bundle_dict, Mapping):
+                for op in bundle_dict.get("proposed_operators", []):
                     if isinstance(op, Mapping) and "name" in op and "source" in op:
                         rejected_sources[op["name"]] = str(op["source"])
 
             repair_prompt = format_repair_prompt(errors, rejected_sources)
+            repairs_used += 1
             try:
-                raw_response = query_model_fn(repair_prompt)
-                clean = raw_response.strip()
-                parsed = None
-                try:
-                    parsed = json.loads(clean)
-                except Exception:
-                    pass
-                if parsed is None and "```" in clean:
-                    parts = clean.split("```")
-                    for i in range(1, len(parts), 2):
-                        block = parts[i].strip()
-                        if block.startswith("json"):
-                            block = block[4:].strip()
-                        try:
-                            parsed = json.loads(block)
-                            break
-                        except Exception:
-                            continue
-                if parsed is None:
-                    first_brace = clean.find("{")
-                    last_brace = clean.rfind("}")
-                    if first_brace != -1 and last_brace > first_brace:
-                        parsed = json.loads(clean[first_brace : last_brace + 1])
-                if parsed is None:
-                    parsed = json.loads(clean)
-                current_bundle = parsed
+                current_raw = query_model_fn(repair_prompt)
             except Exception as exc:
-                all_errors.append(f"Repair response parsing failed: {exc}")
+                all_errors.append(f"Repair model call failed: {exc}")
+                break
 
-        return False, [], all_errors, attempt
+        return False, [], all_errors, repairs_used

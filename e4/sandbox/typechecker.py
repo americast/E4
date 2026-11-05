@@ -13,7 +13,7 @@ import tokenize
 from pathlib import Path
 from typing import Any, Mapping
 
-from .ast_validator import validate_source
+from .ast_validator import SecurityValidationError, validate_source
 
 PROFILE = "typed-operator-code-v1"
 CHECK_TIMEOUT_SECONDS = 10
@@ -383,8 +383,11 @@ def check_operator_types(
     if not isinstance(source, str) or not source.strip():
         raise TypeCheckError("Spec must define non-empty Python 'source'")
 
-    # Validate AST security first
-    validate_source(source)
+    # Validate AST security and suppression directives first
+    try:
+        validate_source(source)
+    except SecurityValidationError as exc:
+        raise TypeCheckError(str(exc), line=exc.line, column=exc.column) from exc
 
     stub = _generate_stub(spec, dataset_schema)
     annotated = _annotate_source(source)

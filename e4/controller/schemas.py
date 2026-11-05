@@ -67,6 +67,10 @@ def validate_operator_proposal(spec: Mapping[str, Any]) -> list[str]:
                 pname = port["name"]
                 if pname not in input_reqs:
                     errors.append(f"input_requirements missing declaration for port '{pname}'")
+                elif not isinstance(input_reqs[pname], Mapping):
+                    errors.append(
+                        f"input_requirements for port '{pname}' must be a mapping contract, got {type(input_reqs[pname]).__name__}"
+                    )
 
     source = spec.get("source")
     if not isinstance(source, str) or not source.strip():
@@ -91,8 +95,19 @@ def validate_proposal_bundle(bundle: Mapping[str, Any]) -> list[str]:
         errors.append("'proposed_operators' must be a non-empty list of operator proposals")
         return errors
 
+    seen_sources: dict[str, str] = {}
     for idx, op in enumerate(proposed_ops):
         op_name = op.get("name", f"operator_{idx}") if isinstance(op, Mapping) else f"operator_{idx}"
+        if isinstance(op, Mapping):
+            src = op.get("source", "").strip()
+            norm_src = " ".join(src.split())
+            if norm_src:
+                if norm_src in seen_sources:
+                    errors.append(
+                        f"[{op_name}] Structural duplicate body: identical implementation to '{seen_sources[norm_src]}'"
+                    )
+                else:
+                    seen_sources[norm_src] = op_name
         op_errors = validate_operator_proposal(op)
         for err in op_errors:
             errors.append(f"[{op_name}] {err}")

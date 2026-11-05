@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import ast
+import io
+import re
 import symtable
+import tokenize
 from typing import Sequence
 
 MAX_SOURCE_BYTES = 8192
@@ -59,6 +62,21 @@ def validate_source(source: str, max_bytes: int = MAX_SOURCE_BYTES) -> None:
         raise SecurityValidationError(
             f"Source size ({len(encoded)} bytes) exceeds limit of {max_bytes} bytes"
         )
+
+    # Reject typechecker suppression directives (# type: ignore, # mypy:)
+    try:
+        tokens = tokenize.tokenize(io.BytesIO(encoded).readline)
+        for tok in tokens:
+            if tok.type == tokenize.COMMENT:
+                comment_text = tok.string
+                if re.search(r"#\s*(type\s*:\s*ignore|mypy\s*:)", comment_text, re.I):
+                    raise SecurityValidationError(
+                        "Type-checker suppression directives ('type: ignore' or 'mypy:') are forbidden",
+                        line=tok.start[0],
+                        column=tok.start[1],
+                    )
+    except tokenize.TokenError:
+        pass
 
     try:
         tree = ast.parse(source, mode="exec")

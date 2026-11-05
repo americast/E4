@@ -20,7 +20,8 @@ dependencies = [
 e4 = "e4.cli:main"
 
 [tool.setuptools.packages.find]
-include = ["e4*", "adapters*"]
+include = ["e4", "e4.*", "adapters", "adapters.*", "benchmarks", "benchmarks.*"]
+exclude = ["e4core*", "e4infra*", "e4baseline*"]
 
 [tool.ruff]
 line-length = 100

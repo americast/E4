@@ -29,7 +29,14 @@ class DiagnosisEngine:
         max_repairs: int = 2,
     ):
         self.model = model
-        self.oracle = oracle or stopping or BudgetStopPolicy(max_attempts=max_attempts)
+        eff_max_attempts = max_attempts
+        chosen_oracle = oracle or stopping
+        if chosen_oracle is not None and hasattr(chosen_oracle, "max_attempts"):
+            try:
+                eff_max_attempts = int(getattr(chosen_oracle, "max_attempts"))
+            except (ValueError, TypeError):
+                pass
+        self.oracle = chosen_oracle or BudgetStopPolicy(max_attempts=eff_max_attempts)
         if isinstance(library, (Path, str)):
             self.library = LibraryManager.load_from_dir(library)
         elif isinstance(library, LibraryManager):
@@ -42,7 +49,7 @@ class DiagnosisEngine:
             library=self.library,
             oracle=self.oracle,
             runner=self.runner,
-            max_attempts=max_attempts,
+            max_attempts=eff_max_attempts,
             max_repairs=max_repairs,
         )
 

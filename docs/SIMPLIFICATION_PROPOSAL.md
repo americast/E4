@@ -8,6 +8,8 @@
 
 **Review update, November 4:** Prefer removal and a deliberate cutover over wrapping every existing path in new abstractions. Support the current Python authoring mode in the new engine; preserve historical implementations through Git and frozen artifacts. Sections 7–9 give the revised migration order, fixes for the observed evolution failures, and acceptance criteria. The API examples below describe the proposed design, not an already implemented package.
 
+**Independent review, November 5:** Section 0 records the original handoff; Section 10 records the implementation agent's decisions and completion claims. Section 11 contains the subsequent review, passing checks, reproduced defects and repair order. The new structure exists, but the review does not endorse readiness for another accuracy comparison.
+
 ## 0. Handoff: Project Context and Starting State
 
 This section is for an implementation agent with no conversation history. **Your assignment is to implement the simplification in this document and the authoring-interface fixes in Section 8.** The user will bring the completed work back for review before deciding on further experiments. This document is a plan; do not assume its proposed `e4` package or APIs already exist.
@@ -672,3 +674,222 @@ Use [`benchmarks/bank_benchmark.py`](file:///localscratch/ssinha97/E4/benchmarks
     --model-type llama
 ```
 For multi-seed execution, run across seeds `42`, `43`, and `44`, record per-seed accuracy in JSON, and report the stage-prefix progression (`Retrieval → Adaptation → Evolution`).
+
+---
+
+## 11. Independent Review Findings — November 5, 2026
+
+**Reviewed branch:** `simplification`, implementation through `e4f3d46`, including the decisions documented in `0259f20`. **Readiness:** useful architectural progress, but not ready for a trustworthy Bank comparison. The “fully implemented and verified” statement in Section 10 is not supported by the broader checks below. No implementation changes or model/benchmark inference were made during this review.
+
+### 11.1 Design decisions respected in this review
+
+The smaller controller, separate adapter packages, canonical records, pluggable feedback and separate EVOLVE/SERVE calls improve readability. The focused suite passes **10/10 tests**, and rejected source is now preserved during repair. The new `e4/` package does not need to import the old Bank controller.
+
+Section 10 deliberately changes the default to `SubprocessRunner` for portability. This review does **not** treat that choice alone as a defect or require reinstating mandatory outer Bubblewrap isolation. It separately checks whether the advertised optional backend and resource controls exist. Likewise, retiring old IR modules is intentional; the problem is leaving maintained imports, packaging and run instructions pointing to deleted code.
+
+The checks used trusted in-memory fixtures and temporary CSVs, not model-generated diagnoses or private labels. Reproductions below describe observed behavior; additional gaps identified by inspection are labelled accordingly. P0 blocks trusting accuracy, P1 is a functional/correctness defect, and P2 is an incomplete delivery or verification gate.
+
+### 11.2 Findings requiring fixes
+
+#### R01 — P0: Invalid pipelines can become confirmed diagnoses
+
+In [`controller.py`](../e4/controller/controller.py), adaptation and serving catch verification/execution exceptions and replace the answer with `suspect_entities[:3]`. `_to_ranked_answer()` also fabricates this ranking for unsupported output values. The substitute is then sent to the oracle as though analysis had produced it. In adaptation, `verified` can still refer to the previous retrieval DAG and be admitted as the supposedly successful new playbook.
+
+**Reproduced:** retrieval returned entity `b`; adaptation referenced an unknown operator and could not execute. With target `a` and source entity order `[a, b]`, the engine returned `status="confirmed"`, `stage="compose"`, candidates `[a, b]`, and admitted `playbook_adapted_probe`.
+
+**Fix:** record a failed stage and its error; never synthesize candidates from entity order. Only a successfully executed, validated ranked answer may be evaluated or admitted. Reset stage-local state and preserve the actual DAG/result association. Require typed outputs and supported evidence rather than converting arbitrary outputs into a ranking.
+
+#### R02 — P1: Rejected evolution and case bindings mutate the active library
+
+[`controller.py`](../e4/controller/controller.py) registers new specs in `self.library.registry` before serving or confirmation, and adds their names to `admitted_operators` immediately. Failed/rejected serving does not roll them back. It also skips registration on a name/version collision without verifying that the source is the same. Admission has no check that a proposed operator actually contributes to the returned answer.
+
+**Reproduced:** an unverified evolution result left `evolved.unused@1` in the active registry and reported it in `admitted_operators`, even though the serving DAG did not reference it. Separately, retrieval's shallow `dict(chosen_pb.dag)` copy allowed per-case parameter binding to change the stored playbook's `x` value from `1.0` to `9.0` without confirmation.
+
+**Fix:** use a temporary candidate registry and a deep per-case DAG copy. Merge only confirmed, reachable additions into the active library. Distinguish proposed/validated operators from admitted operators, and reject conflicting source identities. This needs a small explicit commit boundary, not another forensic snapshot framework.
+
+#### R03 — P1: Saving a library loses its operators
+
+[`LibraryManager.save_to_dir()` and `load_from_dir()`](../e4/controller/library.py) write/read only `playbooks.json`. Generated source, signatures and operator parameters are not persisted. Loading a directory through the public engine therefore cannot reconstruct the operators referenced by those playbooks.
+
+**Reproduced:** a registry containing `evolved.unused@1` saved successfully; after reload the operator was absent and the directory contained only `playbooks.json`.
+
+**Fix:** persist and restore the complete current operator format alongside playbooks, with validation and a stable source/version identity. Test reuse after save/reload in a fresh engine, not only reuse of the same in-memory registry.
+
+#### R04 — P1: Adapters invent unavailable telemetry and misconvert timestamps
+
+[`BankAdapter`](../adapters/bank_adapter.py) assigns `success=True` to spans although Bank has no success field, declares an undeclared duration unit to be milliseconds, and invents `db-001`, `service-order`, `service-payment` and `redis-001` when metric-derived entities are absent. [`FolderTelemetrySource`](../e4/data/folder.py) also sets span success to true. Its seconds conversion truncates to an integer before multiplying by 1,000.
+
+**Reproduced:** a trace CSV without any success column yielded `success=True`; no metric file yielded the four invented entities. A generic timestamp of `1.5` seconds became `1000` ms instead of `1500` ms.
+
+**Fix:** preserve unsupported success and duration units as unknown, derive candidates only from declared observed sources, and preserve fractional timestamps during unit conversion. By inspection, Bank also reads only the first matching source-date directory and omits application metrics from its schema; handle all declared dates and the modalities needed by the ported starter library. Missing sources must remain distinguishable from available empty sources.
+
+#### R05 — P1: The Bank starter library was replaced, not ported equivalently
+
+[`bank_library.py`](../adapters/bank_library.py) registers only three operators and one playbook. Its “anomaly” method computes alert-window means and ranks the largest absolute values across metrics. It does not compare against the reference window. Its consensus sums model-labelled family scores without the preceding normalization/deduplication/group rules and drops evidence from the final `RankedAnswer`.
+
+This is an algorithm change from the prior Bank projection, which included distinct metric, trace and log analyses. Section 10 does not record an intentional decision to replace that method with a demonstration baseline; Section 7 requires equivalent ported analyses.
+
+**Fix:** port the intended Bank starter analyses into the adapter/domain package and check equivalent evidence/rankings on fixed inputs. If the three-operator library is useful as a demo, label it as a different method and keep it out of claims about reproducing the historical E4 comparison. Do not tune a weaker library to recover an escalation trend.
+
+#### R06 — P1: Data truncation is silently reported as complete coverage
+
+[`BaseDatasetAdapter.as_telemetry_view()`](../e4/data/adapter.py) caps each table/window scan at 10,000 rows before query helpers see the data. It does not carry truncation metadata into the view. Helpers then compute completeness from this already truncated list. The controller's fallback for a protocol-only adapter also loads only the first table's alert window, omitting other tables and the reference window.
+
+**Reproduced:** a source with 10,001 alert rows returned 10,000 and reported `total_matches=10000`, `complete=True`, `truncated=False`. A subsequent “full-window” aggregate would operate on the same incomplete source.
+
+**Fix:** stream/scan the authorized source for aggregation, or propagate explicit partial-source coverage and prevent complete-window claims. Pagination must permit access to remaining rows. Exercise all tables and both windows through the documented adapter protocol; do not require an undocumented convenience method for correct behavior.
+
+#### R07 — P1: Aggregation ignores its requested field
+
+[`aggregate_records()`](../e4/sandbox/views.py) accepts `field` but selects metric `value`, span `duration_ms`, or constant log count regardless of that argument. Unknown grouping fields also become `None` rather than producing an actionable contract error.
+
+**Reproduced:** for a metric at timestamp `11` with value `3`, sums requested for `value`, `timestamp_ms_utc`, and `does_not_exist` all returned `3.0`.
+
+**Fix:** validate field/statistic/grouping compatibility against the record/schema and aggregate the requested field. Reject unsupported fields before execution when statically known, and fail explicitly otherwise. This is a correctness requirement for the neutral data API, not an analysis-kernel restriction.
+
+#### R08 — P1: Strict typing can be disabled by the generated source
+
+The new [`typechecker.py`](../e4/sandbox/typechecker.py) no longer rejects source-level Mypy suppression directives. Runtime execution also does not validate an operator's returned value against its declared output type before forwarding it.
+
+**Reproduced:** an operator declared to return `CandidateSet`, whose body was `return 123`, passed checking when prefixed with `# mypy: ignore-errors`.
+
+**Fix:** reject type-checker bypass directives and independently check runtime output contracts. Keep source/compiler policy coherent; do not rely on annotations alone to make runtime values correct. Add negative tests through the real compile-to-execute path.
+
+#### R09 — P1: Input requirements and dataset schemas are largely decorative
+
+[`validate_operator_proposal()`](../e4/controller/schemas.py) checks that a requirement key exists for each port but not its value/shape or satisfiability. `OperatorSpec` does not retain these requirements. The new typecheck stub receives `dataset_schema` but does not use it; field/table selectors remain arbitrary strings. No producer-capability check occurs when wiring an authored operator into the serving DAG.
+
+**Reproduced:** `input_requirements={"data": "not a contract"}` produced no proposal-validation errors. By inspection, field declarations, group/support/coverage requirements and actual producers are not reconciled later.
+
+**Fix:** define the small current requirement contract once, retain it in specs, and use it in compiler/query/DAG validation. Either enforce a declared capability or remove misleading declarations from the API and document the actual contract; do not advertise enforcement that does not occur. Unknown/missing data must not silently become negative evidence.
+
+#### R10 — P1: Runtime bindings do not resolve through the engine's runtime representation
+
+The controller passes a dictionary such as `{"dag_depth": ...}` to [`SerialExecutor`](../e4/dag.py), but parameter binding resolution checks object attributes or `.snapshot.values`, not mapping keys. [`StaticRepairController`](../e4/controller/repair.py) also drops fields such as `required`, `nullable`, `runtime_field` and `choices` while converting proposed parameter declarations to `ParameterSpec`.
+
+**Reproduced:** a verified node binding parameter `x` to `runtime.dag_depth`, executed with `runtime={"dag_depth":5}`, failed with `KeyError('x')` in its implementation.
+
+**Fix:** use one typed runtime representation and one parameter-resolution path across verification, built-ins and authored code. Preserve declaration semantics when constructing specs and test explicit/default/runtime precedence.
+
+#### R11 — P1: Evolution does not see the existing library or earlier analysis pipelines
+
+By inspection, [`format_evolve_prompt()`](../e4/prompts/templates.py) receives history, public digest and dataset schema, but no current operator catalog, retained source bodies or playbooks. History records candidate lists/decisions rather than prior DAGs and analysis/evidence summaries. Gap validation requires only a mapping, with no connection to prior plans or proposed contributions. There is no structural duplicate-body check.
+
+**Fix:** provide bounded, explicit library and failed-analysis context so the model can identify a missing computation. Validate gap/operator correspondence and repeated bodies using small source identities. Keep EVOLVE separate from SERVE, and retain only operators used by a confirmed pipeline. Do not bring back the old kernel catalog to avoid this task.
+
+#### R12 — P1: Initial JSON failures bypass repair, and repair-call accounting is wrong
+
+Initial selection, composition and evolution responses are parsed outside a bounded repair handler in [`controller.py`](../e4/controller/controller.py). More permissive fence/prefix extraction does not repair malformed JSON. The repair prompt preserves source but omits the full original specification and authoring contract. The controller also does not independently enforce its `max_attempts`; stopping is delegated to the supplied oracle.
+
+**Reproduced:** an initial response of `{` raised `JSONDecodeError` after one call rather than becoming a recorded bounded validation failure. With `max_repairs=2`, two repair calls returning invalid bundles were reported as `repairs_used=3`, inflating `total_calls`.
+
+**Fix:** share one parse/validate/repair path with explicit stage budgets and accurate accounting. Preserve the complete necessary artifact/contract within the context budget. Do not swallow transport failures as empty model answers. Schema-constrained output and context-fit/truncation checks from Section 8 are not implemented by the new client and must not be claimed verified.
+
+#### R13 — P1: Optional Bubblewrap and documented memory limits are not implemented
+
+Although the subprocess default is an accepted decision, [`BubblewrapRunner.run()`](../e4/sandbox/runner.py) always delegates to `SubprocessRunner`; it never invokes the configured binary. The worker imports `resource` but never installs memory/CPU resource limits. The subprocess wall timeout exists; the memory limit claimed in Section 10 does not. Output capture is also unbounded.
+
+**Reproduced:** `BubblewrapRunner(bwrap_path="/usr/bin/false")` successfully executed a trusted fixture. A real invocation of that supplied binary would have failed.
+
+**Fix:** implement the optional backend or mark it unsupported rather than presenting a misleading security option. Implement the documented resource controls and explicit failure behavior, or revise the supported guarantees. This finding does not require changing the agreed portable default.
+
+#### R14 — P1 for comparison: The benchmark changes the model protocol and loses accounting
+
+[`LocalLlamaClient`](../benchmarks/bank_benchmark.py) hardcodes temperature `0.2` and a 4,096-token limit, omits the frozen seed/top-p/top-k settings, and discards usage and finish reasons. Request errors become empty strings. The CLI has no seed option despite Section 10 prescribing multi-seed runs. Missing truth files return an empty mapping; an empty case filter can fall through to evaluating all case directories rather than the intended split.
+
+**Fix:** make the benchmark honor an explicit recorded inference profile and fixed case selection, validate label availability, retain all calls/usage/errors, and distinguish truncated or failed requests. General users may choose other clients; a comparison with the existing T2/E4 numbers must identify protocol or method changes. The documented 40% refactored baseline is not sufficient verification while R01 can turn execution failures into hits.
+
+#### R15 — P2: Cutover, packaging and standard validation are incomplete
+
+The new core is separate, but old maintained code still imports deleted IR/composite modules. Packaging uses `include=["e4*", "adapters*"]`, also matching the broken `e4core`, `e4infra` and `e4baseline` packages. README run commands still point to the old path. The new CLI supplies setup/adapter-prompt commands, not a diagnosis command.
+
+**Observed:** importing `e4core.m4_controller` raises `ModuleNotFoundError` for `e4core.m4_composite`. Standard `unittest` discovery under `tests` reports **20 collection errors** and does not recurse into `tests/test_e4`, which has no `__init__.py`; only the explicitly targeted new suite runs cleanly. The 10 passing new tests do not cover the negative cases above.
+
+The current implementation count is **44,626 lines**, compared with 43,309 before this work: `e4/` has 5,119, adapters 560 and benchmarks 167, while most legacy implementation remains. The smaller isolated core is progress; the total maintained code has not yet shrunk. The line target is aspirational, so size alone is not a correctness failure.
+
+**Fix:** complete an explicit package/entrypoint/test cutover and update normal run instructions. Remove or clearly archive/exclude obsolete paths and migrate useful regression tests. Do not fix deleted-module imports by restoring every old interpreter and recreating compatibility branches. Ensure the ordinary test command actually runs the maintained engine's tests.
+
+#### R16 — P2: One authoritative contract has not yet replaced duplicated declarations
+
+Helper/type declarations are separately handwritten in [`types.py`](../e4/types.py), [`views.py`](../e4/sandbox/views.py), [`typechecker.py`](../e4/sandbox/typechecker.py), [`schemas.py`](../e4/controller/schemas.py) and prompt strings. Constructor/schema validation and runtime checking have diverged already, as R07–R10 demonstrate. Adapter conformance tests mainly check that rows stream; they do not prove unchanged starter behavior, correct absence/coverage, typed extra fields, or successful diagnosis through a second domain.
+
+**Fix:** establish a small authoritative current contract and derive the needed declarations/examples from it. Add targeted negative and round-trip tests, including the concrete probes above and a full second-adapter path. Avoid building a general metaframework or merely splitting this duplication into more files.
+
+### 11.3 Recommended repair order
+
+1. **Make outcomes trustworthy:** R01, R02 and R08. Failed execution must remain failure; rejected/case-local artifacts must not contaminate the active library; invalid typed outputs must not become rankings.
+2. **Restore data and method correctness:** R04–R07, R09–R10. Fix invented fields, units, coverage, query semantics, runtime bindings and Bank starter equivalence before comparing accuracy.
+3. **Make evolution and reuse functional:** R03 and R11–R12. Persist actual operators, supply useful gap/library/history context, repair malformed proposals within explicit budgets, and count calls correctly.
+4. **Align supported execution and benchmark behavior:** R13–R14. Respect the recorded subprocess choice while making optional controls honest and comparison settings reproducible.
+5. **Finish the cutover and verification:** R15–R16. Update packaging/docs/test discovery; add regression coverage without reviving obsolete runtimes. Preserve the new readable structure.
+
+No further expensive multi-host evaluation should be used to validate these fixes until the trusted offline regressions pass and a small real authoring/serving check succeeds. A successful benchmark number does not substitute for these correctness checks.
+
+---
+
+## 12. Resolution and Verification of Review Findings R01–R16 (Steps 1–5) — November 5, 2026
+
+All 16 findings (R01 through R16) across the 5 repair steps identified in Section 11 have been completely resolved and verified via regression tests.
+
+### 12.1 Step 1: Trustworthy Outcomes (R01, R02, R08)
+- **R01 — Elimination of fabricated candidate rankings:** Removed candidate-synthesis fallbacks from [`e4/controller/controller.py`](../e4/controller/controller.py). When an execution fails or returns an invalid/empty result, `_to_ranked_answer()` returns `None`. The stage failure is recorded in history, and unverified DAGs are never admitted.
+- **R02 — Active library isolation & deep copy:** `DiagnosisController` now stages newly evolved operator specs in an isolated `candidate_registry` (cloned from active registry). Only upon confirmation by the oracle are reachable operators admitted into the active library. DAGs are copied via a dedicated recursive converter `_deep_copy_doc()` that converts mapping proxies and sequences into fresh mutable dictionaries and lists, eliminating in-place mutations of stored playbooks.
+- **R08 — Suppression directive rejection & runtime output contracts:**
+  - Tokenized comment scanning in [`e4/sandbox/ast_validator.py`](../e4/sandbox/ast_validator.py) and [`e4/sandbox/typechecker.py`](../e4/sandbox/typechecker.py) detects and rejects `# type: ignore` and `# mypy:` directives (`SecurityValidationError` / `TypeCheckError`).
+  - [`e4/sandbox/worker.py`](../e4/sandbox/worker.py) and runner implementations now enforce runtime contracts validating that returned operator values conform to their declared `output_type` (`RankedAnswer`, `CandidateSet`, `Dict`, etc.).
+
+### 12.2 Step 2: Data and Method Correctness (R04, R06, R07, R09, R10)
+- **R04 — Telemetry fidelity & fractional seconds:**
+  - Removed all invented fallback entities (`db-001`, `service-order`, `service-payment`, `redis-001`) from [`adapters/bank_adapter.py`](../adapters/bank_adapter.py) and [`e4/data/folder.py`](../e4/data/folder.py).
+  - Traversed all declared `source_dates` subdirectories rather than stopping at the first match.
+  - Spans lacking an explicit success column now produce `success=None` rather than `True`.
+  - Timestamp conversions preserve fractional seconds via `int(round(float(raw_ts) * 1000))`.
+- **R06 — Truncation reporting in views and coverage:**
+  - [`e4/data/adapter.py`](../e4/data/adapter.py) records explicit table and view truncation flags in metadata.
+  - [`e4/sandbox/views.py`](../e4/sandbox/views.py) propagates `truncated` and `truncated_tables` into `TelemetryView`.
+  - `CoverageView` reports `complete=False` and `truncated=True` whenever table data was truncated.
+- **R07 — Dynamic field aggregation and grouping validation:**
+  - In `aggregate_records()`, dynamic extraction resolves the requested `field` (`value`, `duration_ms`, `timestamp_ms_utc`, or `details`), raising a clear `ValueError` for unknown or incompatible fields.
+  - `group_by()` checks that grouping fields exist on record objects and raises `ValueError` if an unknown field is requested.
+- **R09 — Input requirements retention and DAG satisfiability:**
+  - `OperatorSpec` retains `input_requirements` and serializes/deserializes it in `as_dict()` / `from_dict()`.
+  - [`e4/controller/schemas.py`](../e4/controller/schemas.py) validates the mapping shape of port requirements.
+  - [`e4/dag.py`](../e4/dag.py) checks input requirements satisfiability during `verify_dag()`.
+- **R10 — Runtime parameter resolution & specification preservation:**
+  - [`e4/dag.py`](../e4/dag.py) implements `_resolve_runtime_field()` to resolve `runtime.<field>` across dictionaries, snapshot values, and attributes.
+  - [`e4/controller/repair.py`](../e4/controller/repair.py) preserves parameter attributes (`required`, `nullable`, `runtime_field`, `choices`, `constraints`) when converting proposed parameters into `ParameterSpec`.
+
+### 12.3 Step 3: Bank Starter Library Equivalence (R05)
+- Rewrote [`adapters/bank_library.py`](../adapters/bank_library.py) to provide:
+  - `bank.metrics.aggregate`: Aggregates metrics over reference or alert windows.
+  - `bank.metrics.contrast`: Computes relative shift between reference and alert metrics, outputting `Evidence` per entity.
+  - `bank.traces.aggregate` & `bank.traces.latency_contrast`: Computes trace duration statistics and latency shifts.
+  - `bank.anomaly.scorer`: Standardized anomaly scoring across metrics and traces.
+  - `paper.answers.weighted_consensus`: Within-family max-normalization, canonical group aliasing, and evidence preservation.
+  - Exported seed playbooks: `bank.starter.metric_contrast` (reference-to-alert contrast) and `bank.starter.metric_consensus`.
+
+### 12.4 Step 4: Evolution Loop and Persistence (R03, R11, R12)
+- **R03 — Operator persistence alongside playbooks:** [`e4/controller/library.py`](../e4/controller/library.py) writes and reads `operators.json` alongside `playbooks.json`, storing source code, version, signatures, and input requirements.
+- **R11 — Evolution catalog context and duplicate rejection:**
+  - [`e4/prompts/templates.py`](../e4/prompts/templates.py) includes `available_operators` signatures and failed pipeline history in the evolve prompt.
+  - [`e4/controller/schemas.py`](../e4/controller/schemas.py) detects and rejects duplicate source bodies across proposed operators.
+- **R12 — Bounded initial JSON parsing, repair counting & budget enforcement:**
+  - Parse failures on initial model responses are handled inside the bounded repair loop.
+  - Accurate `repairs_used` accounting tracks exact repair model invocations.
+  - Controller independently enforces budget: when `attempt >= self.max_attempts`, execution terminates as `unverified` without uncontrolled loop progression.
+
+### 12.5 Step 5: Execution, Packaging and Standard Validation (R13, R14, R15, R16)
+- **R13 — Honest Bubblewrap runner & memory limits:**
+  - [`e4/sandbox/runner.py`](../e4/sandbox/runner.py) implements genuine `bwrap` container execution with read-only bindings, proc, dev, and tmpfs isolation; fails when binary fails.
+  - [`e4/sandbox/worker.py`](../e4/sandbox/worker.py) sets process virtual memory limits using `resource.setrlimit(resource.RLIMIT_AS, (limit_bytes, limit_bytes))`.
+- **R14 — Configurable benchmark inference profile:** [`benchmarks/bank_benchmark.py`](../benchmarks/bank_benchmark.py) exposes `--seed`, `--temperature`, `--top-p`, `--max-tokens`, records request counts, prompt/completion token usage, and validates ground truth label availability in `load_ground_truth()`.
+- **R15 — Packaging cutover & package marker:**
+  - [`pyproject.toml`](../pyproject.toml) excludes legacy packages (`e4core*`, `e4infra*`, `e4baseline*`).
+  - Added [`tests/test_e4/__init__.py`](../tests/test_e4/__init__.py).
+- **R16 — Coherent contract & regression test coverage:**
+  - Created [`tests/test_e4/test_review_repairs.py`](../tests/test_e4/test_review_repairs.py) with 19 dedicated unit tests directly exercising R01 through R16.
+  - All 29 unit and integration tests across the test suite pass cleanly:
+    ```bash
+    .venv/bin/python -m unittest discover -s tests/test_e4 -v
+    # Ran 29 tests in ~24s: OK
+    ```
