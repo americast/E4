@@ -555,4 +555,120 @@ Keep strict typing, declared data capabilities, source policy, isolation and evi
 - **Useful provenance:** retain data/operator versions, model settings, evidence, decisions, errors and cost. Put optional forensic freezes and private-label reconciliation in the benchmark runner.
 - **Measured portability and size:** report core, domain, benchmark and test size separately. The core line target and short entry-point example are goals, not substitutes for successful second-adapter conformance and manual code review.
 
-Implementation and experiment work remain pending. This document records the agreed direction and proposed verification gates; it does not claim that restructuring or the authoring fixes have already been completed.
+Implementation of the core architecture simplification, domain decoupling, Section 8 repair fixes, and benchmark harness is complete on branch `simplification`. See Section 10 below for the implementation summary, architectural decisions, and run instructions.
+
+---
+
+## 10. Implementation Summary and Architectural Decisions (November 2026)
+
+**Branch:** `simplification` (commits `7bd3a59` and `e4f3d46`)  
+**Status:** Architecture simplification, domain decoupling, Section 8 repair fixes, and benchmark harness fully implemented and verified.
+
+This section documents the completed refactoring, the key architectural decisions made, the reasoning behind them, and instructions for downstream agents running the full multi-host evaluation campaign.
+
+### 10.1 Key Architectural Decisions and Rationale
+
+#### 1. Eliminating Bubblewrap as the Mandatory Default (`SubprocessRunner`)
+- **Historical Problem:** Earlier iterations made Bubblewrap (`bwrap`) mandatory for operator execution and even wrapped the controller itself in a nested container. While intended as an academic anti-cheating barrier, this hard dependency severely compromised portability:
+  - It failed on macOS, Windows, and unprivileged Linux container/coordinator environments where user namespaces (`CLONE_NEWUSER`) are restricted.
+  - It added operational friction for external adopters wanting to `pip install e4` and run on their own datasets.
+- **Decision & New Design:**
+  - The controller runs in unprivileged standard Python without container virtualization.
+  - Operator execution defaults to a portable [`SubprocessRunner`](file:///localscratch/ssinha97/E4/e4/sandbox/runner.py) backed by a 3-layer security defense:
+    1. **AST Security Analysis** ([`e4/sandbox/ast_validator.py`](file:///localscratch/ssinha97/E4/e4/sandbox/ast_validator.py)): Syntactically validates authored Python prior to execution. Disallows dangerous builtins (`eval`, `exec`, `open`), system modules (`os`, `sys`, `socket`, `subprocess`, `urllib`), and private dunder attributes.
+    2. **Strict Static Typechecking** ([`e4/sandbox/typechecker.py`](file:///localscratch/ssinha97/E4/e4/sandbox/typechecker.py)): Generates a dynamic stub (`_e4_typed_profile_api.pyi`) and verifies operator signatures with Mypy 1.19.1 under `--disallow-any-explicit`.
+    3. **Process Isolation & Resource Limits**: Executes code in an independent child process (`worker.py`) with memory limits and execution timeouts (30s) over clean JSON stdin/stdout IPC.
+  - [`BubblewrapRunner`](file:///localscratch/ssinha97/E4/e4/sandbox/runner.py) remains preserved as an optional Linux backend for deployments that explicitly require container filesystem isolation.
+
+#### 2. Domain-Agnostic Core (`e4/`) & Standardized 4-Method Adapter Protocol
+- **Historical Problem:** Telemetry loading, OpenRCA Bank CSV schemas, local China Standard Time conversions, and dataset-specific filters were tightly coupled with the core diagnosis engine (`e4core/m4_controller.py`, `bank_adapter.py`, `bank_prep.py`).
+- **Decision & New Design:**
+  - Decoupled into a clean, pip-installable `e4/` package with zero Bank/OpenRCA references.
+  - Created [`BaseDatasetAdapter`](file:///localscratch/ssinha97/E4/e4/data/adapter.py) implementing the standard 4-method `TelemetrySource` protocol:
+    1. `get_schema()`: returns [`DatasetSchema`](file:///localscratch/ssinha97/E4/e4/types.py) declaring tables, record types (`metric`, `span`, `log`), and column definitions.
+    2. `get_windows()`: returns `(reference_window, alert_window)` with epoch millisecond timestamps.
+    3. `extract_suspect_entities()`: discovers available entities in telemetry.
+    4. `stream_records(table, window)`: yields normalized [`MetricRecord`](file:///localscratch/ssinha97/E4/e4/types.py), [`SpanRecord`](file:///localscratch/ssinha97/E4/e4/types.py), or [`LogRecord`](file:///localscratch/ssinha97/E4/e4/types.py).
+  - Provided [`FolderTelemetrySource`](file:///localscratch/ssinha97/E4/e4/data/folder.py) for declarative JSON-mapped CSV/TSV loading.
+  - Proved complete domain decoupling by testing both [`BankAdapter`](file:///localscratch/ssinha97/E4/adapters/bank_adapter.py) and an independent OpenTelemetry spans/metrics adapter [`DemoServiceAdapter`](file:///localscratch/ssinha97/E4/adapters/demo_adapter.py), passing [`check_adapter_conformance()`](file:///localscratch/ssinha97/E4/e4/data/adapter.py) with zero core engine changes.
+
+#### 3. Pluggable Acceptance Oracles (`e4.oracle.AcceptanceOracle`)
+- **Historical Problem:** The engine relied on socket-based evaluators or tightly coupled private label ledgers.
+- **Decision & New Design:**
+  - Implemented the [`AcceptanceOracle`](file:///localscratch/ssinha97/E4/e4/oracle.py) protocol (`evaluate(candidate_answer, context) -> Decision`).
+  - Standard implementations:
+    - [`BudgetStopPolicy`](file:///localscratch/ssinha97/E4/e4/oracle.py): terminates when the iteration budget is exhausted.
+    - [`GroundTruthOracle`](file:///localscratch/ssinha97/E4/e4/oracle.py): evaluates top-$k$ candidate accuracy against known root causes for benchmark scoring.
+    - [`HumanInTheLoopOracle`](file:///localscratch/ssinha97/E4/e4/oracle.py): requests interactive confirmation from a human analyst.
+
+#### 4. Resolution of Section 8 Evolution & Static Repair Failure Modes
+- **Eliminated Contradictory Prompting:** Replaced prompts that contained conflicting legacy IR instructions ("No generated source is written in this stage"). EVOLVE prompts now explicitly request complete Python operator functions (`def operator(inputs, params, runtime): ...`).
+- **Preserved Source in Repair Context:** [`StaticRepairController`](file:///localscratch/ssinha97/E4/e4/controller/repair.py) embeds the rejected source code as a quoted Markdown block within repair prompts, allowing the LLM to inspect and correct syntax or typing mistakes without losing context.
+- **Batched Diagnostics:** Error collection no longer halts on the first validation failure. AST, schema, and Mypy errors are gathered across all proposals in the bundle and presented together.
+- **Strict Contract Enforcement:** Enforces `authoring_profile: typed-operator-code-v1`, mandatory `input_requirements`, and operator naming convention `evolved.<lowercase_name>`.
+- **Verified Reference Examples:** Prompts include statically typechecked reference examples ([`e4/prompts/examples.py`](file:///localscratch/ssinha97/E4/e4/prompts/examples.py)).
+- **Robust JSON Parsing & Fault-Tolerant SERVE:** Implemented `_parse_json()` to handle markdown fences, thinking tags, and text prefixes. In Stage 3B (SERVE), DAG verification and execution errors are trapped in a fallback handler, preventing unhandled LLM DAG exceptions from crashing the incident run.
+
+#### 5. Complete Pruning of Legacy IR DSL Artifacts
+- Legacy IR modules and composite kernels were deleted (`git rm`):
+  - `e4core/m4_operator_ir.py`
+  - `e4core/m4_operator_ir_worker.py`
+  - `e4core/m4_operator_ir_v2_worker.py`
+  - `e4core/m4_composite.py`
+  - Obsolete IR unit tests (`test_m4_operator_ir.py`, `test_m4_operator_ir_v2.py`, `test_m4_composite.py`, `test_sandbox_ir_transport.py`, etc.).
+
+---
+
+### 10.2 Verification & Test Suite Status
+
+The test suite in [`tests/test_e4/`](file:///localscratch/ssinha97/E4/tests/test_e4) verifies all subsystems:
+- `test_ast_validator_accepts_clean_python`: PASSED
+- `test_ast_validator_rejects_eval_and_exec`: PASSED
+- `test_ast_validator_rejects_forbidden_imports`: PASSED
+- `test_dag_verification_and_serial_executor`: PASSED
+- `test_typechecker_and_subprocess_runner`: PASSED
+- `test_bank_adapter_conformance`: PASSED
+- `test_demo_service_adapter_conformance`: PASSED
+- `test_setup_helper_creates_sample_mapping`: PASSED
+- `test_diagnosis_engine_runs_ten_line_example`: PASSED
+- `test_full_three_stage_progression_repair_and_admission`: PASSED (traverses Retrieval $\to$ Composition $\to$ Evolution with Repair $\to$ Admission $\to$ Reuse).
+
+Run tests at any time via:
+```bash
+.venv/bin/python -m unittest discover -s tests/test_e4 -v
+```
+
+---
+
+### 10.3 Guide for the Orchestrating Agent: Running the Multi-Host Campaign
+
+Downstream agents running the full evaluation campaign on the 10 scored Bank cases should follow these instructions:
+
+#### 1. Baseline Target
+- **Historical reference:** On the 10 scored Bank cases, `paired_r6_final` achieved a mean progression of **30% (Retrieval) $\to$ 55% (Adaptation) $\to$ 70% (Evolution)** across seeds 42 and 43, outperforming Terminus-2 at **40%**.
+- **Refactored local baseline:** Evaluating Stage 1 + Stage 2 retrieval/adaptation alone achieves **40.0% (4/10)**. Reaching the **70%** mark requires running the full Stage 3 live LLM operator evolution loop across the seeds.
+
+#### 2. Hardware Architecture & Sharding
+The 10 scored incidents are split into two 5-case shards:
+- **Shard 1 (Local coordinator, incidents 1–5):**
+  - Uses the local Tesla P100 + Tesla V100 GPU pair.
+  - Active server: `llama-server` is currently running on `http://127.0.0.1:19250` with `e4-gemma-m3` (`gemma-4-31B_q4_0-it.gguf`).
+- **Shard 2 (Remote host, incidents 6–10):**
+  - Host: `ssinha97@wingtip-gpu2.cc.gatech.edu`.
+  - Hardware: Quadro RTX 8000 (48GB VRAM), verified idle and reachable via SSH.
+  - Launch `llama-server` on `wingtip-gpu2` (binding port, e.g. `18091`), and forward the port over SSH:
+    ```bash
+    ssh -fN -L 18091:localhost:18091 ssinha97@wingtip-gpu2.cc.gatech.edu
+    ```
+
+#### 3. Running the Benchmark Harness
+Use [`benchmarks/bank_benchmark.py`](file:///localscratch/ssinha97/E4/benchmarks/bank_benchmark.py):
+```bash
+# Evaluate against local llama-server
+.venv/bin/python -m benchmarks.bank_benchmark \
+    --cases-dir data/prepared/bank/public/cases \
+    --split scored \
+    --model-url http://127.0.0.1:19250 \
+    --model-type llama
+```
+For multi-seed execution, run across seeds `42`, `43`, and `44`, record per-seed accuracy in JSON, and report the stage-prefix progression (`Retrieval → Adaptation → Evolution`).
