@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import urllib.request
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -12,6 +13,34 @@ from adapters.bank_library import build_bank_registry, get_bank_seed_playbook
 from e4.controller.library import LibraryManager, Playbook
 from e4.engine import DiagnosisEngine
 from e4.oracle import GroundTruthOracle
+
+
+class LocalLlamaClient:
+    """HTTP client querying local llama-server chat endpoint."""
+
+    def __init__(self, base_url: str = "http://127.0.0.1:19250", model_name: str = "e4-gemma-m3", timeout: float = 300.0):
+        self.base_url = base_url.rstrip("/")
+        self.model_name = model_name
+        self.timeout = timeout
+
+    def complete(self, prompt: str) -> str:
+        req = urllib.request.Request(
+            f"{self.base_url}/v1/chat/completions",
+            data=json.dumps({
+                "model": self.model_name,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_tokens": 4096,
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+                return data["choices"][0]["message"].get("content", "")
+        except Exception as exc:
+            return ""
 
 
 def load_ground_truth(gt_path: Path) -> dict[str, list[str]]:
@@ -100,6 +129,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run E4 OpenRCA Bank benchmark evaluation")
     parser.add_argument("--cases-dir", default="data/prepared/bank/public/cases", help="Path to prepared cases")
     parser.add_argument("--split", choices=["scored", "dev"], default="scored", help="Benchmark split")
+    parser.add_argument("--model-url", default="http://127.0.0.1:19250", help="llama-server endpoint URL")
+    parser.add_argument("--model-type", choices=["llama", "dummy"], default="llama", help="Model client type")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of cases to evaluate")
     args = parser.parse_args()
 
@@ -107,15 +138,23 @@ def main() -> None:
     cases_root = Path(args.cases_dir)
 
     print(f"Evaluating {args.split} incidents from {cases_root}...")
-    # Example placeholder or mock client when running directly from CLI without arguments
-    class DummyModel:
-        def complete(self, prompt: str) -> str:
-            return json.dumps({
-                "selected_playbook": "bank.starter.metric_consensus",
-                "parameter_bindings": {},
-            })
+    if args.model_type == "llama":
+        client: Any = LocalLlamaClient(base_url=args.model_url)
+    else:
+        class DummyModel:
+            def complete(self, prompt: str) -> str:
+                return json.dumps({
+                    "selected_playbook": "bank.starter.metric_consensus",
+                    "parameter_bindings": {},
+                })
+        client = DummyModel()
 
-    summary = run_benchmark(cases_root, gt_file, DummyModel())
+    gt_map = load_ground_truth(gt_file)
+    case_ids = list(gt_map.keys())
+    if args.limit:
+        case_ids = case_ids[:args.limit]
+
+    summary = run_benchmark(cases_root, gt_file, client, case_ids=case_ids)
     print(json.dumps(summary, indent=2))
 
 

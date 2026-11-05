@@ -123,13 +123,31 @@ class StaticRepairController:
             repair_prompt = format_repair_prompt(errors, rejected_sources)
             try:
                 raw_response = query_model_fn(repair_prompt)
-                # Strip markdown code blocks if present
-                clean_json = raw_response.strip()
-                if clean_json.startswith("```"):
-                    clean_json = clean_json.strip("`")
-                    if clean_json.startswith("json"):
-                        clean_json = clean_json[4:].strip()
-                current_bundle = json.loads(clean_json)
+                clean = raw_response.strip()
+                parsed = None
+                try:
+                    parsed = json.loads(clean)
+                except Exception:
+                    pass
+                if parsed is None and "```" in clean:
+                    parts = clean.split("```")
+                    for i in range(1, len(parts), 2):
+                        block = parts[i].strip()
+                        if block.startswith("json"):
+                            block = block[4:].strip()
+                        try:
+                            parsed = json.loads(block)
+                            break
+                        except Exception:
+                            continue
+                if parsed is None:
+                    first_brace = clean.find("{")
+                    last_brace = clean.rfind("}")
+                    if first_brace != -1 and last_brace > first_brace:
+                        parsed = json.loads(clean[first_brace : last_brace + 1])
+                if parsed is None:
+                    parsed = json.loads(clean)
+                current_bundle = parsed
             except Exception as exc:
                 all_errors.append(f"Repair response parsing failed: {exc}")
 

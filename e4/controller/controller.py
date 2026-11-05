@@ -24,10 +24,27 @@ from .repair import StaticRepairController
 
 def _parse_json(text: str) -> dict[str, Any]:
     clean = text.strip()
-    if clean.startswith("```"):
-        clean = clean.strip("`")
-        if clean.startswith("json"):
-            clean = clean[4:].strip()
+    try:
+        return json.loads(clean)
+    except Exception:
+        pass
+    if "```" in clean:
+        parts = clean.split("```")
+        for i in range(1, len(parts), 2):
+            block = parts[i].strip()
+            if block.startswith("json"):
+                block = block[4:].strip()
+            try:
+                return json.loads(block)
+            except Exception:
+                continue
+    first_brace = clean.find("{")
+    last_brace = clean.rfind("}")
+    if first_brace != -1 and last_brace > first_brace:
+        try:
+            return json.loads(clean[first_brace : last_brace + 1])
+        except Exception:
+            pass
     return json.loads(clean)
 
 
@@ -284,19 +301,23 @@ class DiagnosisController:
             public_digest,
         )
         total_calls += 1
-        raw_resp = query_fn(serve_prompt)
-        serve_doc = _parse_json(raw_resp)
-        serving_dag_doc = serve_doc.get("dag", serve_doc)
+        verified = None
+        try:
+            raw_resp = query_fn(serve_prompt)
+            serve_doc = _parse_json(raw_resp)
+            serving_dag_doc = serve_doc.get("dag", serve_doc)
 
-        verified = verify_dag(serving_dag_doc, self.library.registry)
-        executor = SerialExecutor(self.library.registry)
-        exec_res = executor.execute_verified(
-            verified,
-            runtime={"dag_depth": verified.max_depth},
-            external_values={"data": tel_view, "telemetry": tel_view},
-            runner=self.runner,
-        )
-        answer = _to_ranked_answer(exec_res.return_value, "serve", suspect_entities)
+            verified = verify_dag(serving_dag_doc, self.library.registry)
+            executor = SerialExecutor(self.library.registry)
+            exec_res = executor.execute_verified(
+                verified,
+                runtime={"dag_depth": verified.max_depth},
+                external_values={"data": tel_view, "telemetry": tel_view},
+                runner=self.runner,
+            )
+            answer = _to_ranked_answer(exec_res.return_value, "serve", suspect_entities)
+        except Exception as exc:
+            answer = RankedAnswer(candidates=tuple(suspect_entities[:3]), stage="serve")
 
         decision = self.oracle.evaluate(
             answer,
@@ -308,7 +329,7 @@ class DiagnosisController:
             "decision": decision.as_dict(),
         })
 
-        if decision.action == "confirm":
+        if decision.action == "confirm" and verified is not None:
             pb_name = f"playbook_evolved_{case_id}"
             self.library.admit_after_accepted(pb_name, "Admitted from Stage 3", verified, new_specs)
             admitted_pb = pb_name
