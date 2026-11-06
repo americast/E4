@@ -520,7 +520,7 @@ class TestReviewRepairs(unittest.TestCase):
                 "family": "custom",
                 "input_ports": [{"name": "telemetry", "type": "Telemetry"}],
                 "output_type": "Aggregate",
-                "parameters": {"threshold": {"type": "number", "default": 2.0}},
+                "parameters": {"source_table": {"type": "string", "required": True}},
                 "input_requirements": {"telemetry": {}},
                 "source": METRIC_ANOMALY_EXAMPLE,
             }],
@@ -643,7 +643,13 @@ class TestReviewRepairs(unittest.TestCase):
             "output_type": "ScoredCandidates",
             "parameters": {},
             "input_requirements": {"telemetry": {}},
-            "source": "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:\n    return make_scored_candidates([make_scored_candidate(make_entity_ref(\"service\", \"target_a\"), 1.0)], scorer=\"scorer_a\")\n",
+            "source": (
+                "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:\n"
+                "    tel = telemetry_view(inputs['telemetry'])\n"
+                "    ent = make_entity_ref('service', 'target_a')\n"
+                "    ev = make_evidence('scorer_a', tel.alert_window, 'score', 1.0, [ent], 1)\n"
+                "    return make_scored_candidates([make_scored_candidate(ent, 1.0, evidence=[ev])], scorer='scorer_a')\n"
+            ),
         }
         evolved_disconn_dict = {
             "name": "evolved.disconnected",
@@ -997,13 +1003,14 @@ class TestReviewRepairs(unittest.TestCase):
             mrt_records = [r for r in records if r.metric_name == "mrt"]
             self.assertEqual(len(mrt_records), 2)
             self.assertEqual(mrt_records[0].value, 25.0)
-            self.assertEqual(mrt_records[0].unit, "ms")
+            # The Bank source schema leaves mrt's unit undeclared.
+            self.assertIsNone(mrt_records[0].unit)
             self.assertEqual(mrt_records[0].entity.role, "app_kpi")
             self.assertEqual(mrt_records[0].entity.identifier, "app-a")
 
             cnt_records = [r for r in records if r.metric_name == "cnt"]
             self.assertEqual(cnt_records[0].value, 10.0)
-            self.assertEqual(cnt_records[0].unit, "count")
+            self.assertIsNone(cnt_records[0].unit)
 
             suspects = adapter.extract_suspect_entities()
             self.assertFalse(any(s.identifier == "app-a" for s in suspects))
@@ -1100,8 +1107,9 @@ class TestReviewRepairs(unittest.TestCase):
                                 "source": (
                                     "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> ScoredCandidates:\n"
                                     "    tel = telemetry_view(inputs['telemetry'])\n"
-                                    "    ev = make_evidence('conn', tel.alert_window, 'mean', 1.0, [make_entity_ref('service', 'target_svc')], 5)\n"
-                                    "    c = make_scored_candidate(make_entity_ref('service', 'target_svc'), 5.0, evidence=[ev], analysis_family='backend_metric')\n"
+                                    f"    ent = make_entity_ref('service', {target_literal})\n"
+                                    "    ev = make_evidence('conn', tel.alert_window, 'mean', 1.0, [ent], 5)\n"
+                                    "    c = make_scored_candidate(ent, 5.0, evidence=[ev], analysis_family='backend_metric')\n"
                                     "    return make_scored_candidates([c], scorer='conn')\n"
                                 ),
                             },
@@ -1141,7 +1149,9 @@ class TestReviewRepairs(unittest.TestCase):
         lib.add_playbook(seed)
 
         adapter = BankAdapter("data/prepared/bank/public/cases/bank-20210304T1800-utc8")
-        oracle = FixedOracle(target_id="target_svc")
+        target_id = adapter.extract_suspect_entities()[0].identifier
+        target_literal = json.dumps(target_id)
+        oracle = FixedOracle(target_id=target_id)
         ctrl = DiagnosisController(library=lib, oracle=oracle, runner=InProcessRunner(), max_attempts=3)
 
         client = MockClient()

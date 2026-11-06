@@ -227,6 +227,7 @@ class TelemetryView:
         records: Sequence[TelemetryRecord],
         source_tables: Sequence[str] | None = None,
         metadata: Mapping[str, Any] | None = None,
+        record_store: Any = None,
     ):
         self.case_id = case_id
         if hasattr(reference_window, "start_ms_utc"):
@@ -249,10 +250,14 @@ class TelemetryView:
             alt_end = alert_window["end_ms_utc"]
         self.alert_window = WindowView(alt_name, int(alt_start), int(alt_end))
 
-        self._records = tuple(records)
+        self._record_store = record_store
+        self._records = () if record_store is not None else tuple(records)
         tables = set(source_tables or [])
-        for r in self._records:
-            tables.add(r.source_table)
+        if record_store is not None:
+            tables.update(record_store.descriptor.get("files", {}).keys())
+        else:
+            for r in self._records:
+                tables.add(r.source_table)
         self.source_tables = tuple(sorted(tables))
         self.metadata = dict(metadata or {})
         self.truncated = bool(self.metadata.get("truncated", False))
@@ -260,10 +265,40 @@ class TelemetryView:
 
     @property
     def point_count(self) -> int:
+        if self._record_store is not None:
+            return sum(
+                count
+                for windows in self._record_store.descriptor.get("counts_by_table_window", {}).values()
+                for count in windows.values()
+            )
         return len(self._records)
 
+    def iter_records(
+        self, table_name: str | None = None, window_name: str | None = None
+    ) -> Iterator[TelemetryRecord]:
+        """Iterate trusted typed telemetry, streaming a single table/window when stored."""
+        if self._record_store is None:
+            for record in self._records:
+                if table_name is not None and record.source_table != table_name:
+                    continue
+                if window_name is not None:
+                    window = self.reference_window if window_name == "reference" else self.alert_window
+                    if not window.start_ms_utc <= record.timestamp_ms_utc < window.end_ms_utc:
+                        continue
+                yield record
+            return
+        yield from self._record_store.iter_records(table_name=table_name, window_name=window_name)
+
+    def close(self) -> None:
+        """Release an owned disk snapshot after the diagnostic call ends."""
+        if self._record_store is not None and hasattr(self._record_store, "close"):
+            self._record_store.close()
+
+    def __del__(self) -> None:
+        self.close()
+
     def as_dict(self) -> dict[str, Any]:
-        return {
+        document = {
             "case_id": self.case_id,
             "reference_window": {
                 "name": self.reference_window.name,
@@ -275,13 +310,17 @@ class TelemetryView:
                 "start_ms_utc": self.alert_window.start_ms_utc,
                 "end_ms_utc": self.alert_window.end_ms_utc,
             },
-            "records": [
-                {"$type": type(r).__name__, "$fields": r.as_dict()}
-                for r in self._records
-            ],
             "source_tables": list(self.source_tables),
             "metadata": dict(self.metadata),
         }
+        if self._record_store is not None:
+            document["record_store"] = dict(self._record_store.descriptor)
+        else:
+            document["records"] = [
+                {"$type": type(r).__name__, "$fields": r.as_dict()}
+                for r in self._records
+            ]
+        return document
 
 
 def telemetry_view(telemetry: Any) -> TelemetryView:
@@ -318,11 +357,9 @@ def metric_points(
 ) -> QueryResult[MetricPointView]:
     matches: list[MetricPointView] = []
     total = 0
-    row_idx = 0
-
     target_name = metric_name or metric_key
 
-    for r in telemetry._records:
+    for row_idx, r in enumerate(telemetry.iter_records(source_table, window.name)):
         if not isinstance(r, MetricRecord):
             continue
         if r.source_table != source_table:
@@ -346,7 +383,10 @@ def metric_points(
                     timestamp_ms_utc=r.timestamp_ms_utc,
                     entity_role=r.entity.role,
                     entity_identifier=r.entity.identifier,
-                    origin_row_id=f"{r.source_table}:{row_idx}",
+                    origin_row_id=str(
+                        r.details.get("origin_row_id")
+                        or f"{r.source_table}:{window.name}:{row_idx}"
+                    ),
                     metric_name=r.metric_name,
                     metric_key=r.metric_name,
                     value=r.value,
@@ -354,7 +394,6 @@ def metric_points(
                     details=r.details,
                 )
             )
-        row_idx += 1
 
     trunc_tables = getattr(telemetry, "truncated_tables", None)
     if trunc_tables is not None and len(trunc_tables) > 0:
@@ -391,7 +430,7 @@ def span_records(
     matches: list[SpanView] = []
     total = 0
 
-    for r in telemetry._records:
+    for r in telemetry.iter_records(source_table, window.name):
         if not isinstance(r, SpanRecord):
             continue
         if r.source_table != source_table:
@@ -465,7 +504,7 @@ def log_records(
     matches: list[LogRecordView] = []
     total = 0
 
-    for r in telemetry._records:
+    for r in telemetry.iter_records(source_table, window.name):
         if not isinstance(r, LogRecord):
             continue
         if r.source_table != source_table:
@@ -533,7 +572,7 @@ def aggregate_records(
 ) -> QueryResult[AggregateGroupView]:
     groups: dict[tuple[Any, ...], list[float | int | None]] = {}
 
-    for r in telemetry._records:
+    for row_idx, r in enumerate(telemetry.iter_records(source_table, window.name)):
         if r.source_table != source_table:
             continue
         if not (window.start_ms_utc <= r.timestamp_ms_utc < window.end_ms_utc):
@@ -560,8 +599,18 @@ def aggregate_records(
                     key_parts.append(r.entity.identifier)
                 elif gfield == "entity_role":
                     key_parts.append(r.entity.role)
+                elif gfield == "source_table":
+                    key_parts.append(r.source_table)
+                elif gfield == "origin_row_id":
+                    key_parts.append(
+                        str(r.details.get("origin_row_id") or f"{r.source_table}:{window.name}:{row_idx}")
+                    )
                 elif gfield in ("metric_name", "metric_key"):
                     key_parts.append(r.metric_name)
+                elif gfield == "value":
+                    key_parts.append(r.value)
+                elif gfield == "unit":
+                    key_parts.append(r.unit)
                 elif gfield in ("timestamp", "timestamp_ms_utc"):
                     key_parts.append(r.timestamp_ms_utc)
                 elif gfield in r.details:
@@ -569,7 +618,7 @@ def aggregate_records(
                 else:
                     raise ValueError(f"Grouping field '{gfield}' does not exist on MetricRecord")
         elif record_type == "span" and isinstance(r, SpanRecord):
-            if field in ("duration", "duration_ms"):
+            if field in ("duration", "duration_ms", "duration_value"):
                 val = r.duration_ms
             elif field in ("timestamp", "timestamp_ms_utc"):
                 val = float(r.timestamp_ms_utc)
@@ -586,14 +635,24 @@ def aggregate_records(
             for gfield in group_by:
                 if gfield in ("component", "executing_component", "entity", "entity_identifier"):
                     key_parts.append(r.executing_component.identifier if r.executing_component else None)
-                elif gfield == "entity_role":
+                elif gfield in ("entity_role", "executing_component_role"):
                     key_parts.append(r.executing_component.role if r.executing_component else None)
-                elif gfield == "logical_service":
+                elif gfield == "executing_component_identifier":
+                    key_parts.append(r.executing_component.identifier if r.executing_component else None)
+                elif gfield in ("logical_service", "logical_service_identifier"):
                     key_parts.append(r.logical_service.identifier if r.logical_service else None)
-                elif gfield == "database_target":
+                elif gfield == "logical_service_role":
+                    key_parts.append(r.logical_service.role if r.logical_service else None)
+                elif gfield in ("database_target", "database_target_identifier"):
                     key_parts.append(r.database_target.identifier if r.database_target else None)
+                elif gfield == "database_target_role":
+                    key_parts.append(r.database_target.role if r.database_target else None)
                 elif gfield in ("trace_id", "span_id", "parent_id", "call_type"):
                     key_parts.append(getattr(r, gfield, None))
+                elif gfield in ("source_table",):
+                    key_parts.append(r.source_table)
+                elif gfield in ("duration_ms", "duration_value"):
+                    key_parts.append(r.duration_ms)
                 elif gfield in ("timestamp", "timestamp_ms_utc"):
                     key_parts.append(r.timestamp_ms_utc)
                 elif gfield == "success":
@@ -625,6 +684,10 @@ def aggregate_records(
                     key_parts.append(r.entity.identifier if r.entity else None)
                 elif gfield == "entity_role":
                     key_parts.append(r.entity.role if r.entity else None)
+                elif gfield == "source_table":
+                    key_parts.append(r.source_table)
+                elif gfield == "value":
+                    key_parts.append(r.value)
                 elif gfield == "log_name":
                     key_parts.append(r.log_name)
                 elif gfield == "severity":

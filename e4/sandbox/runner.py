@@ -140,6 +140,11 @@ class BubblewrapRunner:
     ) -> Any:
         if not operator.source:
             raise ExecutionError(f"Operator '{operator.qualified_name}' has no source code")
+        if any(_contains_file_backed_telemetry(value) for value in inputs.values()):
+            raise ExecutionError(
+                "BubblewrapRunner does not yet mount file-backed telemetry stores; "
+                "select SubprocessRunner for this case or provide in-memory telemetry"
+            )
 
         runtime_dict: dict[str, Any] = {}
         if hasattr(runtime, "snapshot") and hasattr(runtime.snapshot, "values"):
@@ -212,6 +217,17 @@ class BubblewrapRunner:
             raise ExecutionError(f"Bubblewrap operator execution failed: {err_msg}")
 
         return _deserialize_input(response.get("result"))
+
+
+def _contains_file_backed_telemetry(value: Any) -> bool:
+    """Detect a trusted store before serialization so container isolation cannot drop it."""
+    if getattr(value, "_record_store", None) is not None:
+        return True
+    if isinstance(value, Mapping):
+        return any(_contains_file_backed_telemetry(item) for item in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(_contains_file_backed_telemetry(item) for item in value)
+    return False
 
 
 class InProcessRunner:

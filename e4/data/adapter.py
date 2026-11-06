@@ -51,24 +51,35 @@ class BaseDatasetAdapter(ABC):
         """Stream canonical MetricRecord, SpanRecord, or LogRecord values."""
         raise NotImplementedError
 
-    def as_telemetry_view(self, max_records_per_table: int = 10000) -> Any:
-        """Convenience method to construct an in-memory TelemetryView for this adapter."""
+    def as_telemetry_view(self, max_records_per_table: int | None = 10000) -> Any:
+        """Construct an in-memory view, optionally limiting records per table/window.
+
+        The default is a safety bound. Pass ``None`` only when the caller has a
+        full-window transport path and enough memory for every matching record;
+        a capped view reports its true counts and must not be treated as complete.
+        """
         from ..sandbox.views import TelemetryView
+
+        if max_records_per_table is not None and max_records_per_table < 0:
+            raise ValueError("max_records_per_table must be non-negative or None")
         ref_w, alt_w = self.get_windows()
         schema = self.get_schema()
         records: list[TelemetryRecord] = []
         truncated_tables: set[str] = set()
+        record_counts: dict[str, dict[str, int]] = {}
         is_truncated = False
         for table in schema.tables:
+            record_counts[table.name] = {}
             for w in (ref_w, alt_w):
                 count = 0
                 for r in self.stream_records(table.name, w):
                     count += 1
-                    if count <= max_records_per_table:
+                    if max_records_per_table is None or count <= max_records_per_table:
                         records.append(r)
                     else:
                         is_truncated = True
                         truncated_tables.add(table.name)
+                record_counts[table.name][w.name] = count
         return TelemetryView(
             case_id="adapter_case",
             reference_window=ref_w,
@@ -78,7 +89,38 @@ class BaseDatasetAdapter(ABC):
             metadata={
                 "truncated": is_truncated,
                 "truncated_tables": list(truncated_tables),
+                "record_counts": record_counts,
+                "record_limit_per_table_window": max_records_per_table,
             },
+        )
+
+    def as_full_telemetry_view(self, case_id: str = "adapter_case") -> Any:
+        """Build a disk-backed, uncapped view for trusted full-window analyses.
+
+        The view retains the temporary store, so callers must keep the view alive
+        for the full worker lifetime. Records remain on disk and are read by
+        table/window instead of being copied into a large in-memory payload.
+        """
+        from .record_store import TelemetryRecordStore
+        from ..sandbox.views import TelemetryView
+
+        ref_w, alt_w = self.get_windows()
+        schema = self.get_schema()
+        store = TelemetryRecordStore.from_adapter(self)
+        counts = store.descriptor["counts_by_table_window"]
+        return TelemetryView(
+            case_id=case_id,
+            reference_window=ref_w,
+            alert_window=alt_w,
+            records=(),
+            source_tables=[table.name for table in schema.tables],
+            metadata={
+                "truncated": False,
+                "truncated_tables": [],
+                "record_counts": counts,
+                "record_limit_per_table_window": None,
+            },
+            record_store=store,
         )
 
 

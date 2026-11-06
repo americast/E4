@@ -1181,3 +1181,119 @@ All 6 dedicated regression tests (`test_g01` through `test_g06`) and all previou
 # Collection errors: 0
 ```
 
+---
+
+## 17. Independent Review, Additional Fixes and Three-Seed Campaign — November 6, 2026
+
+**Reviewed baseline:** `9e40342`. The Section 16 fixes passed an independent **43-test** run, but practical full-data and authoring-path checks exposed additional blockers. The user authorized fixing these before running seeds **42, 43 and 44**, using local and Wingtip GPUs, with a six-hour morning target. Implementation writes were delegated to the available Luna agents; the supervising agent reviewed changes, validated the actual paths and launched the experiment.
+
+**Current status (updated after the original launch):** the first campaign completed all thirty trajectories, but its accuracy is **invalid** because an entity-type boundary bug discarded valid evidence. Its outputs and costs are preserved. The correction passed **75/75 tests**, including actual starter-to-controller integration, and both starter playbooks passed a label-free public development smoke. A new immutable V2 runtime launched the clean thirty-trajectory restart at **16:03:01 UTC / 11:03 America/New_York on November 6**. See Section 17.6. The original **14:19 UTC / 09:19 America/New_York** target was missed; it is not being silently extended or reported as met.
+
+### 17.1 Additional findings and fixes
+
+| Finding | Correction made before scoring |
+| --- | --- |
+| **Full-window data was capped before analysis.** The ordinary adapter view retained only 10,000 records per table/window, while these real clips contain up to millions of records. With correct eligibility guards, analyses on that incomplete view would abstain. | Added a small generic table/window-partitioned JSONL record store. Trusted built-ins and authored-worker helpers stream the complete normalized public partitions. Worker inputs carry a descriptor rather than an enormous inline JSON array. The parent owns and cleans up temporary files after use. Existing bounded raw-query pages still report their own coverage truthfully. |
+| **Trace timestamps were interpreted with a fixed unit.** Some Bank source dates explicitly declare seconds, while the old adapter assumed milliseconds and returned zero trace rows for those windows. | Normalize timestamps using each public clip's `source_date_timestamp_units` metadata. Unknown declarations fail explicitly. A public development clip now yields 51,340 reference and 85,396 alert spans instead of an empty trace channel. |
+| **App KPI units and availability were overstated.** Source policy does not establish `mrt` as milliseconds or classify `rr/sr/cnt` as particular physical units. A nonexistent service-metric file was still advertised. | Preserve unknown KPI units as `None`, expose only tables with an actual source file, and keep present empty files available. App transaction identities remain opaque `app_kpi` values and are not rankable component aliases. |
+| **Row identity was unsuitable for cross-projection joins.** IDs differed across the four projections of an app row and could collide across source dates. | Use a shared physical source-date/file/row identity across `rr/sr/cnt/mrt`; preserve it in query views instead of replacing it with a query-local index. |
+| **Canonical grouping aliases were not consistently accepted.** A real typed trace smoke passed Mypy but failed at runtime on the advertised `executing_component_identifier` field. | Align aggregation and DAG grouping with scalar fields of the canonical metric/span/log views, including component role/identifier aliases and `duration_value`. Test the advertised fields against real canonical record objects. |
+| **Authoring examples and repairs still encouraged avoidable errors.** The example hardcoded nonexistent `metrics.csv`; helper/output signatures were incomplete; repair lost the original metadata/gap. | Use a schema-selected table parameter, publish runtime-derived helper signatures and record fields, preserve rejected source together with original gap/operator metadata and public schema/API context, and retain the two-call repair bound. Enforce the declared maximum of three proposals before typechecking. |
+| **A final ranking could lack usable evidence.** | Filter final candidates to observed suspect identities with supported, eligible evidence tied to those identities. Preserve the accepted separation of confirmation from unverified stopping. No substitute rankings or invented components are introduced. |
+| **The benchmark was unsuitable for unattended work.** It could lose a whole chain on an exception, overlook a transport failure caught inside the controller, or count reached stages as successful prefixes. | Add per-case atomic checkpoints, immediate fsynced per-call journals, honest failure/unknown-usage classification, endpoint-outage stopping, and confirmed-only cumulative stage-prefix counts. Preserve first trajectories and all reported token costs. |
+
+The streaming path is a data-acquisition implementation, not a return to fixed diagnostic kernels. Operator analysis remains model-authored Python over typed interfaces. The optional Bubblewrap runner explicitly rejects this new file-backed transport rather than silently pretending it is isolated; this campaign uses the documented `SubprocessRunner` default.
+
+### 17.2 Validation performed
+
+- Independent baseline check: **43/43 tests passed** before the additional edits.
+- Combined maintained-suite check after the principal fixes: **68/68 passed in 135.416 seconds**.
+- After the last API/repair/campaign edits, **24 targeted contract and runner tests passed in 8.748 seconds**. The final maintained inventory contains 71 tests; do not misdescribe these overlapping runs as one 71-test execution.
+- All ten frozen public Bank clips successfully passed a data-only full-store preflight, totaling **8,438,028 normalized records** across tables/windows. No evaluator labels were read for that check.
+- A typed subprocess smoke processed **324,321 alert trace records**, returned all 12 component medians with complete coverage, and took **4.402 seconds** in the worker at 512 MiB.
+- A larger public smoke on `bank-20210324T1100-utc8` processed **1,234,260 reference and 1,119,244 alert traces**, returning 12 complete median groups per window. Store preparation took **103.116 seconds**, Mypy **1.698 seconds**, and the worker **31.344 seconds**. Its earlier alias failure was corrected before any scored run.
+- Because a legitimate complete scan exceeded the generic 30-second worker default, this experiment uniformly records **120 seconds / 512 MiB per authored operator**. The generic default remains 30 seconds. This resource allowance was chosen from public data-scale checks before scoring, not from accuracy or labels.
+- Neutral JSON-mode checks succeeded on both actual pinned servers with reasoning enabled. The frozen experiment client then passed real health/template/tokenization/generation checks on both endpoints. A 30-token rendered prompt matched the API's reported 30 prompt tokens on each. Engineering canary usage is excluded from scored cost.
+
+The source tests now include native app headers, date-specific units, 10,001-row full-window aggregation, descriptor-to-worker transport, coverage/evidence rejection, metadata-preserving bounded repair, public API examples, and actual mocked CLI/campaign execution. These remain engineering checks, not additional accuracy observations.
+
+### 17.3 Frozen experimental protocol
+
+- **Data:** the same ten frozen OpenRCA Bank incident IDs from `config/bank_sample.json`, in their declared order. Three seeds give thirty trajectories on ten distinct incidents, not thirty independent incidents or a new holdout.
+- **Design:** six independent five-case library chains. Every seed/shard starts from the same redesigned starter library; confirmed additions can be reused only within that chain. No library handoff between shards or seeds.
+- **Seeds:** 42, 43, 44. Top-three component inclusion within the three diagnosis stages is the success criterion; static repairs and separate EVOLVE/SERVE calls are additional charged model calls.
+- **Pinned model:** the existing Gemma checkpoint, SHA256 `179cfb99212709597eae5929112cfca677e1bbf566178b479ae1da0c4772874b`, with the pinned llama.cpp revision `d81235049384534c167caea52b85a694f6103d14`.
+- **Sampling:** temperature 1.0, top-p 0.95, top-k 64, 32,768-token context, 8,192-token maximum generation/reserve, reasoning enabled with the server's 2,048-token reasoning budget. Actual rendered-message token preflight runs before each completion.
+- **Output transport:** verified JSON-object constrained decoding. This constrains serialization, not the Python diagnostic algorithm. Record this interface change when comparing with older results.
+- **Execution:** normalized data and Python operators run on coordinator CPU; inference uses the coordinator P100/V100 pair and Wingtip RTX8000. The new normalized-data transport retains the chosen subprocess policy. No GPU reset/reboot and no new T2 run were performed.
+
+Fixed worker assignment, declared before scoring, alternates shards for load balance:
+
+| Endpoint worker | Sequential queue |
+| --- | --- |
+| Local P100/V100 (`http://127.0.0.1:19250`) | Seed42/shard0, seed43/shard1, seed44/shard0 |
+| Wingtip RTX8000 (loopback SSH forward `http://127.0.0.1:19406`) | Seed42/shard1, seed43/shard0, seed44/shard1 |
+
+Shard0 is the first five frozen cases; shard1 is the other five. Each server retains one parallel request slot. Physical hardware differs, so this is not a hardware-matched latency study. Fixed seeds also do not guarantee bit-identical replay on this setup.
+
+### 17.4 Source freeze and evidence locations
+
+Study root:
+
+```text
+/localscratch/ssinha97/E4/artifacts/simplification_three_seed_20261106
+```
+
+The executed package is an immutable local copy at `frozen_runtime/`, with explicit links to the existing environment and prepared dataset. Actual imports were checked to resolve inside that copy. All 168 archived source/config/test files matched the reviewed working tree at freeze time. Fifty public input files and the opaque evaluator file checksum are recorded separately; private labels are not model inputs.
+
+- Base Git revision: `9e40342`, plus the reviewed working-tree fixes captured in the archive; no new commit/push is implied.
+- Source inventory SHA256: `1b2a2ab68be97f0261078174330abf254ffd785116dcc334cdca6c97f99c841a`.
+- Runtime archive SHA256: `07cfb1a0e9d64aa938098d2788d3271157da84cece805f34338d38c5fa650ac0`.
+- `source_manifest.json`: exact files, hashes, input identities and environment dependency notes.
+- `launch.json`: actual command, process identity, source fingerprints and morning target. Initial campaign PID/PGID is `2198760`; verify ownership/current identity before sending any signal.
+- `campaign/campaign_manifest.json`: queued/running/complete chain states and errors.
+- `campaign/chains/<endpoint>/seed<seed>_shard<shard>/checkpoint.json`: atomically saved case results.
+- Each chain's `model_calls.jsonl`: immediate final-response/usage/error journal; hidden reasoning is not serialized.
+- Each chain's `result.json`: completed chain summary, including failures, budgets and usage-completeness flags.
+- `campaign/combined_result.json`: automatically generated after the six-chain scheduler finishes, including per-seed cumulative successes, planned denominators, costs and incomplete-chain accounting.
+- `campaign.stdout.log`: detached launcher diagnostics. Both endpoint queues continue without another chat message.
+- `services/`, `public_data_preflight_verified.json`, `full_trace_largest_smoke.json`, and the two `*_frozen_client_canary.json` files: startup and pre-scoring verification evidence. An earlier data-preflight probe used a nonexistent convenience attribute; its separate `engineering_probe_accessor_error.json` is not an input-data failure or scored trajectory.
+
+No credentials, model weights, raw journals or agent plans are included in the runtime archive. The corrected code ran from the archive rather than a mutable development tree.
+
+### 17.5 Interpretation and remaining qualifications
+
+This is a corrected **simplified Python-authoring variant**, not an isolated ablation of one fix and not proof of parity with the historical kernel method's complete starter inventory/statistical semantics. Full-window scans, timestamp handling, evidence guards, prompts and serialization changed together. Preserve the historical 70% kernel mean and prior 50% Python seed42 run as distinct results.
+
+The goal is to measure the escalation trend honestly. No starter weakening, threshold/label changes, selective retries or replacement of failed benchmark trajectories with successful engineering canaries were used. Unknown generation cost after a transport failure is marked incomplete; numeric reported token counts are not asserted to be the full charge in that situation. Infrastructure outages stop the affected endpoint queue while the independent queue can continue.
+
+The scheduler respects the morning deadline at case boundaries; it does not silently shorten diagnosis/model budgets to force apparent completion. If any chains are unfinished, errors/missing shards remain explicit and accuracy over planned slots is a lower bound. Do not present partial/completed-only accuracy as a full thirty-trajectory result or claim statistical significance from these three seeds on the same ten incidents.
+
+
+### 17.6 Post-launch entity-boundary failure and clean restart
+
+The original campaign launched at 09:14:16 UTC and finished at **12:38:52 UTC**. On resumption, inspection showed all thirty trajectories had zero confirmed hits. These are **not valid accuracy measurements**: the final-answer guard rejected otherwise valid starter evidence because it compared two different dataclass types by object equality.
+
+`aggregate_view()` yields sandbox `EntityRefView` identities. Trusted Bank operators had put those view objects directly into native `Evidence`, while consensus produced native `EntityRef` candidates. A contributor and candidate with the same role and component identifier therefore compared unequal. The guard removed every such candidate and forced unnecessary escalation. This was a framework integration error; the earlier unit checks had not exercised the real starter output through that guard.
+
+The correction is deliberately limited to representation boundaries:
+
+- Bank metric contrast, trace contrast, and absolute anomaly scoring convert view identities into native `EntityRef` before constructing native candidates and evidence.
+- The controller compares identities using `(role, canonical_component_id(identifier))`, normalizes evidence into native contract objects, and preserves the observed component's display identity.
+- Candidate scores, formulas, rankings, support thresholds and eligibility requirements are unchanged. Unknown identities, wrong roles, zero support and ineligible evidence remain rejected.
+- Four regression tests cover native/view equivalence and serialization, rejection cases, actual metric/trace starter DAG execution, and public controller selection with no evaluator labels. The complete maintained suite passed **75 tests in 139.439 seconds**.
+- A label-free smoke on public development clip `bank-20210323T0630-utc8` ran both real starter playbooks: each had ten raw candidates and retained ten validated candidates. Native evidence serialized correctly. This checks plumbing, not diagnosis accuracy.
+
+Both Luna implementers reported a usage limit during the correction. The user explicitly authorized the supervising agent to finish this small fix rather than wait. The final implementation and tests were reviewed before freezing; no scoring-driven parameter tuning was performed.
+
+**Preservation:** `campaign/`, `frozen_runtime/`, their original manifests and archive remain untouched. `campaign/framework_invalidity.json` explicitly marks the first accuracy result invalid. Its **894,463 reported tokens** are retained as engineering/failure cost, separately from the corrected scored campaign; they must not disappear from total project cost accounting. Neither its all-zero accuracy nor its failed learned libraries are carried into V2.
+
+**V2 source freeze:** `frozen_runtime_v2/`, `frozen_runtime_v2.tar.gz` and `source_manifest_v2.json` contain 169 reviewed source/config/test files. All fifty public input files and the opaque evaluator-file checksum were rechecked against V1 and are unchanged. Source inventory SHA256 is `067adc3277a04a8b86b37a86c49e14920f5258840dab96a65193672c49aecf38`; archive SHA256 is `447e4bead9da812995d6f1f1bfc350d6e2a9e3fba1e7586e6b0ef9701c9a8ce0`.
+
+**Restart protocol:** rerun every seed/shard from a pristine starter library in `campaign_v2/`, using the same seeds, case order, model, sampling and operator budgets from Section 17.3. Local stays on port 19250; refreshed Wingtip serves remote loopback port 19427 through coordinator loopback port **19408**. Its independently checked model/binary hashes and health receipt are under `services_v2/`. The expired original case-boundary deadline is not reused. Results will be aggregated automatically; the prior run suggests roughly **2–4 hours from restart**, not a guarantee. No new T2 experiment is included.
+
+The preliminary V2 canary script initially called the client object instead of its `complete()` method and failed before inference. Correcting that invocation does not change runtime source or count as a scored retry.
+
+**V2 launch confirmed:** 16:03:01 UTC / 11:03 America/New_York on November 6. PID/PGID `2313683`; exact ownership, command and fingerprints are in `launch_v2.json`. Both actual frozen clients passed neutral JSON/token-preflight canaries before launch. `campaign_v2/campaign_manifest.json` tracks the six queues, each chain checkpoints under `campaign_v2/chains/`, and `campaign_v2/combined_result.json` will be written automatically after completion. Planning estimate is **18:00–20:00 UTC / 13:00–15:00 America/New_York**. This is a restart estimate and does not erase the missed original target.
+
+**First checkpoint sanity check:** Wingtip seed42/shard1 completed `bank-20210309T0800-utc8` with a confirmed Stage 1 answer in one model call. This verifies that valid starter evidence now survives the corrected boundary in an actual scored path. One case is not an accuracy estimate; the remaining fixed trajectories continue unchanged.

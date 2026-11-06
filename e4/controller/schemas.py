@@ -15,6 +15,7 @@ REQUIRED_SPEC_FIELDS = frozenset({
     "family", "input_ports", "output_type", "parameters",
     "input_requirements", "source",
 })
+MAX_PROPOSED_OPERATORS = 3
 
 
 def validate_operator_proposal(spec: Mapping[str, Any]) -> list[str]:
@@ -99,6 +100,11 @@ def validate_proposal_bundle(bundle: Mapping[str, Any], existing_library: Any = 
     if not isinstance(proposed_ops, list) or not proposed_ops:
         errors.append("'proposed_operators' must be a non-empty list of operator proposals")
         return errors
+    if len(proposed_ops) > MAX_PROPOSED_OPERATORS:
+        return [
+            f"'proposed_operators' contains {len(proposed_ops)} entries; "
+            f"the maximum for one EVOLVE proposal is {MAX_PROPOSED_OPERATORS}"
+        ]
 
     gap_record = bundle.get("gap_record")
     if not isinstance(gap_record, Mapping):

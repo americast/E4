@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from typing import Any, Mapping
 
 from e4.controller.library import Playbook
@@ -14,6 +15,7 @@ from e4.sandbox.views import (
     Candidate,
     CandidateSet,
     EntityRef,
+    EntityRefView,
     Evidence,
     MetricPointView,
     QueryResult,
@@ -40,7 +42,7 @@ from e4.sandbox.views import (
     telemetry_view,
     top_k,
 )
-from e4.types import RankedAnswer
+from e4.types import MetricRecord, RankedAnswer, SpanRecord
 
 
 # Canonical consensus group aliases
@@ -58,6 +60,11 @@ CANONICAL_FAMILY_ALIASES: Mapping[str, str] = {
 }
 
 
+def _core_entity(entity: EntityRef | EntityRefView) -> EntityRef:
+    """Cross from read-only aggregate views into canonical output contracts."""
+    return entity if isinstance(entity, EntityRef) else EntityRef(entity.role, entity.identifier)
+
+
 def bank_metric_aggregate_impl(
     inputs: Mapping[str, Any], params: Mapping[str, Any], runtime: Any
 ) -> Aggregate:
@@ -67,17 +74,23 @@ def bank_metric_aggregate_impl(
     target_w = tel.reference_window if win_param == "reference" else tel.alert_window
     tbl = str(params.get("table", "bank/metric_container.csv"))
 
-    points_res = metric_points(tel, tbl, target_w)
-    grouped = group_by(points_res.rows, ["entity_identifier", "metric_key"])
+    grouped: dict[tuple[str, str, str], list[float | None]] = defaultdict(list)
+    point_count = 0
+    for record in tel.iter_records(tbl, target_w.name):
+        if not isinstance(record, MetricRecord):
+            continue
+        if not (target_w.start_ms_utc <= record.timestamp_ms_utc < target_w.end_ms_utc):
+            continue
+        grouped[(record.entity.role, record.entity.identifier, record.metric_name)].append(record.value)
+        point_count += 1
 
     rows: list[AggregateRow] = []
-    for (ent_id, m_key), pts in grouped.items():
-        if not ent_id or not pts:
+    for (ent_role, ent_id, m_key), vals in grouped.items():
+        if not ent_id or not vals:
             continue
-        vals = [p.value for p in pts]
         sm_mean = summarize(vals, "mean")
         sm_med = summarize(vals, "quantile", quantile=0.5)
-        ent = EntityRef("service", str(ent_id))
+        ent = EntityRef(str(ent_role), str(ent_id))
         rows.append(
             AggregateRow(
                 entity=ent,
@@ -90,8 +103,26 @@ def bank_metric_aggregate_impl(
                 details={"mean": sm_mean.value, "median": sm_med.value},
             )
         )
-    is_trunc = bool(points_res.coverage.truncated or (not points_res.coverage.complete))
-    return Aggregate(window=target_w, rows=tuple(rows), source_tables=(tbl,), metadata={"truncated": is_trunc})
+    is_trunc = _table_window_truncated(tel, tbl)
+    return Aggregate(
+        window=target_w,
+        rows=tuple(rows),
+        source_tables=(tbl,),
+        metadata={
+            "truncated": is_trunc,
+            "coverage_complete": not is_trunc,
+            "records_seen": point_count,
+            "window": target_w.name,
+        },
+    )
+
+
+def _table_window_truncated(tel: TelemetryView, table: str) -> bool:
+    """Check adapter-level completeness without treating a page as full data."""
+    truncated_tables = getattr(tel, "truncated_tables", set())
+    if truncated_tables:
+        return table in truncated_tables
+    return bool(getattr(tel, "truncated", False))
 
 
 def bank_metrics_contrast_impl(
@@ -108,11 +139,17 @@ def bank_metrics_contrast_impl(
     # Index reference metrics by (entity_identifier, metric_key)
     ref_map: dict[tuple[str, str], AggregateRow] = {}
     for r in ref_agg.rows:
+        # The Bank application table uses opaque transaction-code identities.
+        # It is contextual KPI data, not a service/component candidate source.
+        if r.entity.role != "service":
+            continue
         ref_map[(r.entity.identifier, r.metric_key)] = r
 
     # Group alert metrics by entity
     alt_by_entity: dict[str, list[AggregateRow]] = {}
     for r in alt_agg.rows:
+        if r.entity.role != "service":
+            continue
         cid = r.entity.identifier
         if cid not in alt_by_entity:
             alt_by_entity[cid] = []
@@ -120,7 +157,7 @@ def bank_metrics_contrast_impl(
 
     scored: list[ScoredCandidate] = []
     for cid, alt_rows in alt_by_entity.items():
-        entity = alt_rows[0].entity
+        entity = _core_entity(alt_rows[0].entity)
         metric_shifts: list[tuple[float, Evidence]] = []
 
         for alt_r in alt_rows:
@@ -179,16 +216,25 @@ def bank_traces_aggregate_impl(
     target_w = tel.reference_window if win_param == "reference" else tel.alert_window
     tbl = str(params.get("table", "bank/trace_span.csv"))
 
-    spans_res = span_records(tel, tbl, target_w)
-    grouped = group_by(spans_res.rows, ["executing_component_identifier"])
+    grouped: dict[tuple[str, str], list[float | None]] = defaultdict(list)
+    span_count = 0
+    for record in tel.iter_records(tbl, target_w.name):
+        if not isinstance(record, SpanRecord):
+            continue
+        if not (target_w.start_ms_utc <= record.timestamp_ms_utc < target_w.end_ms_utc):
+            continue
+        component = record.executing_component
+        if component is None:
+            continue
+        grouped[(component.role, component.identifier)].append(record.duration_ms)
+        span_count += 1
 
     rows: list[AggregateRow] = []
-    for (cid,), spans in grouped.items():
-        if not cid or not spans:
+    for (role, cid), durations in grouped.items():
+        if not cid or not durations:
             continue
-        durations = [s.duration_ms for s in spans]
         sm = summarize(durations, "mean")
-        ent = EntityRef("service", str(cid))
+        ent = EntityRef(str(role), str(cid))
         rows.append(
             AggregateRow(
                 entity=ent,
@@ -200,8 +246,18 @@ def bank_traces_aggregate_impl(
                 source_tables=(tbl,),
             )
         )
-    is_trunc = bool(spans_res.coverage.truncated or (not spans_res.coverage.complete))
-    return Aggregate(window=target_w, rows=tuple(rows), source_tables=(tbl,), metadata={"truncated": is_trunc})
+    is_trunc = _table_window_truncated(tel, tbl)
+    return Aggregate(
+        window=target_w,
+        rows=tuple(rows),
+        source_tables=(tbl,),
+        metadata={
+            "truncated": is_trunc,
+            "coverage_complete": not is_trunc,
+            "records_seen": span_count,
+            "window": target_w.name,
+        },
+    )
 
 
 def bank_traces_latency_contrast_impl(
@@ -223,6 +279,7 @@ def bank_traces_latency_contrast_impl(
         ref_r = ref_map.get(cid)
         if ref_r is None:
             continue
+        entity = _core_entity(alt_r.entity)
 
         ref_dur = ref_r.value if ref_r.value is not None else 0.0
         alt_dur = alt_r.value if alt_r.value is not None else 0.0
@@ -234,14 +291,14 @@ def bank_traces_latency_contrast_impl(
             window=Window(alt_r.window.name, alt_r.window.start_ms_utc, alt_r.window.end_ms_utc),
             statistic="relative_latency_shift",
             value=shift,
-            contributing_entities=(alt_r.entity,),
+            contributing_entities=(entity,),
             support=min(ref_r.support, alt_r.support),
             ranking_eligible=(not is_trunc),
             details={"reference_duration_ms": ref_dur, "alert_duration_ms": alt_dur},
         )
         scored.append(
             ScoredCandidate(
-                entity=alt_r.entity,
+                entity=entity,
                 score=shift,
                 evidence=(ev,),
                 analysis_family="trace_latency",
@@ -265,17 +322,18 @@ def bank_anomaly_scorer_impl(
     for r in agg.rows:
         val = r.value if r.value is not None else 0.0
         cid = r.entity.identifier
+        entity = _core_entity(r.entity)
         if cid not in scores_by_entity or val > scores_by_entity[cid][1]:
             ev = Evidence(
                 source="metric_anomaly_scorer",
                 window=Window(r.window.name, r.window.start_ms_utc, r.window.end_ms_utc),
                 statistic=r.statistic,
                 value=val,
-                contributing_entities=(r.entity,),
+                contributing_entities=(entity,),
                 support=r.support,
                 ranking_eligible=(not is_trunc),
             )
-            scores_by_entity[cid] = (r.entity, float(val), [ev])
+            scores_by_entity[cid] = (entity, float(val), [ev])
 
     scored: list[ScoredCandidate] = []
     for ent, sc, ev_list in scores_by_entity.values():

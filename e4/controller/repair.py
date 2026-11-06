@@ -160,12 +160,24 @@ class StaticRepairController:
 
             # Collect sources to preserve in repair prompt
             rejected_sources: dict[str, str] = {}
+            proposal_metadata: dict[str, Any] = {}
             if isinstance(bundle_dict, Mapping):
+                proposal_metadata["gap_record"] = bundle_dict.get("gap_record")
+                proposal_metadata["proposed_operators"] = []
                 for op in bundle_dict.get("proposed_operators", []):
-                    if isinstance(op, Mapping) and "name" in op and "source" in op:
-                        rejected_sources[op["name"]] = str(op["source"])
+                    if isinstance(op, Mapping):
+                        if "name" in op and "source" in op:
+                            rejected_sources[op["name"]] = str(op["source"])
+                        proposal_metadata["proposed_operators"].append(
+                            {key: value for key, value in op.items() if key != "source"}
+                        )
 
-            repair_prompt = format_repair_prompt(errors, rejected_sources)
+            repair_prompt = format_repair_prompt(
+                errors,
+                rejected_sources,
+                proposal_metadata=proposal_metadata,
+                dataset_schema=dataset_schema,
+            )
             repairs_used += 1
             try:
                 current_raw = query_model_fn(repair_prompt)

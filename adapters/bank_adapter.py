@@ -21,6 +21,10 @@ from e4.types import (
 )
 
 
+class BankAdapterSchemaError(ValueError):
+    """Raised when source unit metadata cannot safely normalize a CSV timestamp."""
+
+
 class BankAdapter(BaseDatasetAdapter):
     """Adapts OpenRCA Bank incident cases to the E4 TelemetrySource contract."""
 
@@ -32,8 +36,8 @@ class BankAdapter(BaseDatasetAdapter):
 
         self.alert_data = json.loads(alert_file.read_text(encoding="utf-8"))
         self._init_windows()
-        self._init_schema()
         self._locate_data_dirs()
+        self._init_schema()
 
     def _init_windows(self) -> None:
         ref_start = int(self.alert_data["analysis_window_start_epoch_ms_utc"])
@@ -59,7 +63,7 @@ class BankAdapter(BaseDatasetAdapter):
         self.data_dir = self.data_dirs[0]
 
     def _init_schema(self) -> None:
-        self._schema = DatasetSchema(
+        declared_schema = DatasetSchema(
             tables=(
                 TableSchema(
                     name="bank/metric_container.csv",
@@ -89,18 +93,19 @@ class BankAdapter(BaseDatasetAdapter):
                     columns=(
                         ColumnSchema("timestamp", "timestamp", unit="s"),
                         ColumnSchema("tc", "string", description="Application transaction code / test case"),
-                        ColumnSchema("rr", "number", unit="percent", description="Response rate"),
-                        ColumnSchema("sr", "number", unit="percent", description="Success rate"),
-                        ColumnSchema("cnt", "number", unit="count", description="Request count"),
-                        ColumnSchema("mrt", "number", unit="ms", description="Mean response time"),
+                        ColumnSchema("rr", "number", nullable=True, description="Source metric rr; unit/meaning undeclared"),
+                        ColumnSchema("sr", "number", nullable=True, description="Source metric sr; unit/meaning undeclared"),
+                        ColumnSchema("cnt", "number", nullable=True, description="Source metric cnt; unit/meaning undeclared"),
+                        ColumnSchema("mrt", "number", nullable=True, description="Source metric mrt; unit undeclared"),
                     ),
                     entity_roles=("app_kpi",),
+                    description="Application KPI context. Units and metric meanings are not declared by the source.",
                 ),
                 TableSchema(
                     name="bank/trace_span.csv",
                     record_type="span",
                     columns=(
-                        ColumnSchema("timestamp", "timestamp", unit="ms"),
+                        ColumnSchema("timestamp", "timestamp", unit=None, description="Raw unit is declared per source date; normalized to UTC milliseconds"),
                         ColumnSchema("cmdb_id", "string"),
                         ColumnSchema("trace_id", "string"),
                         ColumnSchema("span_id", "string"),
@@ -125,12 +130,51 @@ class BankAdapter(BaseDatasetAdapter):
             time_unit="ms_utc",
             description="OpenRCA Bank microservice benchmark telemetry",
         )
+        relative_paths = {
+            "bank/metric_container.csv": "metric/metric_container.csv",
+            "bank/metric_service.csv": "metric/metric_service.csv",
+            "bank/metric_app.csv": "metric/metric_app.csv",
+            "bank/trace_span.csv": "trace/trace_span.csv",
+            "bank/log/log_service.csv": "log/log_service.csv",
+        }
+        # Availability is inferred from public case files only. A present but
+        # empty CSV remains declared; a table absent from all source dates does not.
+        available_tables = tuple(
+            table
+            for table in declared_schema.tables
+            if any((data_dir / relative_paths[table.name]).is_file() for data_dir in self.data_dirs)
+        )
+        self._schema = DatasetSchema(
+            tables=available_tables,
+            time_unit=declared_schema.time_unit,
+            description=declared_schema.description,
+        )
 
     def get_schema(self) -> DatasetSchema:
         return self._schema
 
     def get_windows(self) -> tuple[Window, Window]:
         return (self._ref_window, self._alt_window)
+
+    def _timestamp_ms(self, raw_value: str, source_dir: Path, relative_path: str, default_unit: str) -> int:
+        """Normalize a source timestamp using its audited per-date unit metadata."""
+        unit = self.alert_data.get("source_date_timestamp_units", {}).get(source_dir.name, {}).get(relative_path)
+        if unit is None:
+            unit = self.alert_data.get("timestamp_unit_in_source_files", {}).get(relative_path)
+        if unit is None:
+            unit = default_unit
+        normalized_unit = str(unit).strip().lower().replace("epoch ", "")
+        try:
+            value = float(raw_value)
+        except (ValueError, TypeError) as exc:
+            raise ValueError(f"Invalid timestamp {raw_value!r} in {relative_path}") from exc
+        if normalized_unit in {"s", "sec", "second", "seconds"}:
+            return int(round(value * 1000))
+        if normalized_unit in {"ms", "millisecond", "milliseconds"}:
+            return int(round(value))
+        raise BankAdapterSchemaError(
+            f"Unsupported timestamp unit {unit!r} for {source_dir.name}/{relative_path}"
+        )
 
     def extract_suspect_entities(self) -> list[EntityRef]:
         entities: set[str] = set()
@@ -155,27 +199,28 @@ class BankAdapter(BaseDatasetAdapter):
                     continue
                 with file_path.open("r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
-                    metric_fields = [
-                        ("rr", "percent"),
-                        ("sr", "percent"),
-                        ("cnt", "count"),
-                        ("mrt", "ms"),
-                    ]
+                    metric_fields = ("rr", "sr", "cnt", "mrt")
                     for row_idx, row in enumerate(reader):
                         raw_ts = row.get("timestamp")
                         if not raw_ts:
                             continue
                         try:
-                            ts_ms = int(round(float(raw_ts) * 1000))
+                            ts_ms = self._timestamp_ms(raw_ts, ddir, "metric/metric_app.csv", "seconds")
+                        except BankAdapterSchemaError:
+                            raise
                         except ValueError:
                             continue
 
                         if not (window.start_ms_utc <= ts_ms < window.end_ms_utc):
                             continue
 
-                        tc = row.get("tc", "unknown_tc")
+                        tc = (row.get("tc") or "").strip()
+                        if not tc:
+                            # `tc` is the only declared identity for application
+                            # context. Do not invent a shared placeholder entity.
+                            continue
                         ent = EntityRef(role="app_kpi", identifier=tc)
-                        for col_name, unit in metric_fields:
+                        for col_name in metric_fields:
                             val_str = row.get(col_name)
                             if val_str is None or val_str == "":
                                 continue
@@ -189,8 +234,13 @@ class BankAdapter(BaseDatasetAdapter):
                                 entity=ent,
                                 metric_name=col_name,
                                 value=val,
-                                unit=unit,
-                                details={"tc": tc, "kpi_column": col_name, "origin_row_id": f"metric_app.csv:{row_idx}:{col_name}"},
+                                unit=None,
+                                details={
+                                    "tc": tc,
+                                    "kpi_column": col_name,
+                                    "origin_row_id": f"source_dates/{ddir.name}/metric/metric_app.csv:{row_idx}",
+                                    "source_unit": None,
+                                },
                             )
             return
 
@@ -202,20 +252,24 @@ class BankAdapter(BaseDatasetAdapter):
                     continue
                 with file_path.open("r", encoding="utf-8") as f:
                     reader = csv.DictReader(f)
-                    for row in reader:
+                    for row_idx, row in enumerate(reader):
                         raw_ts = row.get("timestamp")
                         if not raw_ts:
                             continue
                         try:
-                            ts_ms = int(round(float(raw_ts) * 1000))
+                            ts_ms = self._timestamp_ms(raw_ts, ddir, f"metric/{sub_file}", "seconds")
+                        except BankAdapterSchemaError:
+                            raise
                         except ValueError:
                             continue
 
                         if not (window.start_ms_utc <= ts_ms < window.end_ms_utc):
                             continue
 
-                        cid = row.get("cmdb_id", "unknown")
-                        kpi = row.get("kpi_name", "unknown_metric")
+                        cid = (row.get("cmdb_id") or "").strip()
+                        kpi = (row.get("kpi_name") or "").strip()
+                        if not cid or not kpi:
+                            continue
                         val_str = row.get("value")
                         try:
                             val = float(val_str) if val_str is not None else None
@@ -228,6 +282,11 @@ class BankAdapter(BaseDatasetAdapter):
                             entity=EntityRef("service", cid),
                             metric_name=kpi,
                             value=val,
+                            unit=None,
+                            details={
+                                "origin_row_id": f"source_dates/{ddir.name}/metric/{sub_file}:{row_idx}",
+                                "kpi_name": kpi,
+                            },
                         )
 
         elif "trace_span" in table_name:
@@ -242,7 +301,9 @@ class BankAdapter(BaseDatasetAdapter):
                         if not raw_ts:
                             continue
                         try:
-                            ts_ms = int(round(float(raw_ts)))
+                            ts_ms = self._timestamp_ms(raw_ts, ddir, "trace/trace_span.csv", "milliseconds")
+                        except BankAdapterSchemaError:
+                            raise
                         except ValueError:
                             continue
 
@@ -282,7 +343,9 @@ class BankAdapter(BaseDatasetAdapter):
                         if not raw_ts:
                             continue
                         try:
-                            ts_ms = int(round(float(raw_ts) * 1000))
+                            ts_ms = self._timestamp_ms(raw_ts, ddir, "log/log_service.csv", "seconds")
+                        except BankAdapterSchemaError:
+                            raise
                         except ValueError:
                             continue
 

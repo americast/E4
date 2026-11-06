@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any, Mapping, Sequence
 
-from .examples import METRIC_ANOMALY_EXAMPLE, SCORED_CANDIDATE_EXAMPLE
+from .examples import METRIC_ANOMALY_EXAMPLE, SCORED_CANDIDATE_EXAMPLE, typed_api_reference
 
 SYSTEM_PROMPT = """You are E4, an expert Root-Cause Analysis (RCA) engine for distributed microservice systems.
 Your goal is to identify the root-cause faulty component for the given incident.
@@ -92,9 +92,13 @@ Available Tables & Schema:
    - Operator name MUST match: `evolved.<lowercase_name>` (e.g., `evolved.metric_ratio`, `evolved.latency_spike_detector`).
    - `authoring_profile` MUST be `"typed-operator-code-v1"`.
    - Output type must be 'Aggregate', 'CandidateSet', or 'ScoredCandidates'.
-   - Use typed helpers: `telemetry_view(inputs['<port>'])`, `metric_points(...)`, `aggregate_records(...)`, `group_by(...)`, `summarize(...)`, `top_k(...)`, `make_aggregate(...)`, `make_scored_candidates(...)`.
+   - Select `source_table` from the incident's declared `dataset_schema.tables`; declare it as a required string parameter. Never invent a table or column name.
+   - Use typed helpers and their exact signatures below. Query rows expose typed view fields, and query results expose `coverage`; do not build ranking evidence from incomplete coverage.
    - All helper iteration should use `.rows` (e.g. `for row in res.rows:`).
    - Any helper functions defined inside your operator MUST have full type annotations so Mypy does not reject them.
+
+## Runtime API and Canonical Record Fields:
+{api_reference}
 
 ## Statically Checked Reference Implementation Example:
 ```python
@@ -124,7 +128,7 @@ Respond strictly with a JSON object:
       ],
       "output_type": "Aggregate",
       "parameters": {{
-        "threshold": {{"type": "number", "default": 2.0}}
+        "source_table": {{"type": "string", "required": true}}
       }},
       "input_requirements": {{
         "data": {{
@@ -179,6 +183,15 @@ Below are the exact, batched errors detected:
 
 Errors Encountered:
 {error_list}
+
+Original proposal metadata (Python source is preserved separately below):
+{proposal_metadata}
+
+Available public dataset schema:
+{dataset_schema}
+
+Typed runtime API reference:
+{api_reference}
 
 {quoted_source_context}
 
@@ -238,6 +251,7 @@ def format_evolve_prompt(
         public_digest=json.dumps(public_digest, indent=2),
         dataset_schema=json.dumps(dataset_schema, indent=2),
         reference_example=METRIC_ANOMALY_EXAMPLE,
+        api_reference=typed_api_reference(),
     )
 
 
@@ -258,6 +272,9 @@ def format_serve_prompt(
 def format_repair_prompt(
     errors: Sequence[str],
     rejected_sources: Mapping[str, str],
+    proposal_metadata: Mapping[str, Any] | None = None,
+    dataset_schema: Any = None,
+    api_reference: str | None = None,
 ) -> str:
     err_text = "\n".join(f"- {err}" for err in errors)
     source_context_parts = []
@@ -271,7 +288,11 @@ def format_repair_prompt(
         if source_context_parts
         else ""
     )
+    schema = dataset_schema.as_dict() if hasattr(dataset_schema, "as_dict") else dataset_schema
     return REPAIR_TEMPLATE.format(
         error_list=err_text,
+        proposal_metadata=json.dumps(proposal_metadata or {}, indent=2),
+        dataset_schema=json.dumps(schema, indent=2) if schema is not None else "Not provided",
+        api_reference=api_reference or typed_api_reference(),
         quoted_source_context=quoted_context,
     )

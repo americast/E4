@@ -139,9 +139,25 @@ VALID_STATISTICS = {
     "mean", "sum", "max", "min", "count", "median", "quantile", "p90", "p95", "p99",
     "std", "variance", "rate", "latest", "raw", "relative_shift", "relative_latency_shift", "per_trace_mean", "ratio"
 }
-VALID_GROUP_BY = {
-    "entity", "service", "endpoint", "caller", "callee", "component", "table", "metric_name"
+GROUP_BY_BY_RECORD_TYPE = {
+    "metric": {
+        "source_table", "entity", "entity_identifier", "entity_role", "origin_row_id",
+        "metric_name", "metric_key", "value", "unit", "timestamp", "timestamp_ms_utc",
+    },
+    "span": {
+        "source_table", "entity", "entity_identifier", "entity_role", "component",
+        "executing_component", "executing_component_identifier", "executing_component_role",
+        "logical_service", "logical_service_identifier", "logical_service_role",
+        "database_target", "database_target_identifier", "database_target_role",
+        "trace_id", "span_id", "parent_id", "duration_ms", "duration_value", "success",
+        "call_type", "timestamp", "timestamp_ms_utc",
+    },
+    "log": {
+        "source_table", "entity", "entity_identifier", "entity_role", "log_name", "value",
+        "severity", "timestamp", "timestamp_ms_utc",
+    },
 }
+VALID_GROUP_BY = set().union(*GROUP_BY_BY_RECORD_TYPE.values())
 
 
 def _validate_port_requirements(
@@ -152,6 +168,7 @@ def _validate_port_requirements(
     node_docs: Mapping[str, Any],
     dataset_schema: Any,
     known_tables_map: dict[str, set[str]],
+    table_group_dimensions_map: dict[str, set[str]],
     valid_group_dimensions: set[str],
     is_external: bool,
 ) -> None:
@@ -163,12 +180,29 @@ def _validate_port_requirements(
 
     # Extract requested tables and columns
     req_tables: dict[str, list[str]] = {}
-    if "source_columns" in reqs and isinstance(reqs["source_columns"], Mapping):
-        for tbl, cols in reqs["source_columns"].items():
-            if isinstance(cols, (list, tuple)):
-                req_tables[str(tbl)] = [str(c) for c in cols]
-            else:
-                req_tables[str(tbl)] = []
+    if "source_columns" in reqs:
+        source_columns = reqs["source_columns"]
+        if not isinstance(source_columns, Mapping):
+            raise DAGValidationError(
+                "input_requirement_mismatch",
+                f"Port '{port_name}' source_columns must map table names to column sequences",
+                nid,
+            )
+        for tbl, cols in source_columns.items():
+            if not isinstance(tbl, str) or not tbl:
+                raise DAGValidationError(
+                    "input_requirement_mismatch",
+                    f"Port '{port_name}' source_columns contains an invalid table name",
+                    nid,
+                )
+            if not isinstance(cols, (list, tuple)) or any(not isinstance(c, str) or not c for c in cols):
+                raise DAGValidationError(
+                    "input_requirement_mismatch",
+                    f"Port '{port_name}' source_columns for '{tbl}' must be a sequence of non-empty column names",
+                    nid,
+                    {"table": tbl},
+                )
+            req_tables[tbl] = list(cols)
     sing_table = reqs.get("source_table") or reqs.get("table")
     if sing_table and isinstance(sing_table, str):
         if sing_table not in req_tables:
@@ -204,8 +238,15 @@ def _validate_port_requirements(
 
     # Extract and validate statistics
     req_stats: list[str] = []
-    if "statistics" in reqs and isinstance(reqs["statistics"], (list, tuple)):
-        req_stats.extend(str(s) for s in reqs["statistics"])
+    if "statistics" in reqs:
+        statistics = reqs["statistics"]
+        if not isinstance(statistics, (list, tuple)) or any(not isinstance(s, str) or not s for s in statistics):
+            raise DAGValidationError(
+                "input_requirement_mismatch",
+                f"Port '{port_name}' statistics must be a sequence of non-empty names",
+                nid,
+            )
+        req_stats.extend(statistics)
     if "statistic" in reqs and isinstance(reqs["statistic"], str):
         if reqs["statistic"] not in req_stats:
             req_stats.append(reqs["statistic"])
@@ -223,12 +264,30 @@ def _validate_port_requirements(
     raw_group = reqs.get("group_by")
     group_dims: list[str] = []
     if isinstance(raw_group, (list, tuple)):
-        group_dims = [str(g) for g in raw_group]
+        if any(not isinstance(g, str) or not g for g in raw_group):
+            raise DAGValidationError(
+                "input_requirement_mismatch",
+                f"Port '{port_name}' group_by must contain non-empty dimension names",
+                nid,
+            )
+        group_dims = list(raw_group)
     elif isinstance(raw_group, str):
         group_dims = [raw_group]
+    elif raw_group is not None:
+        raise DAGValidationError(
+            "input_requirement_mismatch",
+            f"Port '{port_name}' group_by must be a dimension name or sequence of names",
+            nid,
+        )
 
+    if dataset_schema and req_tables:
+        table_scoped_dimensions = set().union(
+            *(table_group_dimensions_map.get(table, set()) for table in req_tables)
+        )
+    else:
+        table_scoped_dimensions = valid_group_dimensions
     for dim in group_dims:
-        if dim not in valid_group_dimensions:
+        if dim not in table_scoped_dimensions:
             raise DAGValidationError(
                 "input_requirement_mismatch",
                 f"Port '{port_name}' requires unsupported grouping dimension '{dim}'",
@@ -274,12 +333,23 @@ def verify_dag(
         raise DAGValidationError("document_must_be_mapping", "DAG document must be a JSON mapping")
 
     known_tables_map: dict[str, set[str]] = {}
+    table_group_dimensions_map: dict[str, set[str]] = {}
+    # When a dataset contract is available, grouping dimensions come from that
+    # contract. Keep only the generic entity grouping concept here; table fields
+    # and role names are added from the schema below. Without a schema, retain the
+    # documented generic fallback for callers verifying schema-independent DAGs.
     valid_group_dimensions = set(VALID_GROUP_BY)
     if dataset_schema:
         for t in getattr(dataset_schema, "tables", ()):
             tname = getattr(t, "name", "")
             cols = {getattr(c, "name", "") for c in getattr(t, "columns", ())}
             known_tables_map[tname] = cols
+            table_group_dimensions_map[tname] = (
+                cols
+                | set(getattr(t, "entity_roles", ()))
+                | GROUP_BY_BY_RECORD_TYPE.get(getattr(t, "record_type", ""), set())
+            )
+            valid_group_dimensions.update(table_group_dimensions_map[tname])
             for r in getattr(t, "entity_roles", ()):
                 valid_group_dimensions.add(r)
 
@@ -380,6 +450,7 @@ def verify_dag(
                         node_docs=node_docs,
                         dataset_schema=dataset_schema,
                         known_tables_map=known_tables_map,
+                        table_group_dimensions_map=table_group_dimensions_map,
                         valid_group_dimensions=valid_group_dimensions,
                         is_external=True,
                     )
@@ -420,6 +491,7 @@ def verify_dag(
                     node_docs=node_docs,
                     dataset_schema=dataset_schema,
                     known_tables_map=known_tables_map,
+                    table_group_dimensions_map=table_group_dimensions_map,
                     valid_group_dimensions=valid_group_dimensions,
                     is_external=False,
                 )

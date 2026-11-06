@@ -137,6 +137,11 @@ def _deserialize_input(val: Any) -> Any:
         if type_tag in {"Telemetry", "TelemetryView", "TelemetryHandle"}:
             ref = _deserialize_input(fields["reference_window"])
             alt = _deserialize_input(fields["alert_window"])
+            record_store = None
+            if fields.get("record_store") is not None:
+                from ..data.record_store import TelemetryRecordStore
+
+                record_store = TelemetryRecordStore.from_descriptor(fields["record_store"])
             records = []
             for r in fields.get("records", ()):
                 rtype = r.get("$type")
@@ -194,6 +199,7 @@ def _deserialize_input(val: Any) -> Any:
                 records=records,
                 source_tables=fields.get("source_tables"),
                 metadata=fields.get("metadata", {}),
+                record_store=record_store,
             )
         return {k: _deserialize_input(v) for k, v in val.items()}
     if isinstance(val, (list, tuple)):

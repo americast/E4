@@ -1,20 +1,112 @@
-"""Statically checked typed API examples for inclusion in authoring prompts."""
+"""Typed API references for inclusion in authoring prompts."""
 
 from __future__ import annotations
 
-# Example 1: Metric Anomaly Operator
+from dataclasses import fields
+from inspect import signature
+
+from e4.sandbox.views import (
+    AggregateRowView,
+    AggregateView,
+    CandidateSetView,
+    CandidateView,
+    EntityRefView,
+    EvidenceView,
+    LogRecordView,
+    MetricPointView,
+    ScoredCandidateView,
+    ScoredCandidatesView,
+    SpanView,
+    WindowView,
+    aggregate_view,
+    aggregate_records,
+    candidate_views,
+    group_by,
+    log_records,
+    make_aggregate,
+    make_aggregate_row,
+    make_candidate,
+    make_candidate_set,
+    make_entity_ref,
+    make_evidence,
+    make_scored_candidate,
+    make_scored_candidates,
+    make_window,
+    metric_points,
+    scored_views,
+    span_records,
+    summarize,
+    top_k,
+    telemetry_view,
+)
+
+
+def typed_api_reference() -> str:
+    """Render signatures and row fields from the runtime implementation."""
+    helpers = (
+        metric_points,
+        span_records,
+        log_records,
+        telemetry_view,
+        aggregate_records,
+        group_by,
+        summarize,
+        top_k,
+        make_evidence,
+        make_window,
+        make_entity_ref,
+        make_candidate,
+        make_candidate_set,
+        make_aggregate_row,
+        make_aggregate,
+        make_scored_candidate,
+        make_scored_candidates,
+        aggregate_view,
+        candidate_views,
+        scored_views,
+    )
+    lines = ["Typed data helper signatures (from the runtime API):"]
+    lines.extend(f"- {fn.__name__}{signature(fn)}" for fn in helpers)
+    for label, row_type in (
+        ("MetricPointView", MetricPointView),
+        ("SpanView", SpanView),
+        ("LogRecordView", LogRecordView),
+        ("WindowView", WindowView),
+        ("EntityRefView", EntityRefView),
+        ("EvidenceView", EvidenceView),
+        ("CandidateView", CandidateView),
+        ("CandidateSetView", CandidateSetView),
+        ("AggregateRowView", AggregateRowView),
+        ("AggregateView", AggregateView),
+        ("ScoredCandidateView", ScoredCandidateView),
+        ("ScoredCandidatesView", ScoredCandidatesView),
+    ):
+        lines.append(f"{label} fields: {', '.join(field.name for field in fields(row_type))}")
+    lines.append(
+        "QueryResult exposes rows, window, source_tables, and coverage; "
+        "CoverageView exposes complete, truncated, offset, next_offset, total_matches, and support."
+    )
+    return "\n".join(lines)
+
+
+# This is a data access/output example, not a prescribed diagnostic algorithm.
 METRIC_ANOMALY_EXAMPLE = '''
 def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
-    """Compare alert window metric mean against reference baseline."""
+    """Read one schema-selected metric table and return a typed aggregate."""
     tel = telemetry_view(inputs["telemetry"])
-    ref_w = tel.reference_window
     alt_w = tel.alert_window
-    threshold = float(params.get("threshold", 2.0))
+    source_table = params["source_table"]
 
-    # 1. Query metric points for alert window using .rows
-    alt_res = metric_points(tel, "metrics.csv", alt_w)
-    
-    # 2. Group alert points by entity
+    # A capped result is incomplete; do not build downstream evidence from it.
+    alt_res = metric_points(tel, source_table, alt_w)
+    if not alt_res.coverage.complete:
+        return make_aggregate(
+            alt_w,
+            [],
+            source_tables=[source_table],
+            metadata={"abstained": "incomplete query coverage"},
+        )
+
     by_entity = group_by(alt_res.rows, ["entity_identifier"])
 
     rows: list[AggregateRowView] = []
@@ -23,21 +115,21 @@ def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
             continue
         vals = [p.value for p in points]
         summary = summarize(vals, "mean")
-        if summary.value is not None and summary.value > threshold:
-            ent = make_entity_ref("service", str(ent_id))
+        if summary.value is not None:
+            ent = make_entity_ref(points[0].entity_role, str(ent_id))
             rows.append(
                 make_aggregate_row(
                     entity=ent,
                     metric_key=points[0].metric_key,
                     window=alt_w,
                     statistic="mean",
-                    value=summary.value,
+                    value=float(summary.value),
                     support=summary.support,
-                    source_tables=["metrics.csv"],
+                    source_tables=[source_table],
                 )
             )
 
-    return make_aggregate(alt_w, rows, source_tables=["metrics.csv"])
+    return make_aggregate(alt_w, rows, source_tables=[source_table])
 '''.strip()
 
 # Example 2: Scored Candidates Operator

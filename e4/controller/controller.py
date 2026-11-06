@@ -18,7 +18,7 @@ from ..prompts.templates import (
 from ..registry import OperatorRegistry, OperatorSpec
 from ..sandbox.runner import SandboxRunner, SubprocessRunner
 from ..sandbox.views import TelemetryView
-from ..types import DiagnosticResult, EntityRef, RankedAnswer, Window
+from ..types import DiagnosticResult, EntityRef, Evidence, RankedAnswer, Window, canonical_component_id
 from .library import LibraryManager, Playbook
 from .repair import StaticRepairController
 
@@ -60,14 +60,68 @@ def _parse_json(text: str) -> dict[str, Any]:
 def _to_ranked_answer(raw_val: Any, stage: str, entities: Sequence[EntityRef]) -> RankedAnswer | None:
     if raw_val is None:
         return None
+
+    def entity_key(entity: Any) -> tuple[str, str] | None:
+        role = getattr(entity, "role", None)
+        identifier = getattr(entity, "identifier", None)
+        if not isinstance(role, str) or not isinstance(identifier, str) or not identifier:
+            return None
+        return role, canonical_component_id(identifier)
+
+    allowed_by_key = {entity_key(entity): entity for entity in entities}
+    allowed_by_key.pop(None, None)
+
+    def eligible_evidence(evidence: Sequence[Any]) -> tuple[Any, ...]:
+        accepted: list[Evidence] = []
+        for ev in evidence:
+            contributors = tuple(
+                EntityRef(item.role, item.identifier)
+                for item in getattr(ev, "contributing_entities", ())
+                if entity_key(item) is not None
+            )
+            support = int(getattr(ev, "support", 0))
+            if not getattr(ev, "ranking_eligible", False) or support <= 0 or not contributors:
+                continue
+            raw_window = ev.window
+            window = (
+                raw_window
+                if isinstance(raw_window, Window)
+                else Window(raw_window.name, raw_window.start_ms_utc, raw_window.end_ms_utc)
+            )
+            accepted.append(Evidence(
+                source=str(ev.source),
+                window=window,
+                statistic=str(ev.statistic),
+                value=ev.value,
+                contributing_entities=contributors,
+                support=support,
+                ranking_eligible=True,
+                details=getattr(ev, "details", {}),
+            ))
+        return tuple(accepted)
+
+    def supported(entity: EntityRef, evidence: Sequence[Any]) -> bool:
+        key = entity_key(entity)
+        return key is not None and any(
+            entity_key(contributor) == key
+            for ev in evidence
+            for contributor in getattr(ev, "contributing_entities", ())
+        )
+
     if isinstance(raw_val, RankedAnswer):
-        if not raw_val.candidates:
+        evidence = eligible_evidence(raw_val.evidence)
+        kept = [
+            (candidate, score)
+            for candidate, score in zip(raw_val.candidates, raw_val.scores)
+            if entity_key(candidate) in allowed_by_key and supported(candidate, evidence)
+        ]
+        if not kept:
             return None
         return RankedAnswer(
-            candidates=raw_val.candidates,
-            scores=raw_val.scores,
+            candidates=tuple(allowed_by_key[entity_key(candidate)] for candidate, _ in kept),
+            scores=tuple(score for _, score in kept),
             stage=stage,
-            evidence=raw_val.evidence,
+            evidence=evidence,
         )
 
     # Reject unscored CandidateSet discovery sets
@@ -78,49 +132,49 @@ def _to_ranked_answer(raw_val: Any, stage: str, entities: Sequence[EntityRef]) -
     if not hasattr(raw_val, "candidates"):
         return None
 
-    cands: list[EntityRef] = []
-    scores: list[float] = []
-    has_explicit_scores = False
+    ranked: list[tuple[EntityRef, float, tuple[Any, ...]]] = []
 
     for c in raw_val.candidates:
+        ent: EntityRef | None = None
         if hasattr(c, "entity"):
-            ent = c.entity
-            if hasattr(ent, "role") and hasattr(ent, "identifier"):
-                cands.append(EntityRef(ent.role, ent.identifier))
+            raw_entity = c.entity
+            if hasattr(raw_entity, "role") and hasattr(raw_entity, "identifier"):
+                ent = EntityRef(raw_entity.role, raw_entity.identifier)
         elif hasattr(c, "role") and hasattr(c, "identifier"):
-            cands.append(EntityRef(c.role, c.identifier))
+            ent = EntityRef(c.role, c.identifier)
         elif isinstance(c, Mapping):
             if "entity" in c:
-                ent = c["entity"]
-                cands.append(EntityRef(ent.get("role", "service"), ent.get("identifier", "")))
-            elif "role" in c and "identifier" in c:
-                cands.append(EntityRef(c["role"], c["identifier"]))
+                raw_entity = c["entity"]
+                if isinstance(raw_entity, Mapping):
+                    ent = EntityRef(raw_entity.get("role", ""), raw_entity.get("identifier", ""))
+                elif hasattr(raw_entity, "role") and hasattr(raw_entity, "identifier"):
+                    ent = EntityRef(raw_entity.role, raw_entity.identifier)
+        if ent is None or entity_key(ent) not in allowed_by_key:
+            continue
         if hasattr(c, "score"):
-            has_explicit_scores = True
             try:
-                scores.append(float(c.score))
+                score = float(c.score)
             except (ValueError, TypeError):
-                scores.append(0.0)
+                continue
         elif isinstance(c, Mapping) and "score" in c:
-            has_explicit_scores = True
             try:
-                scores.append(float(c["score"]))
+                score = float(c["score"])
             except (ValueError, TypeError):
-                scores.append(0.0)
+                continue
+        else:
+            continue
+        ev = eligible_evidence(getattr(c, "evidence", ()))
+        if supported(ent, ev):
+            ranked.append((allowed_by_key[entity_key(ent)], score, ev))
 
-    if hasattr(raw_val, "scores") and raw_val.scores:
-        scores = [float(s) for s in raw_val.scores]
-        has_explicit_scores = True
-
-    # Terminal ranking contract requires explicit scored candidates
-    if not cands or not has_explicit_scores:
+    if not ranked:
         return None
-
-    if len(scores) < len(cands):
-        scores.extend([0.0] * (len(cands) - len(scores)))
-
-    ev = getattr(raw_val, "evidence", ())
-    return RankedAnswer(candidates=tuple(cands), scores=tuple(scores[:len(cands)]), stage=stage, evidence=tuple(ev))
+    return RankedAnswer(
+        candidates=tuple(candidate for candidate, _, _ in ranked),
+        scores=tuple(score for _, score, _ in ranked),
+        stage=stage,
+        evidence=tuple(ev for _, _, evidence in ranked for ev in evidence),
+    )
 
 
 class DiagnosisController:
@@ -169,20 +223,21 @@ class DiagnosisController:
             "suspect_entities": [e.as_dict() for e in suspect_entities],
         }
 
-        # Build in-memory telemetry view for external injection into the DAG
-        if hasattr(telemetry, "as_telemetry_view"):
-            tel_view = telemetry.as_telemetry_view()
+        # Keep the full public snapshot on disk and pass only its typed descriptor
+        # to authored workers. The view retains the store owner for this call.
+        if hasattr(telemetry, "as_full_telemetry_view"):
+            tel_view = telemetry.as_full_telemetry_view(case_id=case_id)
         else:
-            records = []
-            for t in schema.tables:
-                for w in (ref_w, alt_w):
-                    records.extend(telemetry.stream_records(t.name, w))
+            from ..data.record_store import TelemetryRecordStore
+
+            record_store = TelemetryRecordStore.from_adapter(telemetry)
             tel_view = TelemetryView(
                 case_id=case_id,
                 reference_window=ref_w,
                 alert_window=alt_w,
-                records=records,
+                records=(),
                 source_tables=[t.name for t in schema.tables],
+                record_store=record_store,
             )
 
         history: list[dict[str, Any]] = []
