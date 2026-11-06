@@ -293,9 +293,10 @@ def weighted_consensus_impl(
             except (ValueError, TypeError):
                 pass
 
-    totals: dict[str, float] = {}
     entities: dict[str, EntityRef] = {}
+    family_scores: dict[str, dict[str, float]] = {}
     all_evidence: dict[str, list[Evidence]] = {}
+    seen_evidence_keys: set[tuple[str, str, str, Any, str]] = set()
 
     for item in scorers:
         if not item:
@@ -324,32 +325,54 @@ def weighted_consensus_impl(
             cid = ent.identifier if hasattr(ent, "identifier") else ent["identifier"]
             e_role = ent.role if hasattr(ent, "role") else ent.get("role", "service")
             canonical_fam = CANONICAL_FAMILY_ALIASES.get(raw_fam, raw_fam)
-            fam_weight = weights.get(canonical_fam, weights.get(raw_fam, 1.0))
 
-            norm_score = (score_val / max_scorer_val) * fam_weight
+            norm_score = score_val / max_scorer_val
             entities[cid] = EntityRef(e_role, cid)
-            totals[cid] = totals.get(cid, 0.0) + norm_score
+
+            if canonical_fam not in family_scores:
+                family_scores[canonical_fam] = {}
+            # Within-family max aggregation for duplicate-input invariance
+            family_scores[canonical_fam][cid] = max(
+                family_scores[canonical_fam].get(cid, 0.0), norm_score
+            )
 
             if cid not in all_evidence:
                 all_evidence[cid] = []
             for ev in ev_seq:
+                ev_obj = None
                 if isinstance(ev, Evidence):
-                    all_evidence[cid].append(ev)
+                    ev_obj = ev
                 elif hasattr(ev, "as_dict"):
                     d = ev.as_dict()
                     w = Window(d["window"]["name"], d["window"]["start_ms_utc"], d["window"]["end_ms_utc"])
-                    all_evidence[cid].append(
-                        Evidence(
-                            source=d["source"],
-                            window=w,
-                            statistic=d["statistic"],
-                            value=d.get("value"),
-                            contributing_entities=(entities[cid],),
-                            support=d.get("support", 0),
-                            ranking_eligible=d.get("ranking_eligible", True),
-                            details=d.get("details", {}),
-                        )
+                    ev_obj = Evidence(
+                        source=d["source"],
+                        window=w,
+                        statistic=d["statistic"],
+                        value=d.get("value"),
+                        contributing_entities=(entities[cid],),
+                        support=d.get("support", 0),
+                        ranking_eligible=d.get("ranking_eligible", True),
+                        details=d.get("details", {}),
                     )
+                if ev_obj is not None:
+                    ev_key = (
+                        ev_obj.source,
+                        ev_obj.window.name,
+                        ev_obj.statistic,
+                        ev_obj.value,
+                        cid,
+                    )
+                    if ev_key not in seen_evidence_keys:
+                        seen_evidence_keys.add(ev_key)
+                        all_evidence[cid].append(ev_obj)
+
+    # Combine weighted family scores across distinct analysis families
+    totals: dict[str, float] = {}
+    for canonical_fam, cid_scores in family_scores.items():
+        fam_weight = weights.get(canonical_fam, 1.0)
+        for cid, score in cid_scores.items():
+            totals[cid] = totals.get(cid, 0.0) + (score * fam_weight)
 
     sorted_cids = sorted(totals.keys(), key=lambda k: totals[k], reverse=True)
     limit = int(params.get("limit", 10))

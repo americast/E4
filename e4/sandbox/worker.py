@@ -193,6 +193,7 @@ def _deserialize_input(val: Any) -> Any:
                 alert_window=alt,
                 records=records,
                 source_tables=fields.get("source_tables"),
+                metadata=fields.get("metadata", {}),
             )
         return {k: _deserialize_input(v) for k, v in val.items()}
     if isinstance(val, (list, tuple)):

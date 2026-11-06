@@ -84,6 +84,17 @@ class BankAdapter(BaseDatasetAdapter):
                     entity_roles=("service",),
                 ),
                 TableSchema(
+                    name="bank/metric_app.csv",
+                    record_type="metric",
+                    columns=(
+                        ColumnSchema("timestamp", "timestamp", unit="s"),
+                        ColumnSchema("cmdb_id", "string", description="Component/Service ID"),
+                        ColumnSchema("kpi_name", "string", description="Metric KPI name"),
+                        ColumnSchema("value", "number", description="Measurement value"),
+                    ),
+                    entity_roles=("service", "application"),
+                ),
+                TableSchema(
                     name="bank/trace_span.csv",
                     record_type="span",
                     columns=(
@@ -92,7 +103,7 @@ class BankAdapter(BaseDatasetAdapter):
                         ColumnSchema("trace_id", "string"),
                         ColumnSchema("span_id", "string"),
                         ColumnSchema("parent_id", "string", nullable=True),
-                        ColumnSchema("duration", "number", unit="ms"),
+                        ColumnSchema("duration", "number", unit=None),
                     ),
                     entity_roles=("service",),
                 ),
@@ -122,7 +133,7 @@ class BankAdapter(BaseDatasetAdapter):
     def extract_suspect_entities(self) -> list[EntityRef]:
         entities: set[str] = set()
         for ddir in self.data_dirs:
-            for sub, file_name in [("metric", "metric_container.csv"), ("metric", "metric_service.csv"), ("trace", "trace_span.csv")]:
+            for sub, file_name in [("metric", "metric_container.csv"), ("metric", "metric_service.csv"), ("metric", "metric_app.csv"), ("trace", "trace_span.csv")]:
                 metric_file = ddir / sub / file_name
                 if metric_file.is_file():
                     with metric_file.open("r", encoding="utf-8") as f:
@@ -135,8 +146,13 @@ class BankAdapter(BaseDatasetAdapter):
         return [EntityRef(role="service", identifier=cid) for cid in sorted(entities)]
 
     def stream_records(self, table_name: str, window: Window) -> Iterator[TelemetryRecord]:
-        if "metric_container" in table_name or "metric_service" in table_name:
-            sub_file = "metric_container.csv" if "metric_container" in table_name else "metric_service.csv"
+        if "metric" in table_name:
+            if "metric_container" in table_name:
+                sub_file = "metric_container.csv"
+            elif "metric_app" in table_name:
+                sub_file = "metric_app.csv"
+            else:
+                sub_file = "metric_service.csv"
             for ddir in self.data_dirs:
                 file_path = ddir / "metric" / sub_file
                 if not file_path.is_file():

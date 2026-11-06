@@ -28,9 +28,10 @@ class LocalLlamaClient:
         base_url: str = "http://127.0.0.1:19250",
         model_name: str = "e4-gemma-m3",
         seed: int = 42,
-        temperature: float = 0.2,
+        temperature: float = 1.0,
         top_p: float = 0.95,
-        max_tokens: int = 4096,
+        top_k: int = 40,
+        max_tokens: int = 8192,
         timeout: float = 300.0,
     ):
         self.base_url = base_url.rstrip("/")
@@ -38,6 +39,7 @@ class LocalLlamaClient:
         self.seed = seed
         self.temperature = temperature
         self.top_p = top_p
+        self.top_k = top_k
         self.max_tokens = max_tokens
         self.timeout = timeout
         self.total_requests = 0
@@ -62,6 +64,7 @@ class LocalLlamaClient:
             "messages": [{"role": "user", "content": prompt}],
             "temperature": self.temperature,
             "top_p": self.top_p,
+            "top_k": self.top_k,
             "seed": self.seed,
             "max_tokens": self.max_tokens,
         }
@@ -194,9 +197,10 @@ def main() -> None:
     parser.add_argument("--model-name", default="e4-gemma-m3", help="Model name identifier")
     parser.add_argument("--model-type", choices=["llama", "dummy"], default="llama", help="Model client type")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for model sampling")
-    parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature")
+    parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
     parser.add_argument("--top-p", type=float, default=0.95, help="Top-p nucleus sampling")
-    parser.add_argument("--max-tokens", type=int, default=4096, help="Maximum generated tokens")
+    parser.add_argument("--top-k", type=int, default=40, help="Top-k sampling")
+    parser.add_argument("--max-tokens", type=int, default=8192, help="Maximum generated tokens")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of cases to evaluate")
     args = parser.parse_args()
 
@@ -208,6 +212,7 @@ def main() -> None:
         "seed": args.seed,
         "temperature": args.temperature,
         "top_p": args.top_p,
+        "top_k": args.top_k,
         "max_tokens": args.max_tokens,
         "model_name": args.model_name,
     }
@@ -218,6 +223,7 @@ def main() -> None:
             seed=args.seed,
             temperature=args.temperature,
             top_p=args.top_p,
+            top_k=args.top_k,
             max_tokens=args.max_tokens,
         )
     else:

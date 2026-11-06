@@ -24,6 +24,8 @@ class DiagnosisEngine:
         stopping: AcceptanceOracle | None = None,
         oracle: AcceptanceOracle | None = None,
         library: LibraryManager | Path | str | None = None,
+        base_registry: Any = None,
+        registry: Any = None,
         runner: SandboxRunner | None = None,
         max_attempts: int = 3,
         max_repairs: int = 2,
@@ -33,14 +35,22 @@ class DiagnosisEngine:
         chosen_oracle = oracle or stopping
         if chosen_oracle is not None and hasattr(chosen_oracle, "max_attempts"):
             try:
-                eff_max_attempts = int(getattr(chosen_oracle, "max_attempts"))
+                oracle_limit = int(getattr(chosen_oracle, "max_attempts"))
+                eff_max_attempts = min(max_attempts, oracle_limit)
             except (ValueError, TypeError):
                 pass
         self.oracle = chosen_oracle or BudgetStopPolicy(max_attempts=eff_max_attempts)
+        base_reg = registry or base_registry
         if isinstance(library, (Path, str)):
-            self.library = LibraryManager.load_from_dir(library)
+            self.library = LibraryManager.load_from_dir(library, base_registry=base_reg)
         elif isinstance(library, LibraryManager):
             self.library = library
+            if base_reg:
+                for s in base_reg.list():
+                    if not self.library.registry.has(s.name, s.version):
+                        self.library.registry.register(s)
+        elif base_reg:
+            self.library = LibraryManager(registry=base_reg)
         else:
             self.library = LibraryManager()
 

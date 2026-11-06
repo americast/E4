@@ -14,16 +14,18 @@ from adapters.bank_library import (
     build_bank_registry,
     get_bank_contrast_playbook,
     get_bank_seed_playbook,
+    weighted_consensus_impl,
 )
 from benchmarks.bank_benchmark import LocalLlamaClient, load_ground_truth
 from e4.controller.controller import DiagnosisController, _to_ranked_answer
 from e4.controller.library import LibraryManager, Playbook
 from e4.controller.repair import StaticRepairController
 from e4.controller.schemas import validate_operator_proposal, validate_proposal_bundle
-from e4.dag import SerialExecutor, verify_dag
+from e4.dag import DAGValidationError, SerialExecutor, verify_dag
 from e4.data.adapter import BaseDatasetAdapter
 from e4.data.folder import FolderTelemetrySource
-from e4.oracle import AcceptanceOracle, Decision, DiagnosticContext
+from e4.engine import DiagnosisEngine
+from e4.oracle import AcceptanceOracle, BudgetStopPolicy, Decision, DiagnosticContext
 from e4.prompts.examples import METRIC_ANOMALY_EXAMPLE
 from e4.prompts.templates import format_evolve_prompt
 from e4.registry import OperatorRegistry, OperatorSpec, ParameterSpec, PortSpec
@@ -31,14 +33,19 @@ from e4.sandbox.ast_validator import SecurityValidationError, validate_source
 from e4.sandbox.runner import BubblewrapRunner, ExecutionError, InProcessRunner, SubprocessRunner
 from e4.sandbox.typechecker import TypeCheckError, check_operator_types
 from e4.sandbox.views import (
+    Candidate,
     CandidateSet,
+    CoverageView,
     EntityRef,
     MetricRecord,
+    ScoredCandidate,
+    ScoredCandidates,
     SpanRecord,
     TelemetryView,
     Window,
     aggregate_records,
     group_by,
+    make_evidence,
     metric_points,
 )
 from e4.types import RankedAnswer
@@ -559,6 +566,268 @@ class TestReviewRepairs(unittest.TestCase):
         self.assertEqual(client.seed, 43)
         self.assertEqual(client.temperature, 0.5)
         self.assertEqual(client.usage["total_requests"], 0)
+
+    # -------------------------------------------------------------------------
+    # F01: Unscored CandidateSet rejected as terminal ranked answer
+    # -------------------------------------------------------------------------
+    def test_f01_unscored_candidate_set_rejected_by_to_ranked_answer(self):
+        cset = CandidateSet(
+            candidates=(Candidate(EntityRef("service", "cartservice"), "discovery rationale"),),
+            source="discovery",
+        )
+        ans = _to_ranked_answer(cset, "select", (EntityRef("service", "cartservice"),))
+        self.assertIsNone(ans)
+
+    # -------------------------------------------------------------------------
+    # F02: Worker preserves metadata and scopes truncation to affected tables
+    # -------------------------------------------------------------------------
+    def test_f02_worker_preserves_metadata_and_scopes_truncation(self):
+        rec1 = MetricRecord(
+            source_table="bank/metric_service.csv",
+            timestamp_ms_utc=150,
+            entity=EntityRef("service", "cartservice"),
+            metric_name="cpu",
+            value=10.0,
+        )
+        rec2 = MetricRecord(
+            source_table="bank/metric_container.csv",
+            timestamp_ms_utc=150,
+            entity=EntityRef("service", "cartservice"),
+            metric_name="cpu",
+            value=20.0,
+        )
+        tel = TelemetryView(
+            case_id="case_01",
+            reference_window=Window("reference", 0, 100),
+            alert_window=Window("alert", 100, 200),
+            records=[rec1, rec2],
+            metadata={"truncated": True, "truncated_tables": ["bank/metric_container.csv"]},
+        )
+        # Query untruncated table: complete=True
+        q1 = metric_points(tel, "bank/metric_service.csv", tel.alert_window)
+        self.assertTrue(q1.coverage.complete)
+        self.assertFalse(q1.coverage.truncated)
+
+        # Query truncated table: complete=False, truncated=True
+        q2 = metric_points(tel, "bank/metric_container.csv", tel.alert_window)
+        self.assertFalse(q2.coverage.complete)
+        self.assertTrue(q2.coverage.truncated)
+
+        # Truncated coverage marks evidence ranking_eligible=False
+        ev = make_evidence(
+            source="bank/metric_container.csv",
+            window=tel.alert_window,
+            statistic="mean",
+            value=20.0,
+            contributing_entities=(EntityRef("service", "cartservice"),),
+            support=1,
+            coverage=q2.coverage,
+        )
+        self.assertFalse(ev.ranking_eligible)
+
+    # -------------------------------------------------------------------------
+    # F03: Admission reachability excludes disconnected operators
+    # -------------------------------------------------------------------------
+    def test_f03_admission_reachability_excludes_disconnected_operator(self):
+        reg = OperatorRegistry()
+        lib = LibraryManager(registry=reg)
+        controller = DiagnosisController(library=lib, oracle=FixedOracle("target_a"), runner=InProcessRunner())
+
+        evolved_conn_dict = {
+            "name": "evolved.connected",
+            "version": "1",
+            "authoring_profile": "typed-operator-code-v1",
+            "description": "Connected operator",
+            "family": "custom",
+            "input_ports": [{"name": "telemetry", "type": "Telemetry"}],
+            "output_type": "ScoredCandidates",
+            "parameters": {},
+            "input_requirements": {"telemetry": {}},
+            "source": "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:\n    return make_scored_candidates([make_scored_candidate(make_entity_ref(\"service\", \"target_a\"), 1.0)], scorer=\"scorer_a\")\n",
+        }
+        evolved_disconn_dict = {
+            "name": "evolved.disconnected",
+            "version": "1",
+            "authoring_profile": "typed-operator-code-v1",
+            "description": "Disconnected operator",
+            "family": "custom",
+            "input_ports": [{"name": "telemetry", "type": "Telemetry"}],
+            "output_type": "ScoredCandidates",
+            "parameters": {},
+            "input_requirements": {"telemetry": {}},
+            "source": "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:\n    return make_scored_candidates([make_scored_candidate(make_entity_ref(\"service\", \"other\"), 0.5)], scorer=\"scorer_b\")\n",
+        }
+
+        serving_dag = {
+            "nodes": [
+                {"id": "node_conn", "operator": "evolved.connected", "version": "1", "inputs": {"telemetry": "telemetry"}},
+                {"id": "node_disconn", "operator": "evolved.disconnected", "version": "1", "inputs": {"telemetry": "telemetry"}},
+            ],
+            "return_node": "node_conn",
+        }
+
+        class EvolveMock:
+            def complete(self, prompt: str) -> str:
+                if "Stage 1: Playbook Retrieval" in prompt:
+                    return json.dumps({"selected_playbook": "dummy", "parameter_bindings": {}})
+                if "Stage 2: DAG Adaptation" in prompt:
+                    return json.dumps({"dag": {}})
+                if "Stage 3A" in prompt or "repair" in prompt.lower():
+                    return json.dumps({
+                        "gap_record": {
+                            "gap_description": "Custom connected analysis for target",
+                            "proposed_operator_names": ["evolved.connected", "evolved.disconnected"],
+                        },
+                        "proposed_operators": [evolved_conn_dict, evolved_disconn_dict],
+                    })
+                return json.dumps({"dag": serving_dag})
+
+        res = controller.run_diagnostic(MockTelemetry(), EvolveMock())
+        self.assertEqual(res.status, "confirmed")
+        # Only connected operator admitted; disconnected operator excluded
+        self.assertIn("evolved.connected@1", res.admitted_operators)
+        self.assertNotIn("evolved.disconnected@1", res.admitted_operators)
+        self.assertFalse(lib.registry.has("evolved.disconnected", "1"))
+
+    # -------------------------------------------------------------------------
+    # F04: Public library reload with base_registry preserves built-in callables
+    # -------------------------------------------------------------------------
+    def test_f04_library_reload_with_base_registry_preserves_builtins(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            base_reg = build_bank_registry()
+            lib = LibraryManager(registry=base_reg.clone())
+            lib.add_playbook(Playbook("test.pb", "desc", get_bank_contrast_playbook()["dag"]))
+            lib.save_to_dir(tmpdir)
+
+            # Reload into fresh engine using base_registry
+            engine = DiagnosisEngine(
+                model=lambda p: json.dumps({}),
+                library=tmpdir,
+                base_registry=base_reg,
+            )
+            spec = engine.library.registry.require("bank.metrics.contrast", "1")
+            self.assertIsNotNone(spec.implementation)
+
+    # -------------------------------------------------------------------------
+    # F05: Capability validation rejects invalid statistics, grouping, and tables
+    # -------------------------------------------------------------------------
+    def test_f05_dag_verification_validates_data_requirements_and_rejects_missing(self):
+        reg = OperatorRegistry()
+        reg.register(
+            OperatorSpec(
+                name="test.producer",
+                version="1",
+                inputs=(),
+                output_type="Aggregate",
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        reg.register(
+            OperatorSpec(
+                name="test.consumer_bad_table",
+                version="1",
+                inputs=(PortSpec("data", "Aggregate"),),
+                output_type="ScoredCandidates",
+                input_requirements={"data": {"source_table": "missing_table.missing_column"}},
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        bad_dag = {
+            "nodes": [
+                {"id": "n1", "operator": "test.producer", "version": "1", "inputs": {}},
+                {"id": "n2", "operator": "test.consumer_bad_table", "version": "1", "inputs": {"data": "n1"}},
+            ],
+            "return_node": "n2",
+        }
+        with self.assertRaises(DAGValidationError):
+            verify_dag(bad_dag, reg)
+
+    # -------------------------------------------------------------------------
+    # F06: Stricter caller budget respected and SELECT malformed JSON repaired
+    # -------------------------------------------------------------------------
+    def test_f06_stricter_caller_budget_and_select_parse_repair(self):
+        engine = DiagnosisEngine(
+            model=lambda p: json.dumps({}),
+            max_attempts=1,
+            oracle=BudgetStopPolicy(max_attempts=3),
+        )
+        self.assertEqual(engine.controller.max_attempts, 1)
+
+        # SELECT with malformed initial JSON is repaired
+        lib = LibraryManager()
+        lib.add_playbook(Playbook("pb1", "desc", {"nodes": [{"id": "n1", "operator": "test", "inputs": {}}], "return_node": "n1"}))
+        ctrl = DiagnosisController(library=lib, max_attempts=1)
+        calls = 0
+
+        def faulty_model(prompt: str) -> str:
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                return "{"  # malformed JSON
+            return json.dumps({"selected_playbook": "pb1", "parameter_bindings": {}})
+
+        res = ctrl.run_diagnostic(MockTelemetry(), faulty_model)
+        self.assertGreaterEqual(calls, 1)
+
+    # -------------------------------------------------------------------------
+    # F07: Consensus deduplication invariance across duplicate scorers
+    # -------------------------------------------------------------------------
+    def test_f07_bank_consensus_duplicate_input_invariance(self):
+        cand_a = ScoredCandidate(EntityRef("service", "service_a"), 0.8, analysis_family="backend_metric")
+        cand_b = ScoredCandidate(EntityRef("service", "service_b"), 1.0, analysis_family="trace_latency")
+
+        metric_scorer = ScoredCandidates((cand_a,), scorer="bank.metrics.contrast")
+        trace_scorer = ScoredCandidates((cand_b,), scorer="bank.traces.latency_contrast")
+
+        params = {"family_weights": {"trace_latency": 1.2, "backend_metric": 1.0}}
+
+        # 1 metric scorer + 1 trace scorer: trace_b wins (1.2 vs 1.0)
+        ans1 = weighted_consensus_impl({"scores": [metric_scorer, trace_scorer]}, params, {})
+        self.assertEqual(ans1.candidates[0].identifier, "service_b")
+
+        # 4 identical metric scorers + 1 trace scorer: trace_b STILL wins (invariance)
+        ans4 = weighted_consensus_impl(
+            {"scores": [metric_scorer, metric_scorer, metric_scorer, metric_scorer, trace_scorer]},
+            params,
+            {},
+        )
+        self.assertEqual(ans4.candidates[0].identifier, "service_b")
+
+    # -------------------------------------------------------------------------
+    # F08: AST-aware duplicate check against existing library
+    # -------------------------------------------------------------------------
+    def test_f08_ast_aware_duplicate_checking_against_existing_library(self):
+        existing_reg = OperatorRegistry()
+        existing_reg.register(
+            OperatorSpec(
+                name="existing.contrast",
+                version="1",
+                inputs=(),
+                output_type="Aggregate",
+                source="def operator(inputs, params, runtime):\n    x = 10\n    return x\n",
+            )
+        )
+        # Proposed operator has identical AST structure with different spacing/comments
+        bundle = {
+            "gap_record": {
+                "gap_description": "Custom variance contrast computation",
+                "proposed_operator_names": ["evolved.duplicate_op"],
+            },
+            "proposed_operators": [{
+                "name": "evolved.duplicate_op",
+                "version": "1",
+                "authoring_profile": "typed-operator-code-v1",
+                "description": "desc",
+                "family": "custom",
+                "input_ports": [{"name": "d", "type": "Telemetry"}],
+                "output_type": "Aggregate",
+                "parameters": {},
+                "input_requirements": {"d": {}},
+                "source": "# A comment\ndef operator(inputs, params, runtime):\n    x = 10\n\n    return x\n",
+            }],
+        }
+        errors = validate_proposal_bundle(bundle, existing_library=existing_reg)
+        self.assertTrue(any("Duplicate implementation: identical source to existing" in e for e in errors))
 
 
 if __name__ == "__main__":

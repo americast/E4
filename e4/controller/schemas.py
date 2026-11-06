@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 from typing import Any, Mapping, Sequence
 
@@ -79,35 +80,75 @@ def validate_operator_proposal(spec: Mapping[str, Any]) -> list[str]:
     return errors
 
 
-def validate_proposal_bundle(bundle: Mapping[str, Any]) -> list[str]:
+def canonicalize_ast_source(source: str) -> str:
+    try:
+        tree = ast.parse(source)
+        return ast.dump(tree, annotate_fields=False, include_attributes=False)
+    except Exception:
+        return " ".join(source.split())
+
+
+def validate_proposal_bundle(bundle: Mapping[str, Any], existing_library: Any = None) -> list[str]:
     """Validate full EVOLVE output bundle and collect all errors across all operators."""
     errors: list[str] = []
 
     if not isinstance(bundle, Mapping):
         return ["Response is not a valid JSON object"]
 
-    gap_record = bundle.get("gap_record")
-    if not isinstance(gap_record, Mapping):
-        errors.append("Missing or invalid 'gap_record' object")
-
     proposed_ops = bundle.get("proposed_operators")
     if not isinstance(proposed_ops, list) or not proposed_ops:
         errors.append("'proposed_operators' must be a non-empty list of operator proposals")
         return errors
+
+    gap_record = bundle.get("gap_record")
+    if not isinstance(gap_record, Mapping):
+        errors.append("Missing or invalid 'gap_record' object")
+    else:
+        gap_desc = gap_record.get("gap_description")
+        if not isinstance(gap_desc, str) or not gap_desc.strip():
+            errors.append("gap_record.gap_description must be a non-empty string explaining the analysis gap")
+        prop_names = gap_record.get("proposed_operator_names")
+        if not isinstance(prop_names, (list, tuple)) or not prop_names:
+            errors.append("gap_record.proposed_operator_names must be a non-empty sequence of proposed operator names")
+        else:
+            op_names_in_bundle = [
+                op.get("name") for op in proposed_ops if isinstance(op, Mapping) and "name" in op
+            ]
+            for p_name in prop_names:
+                if p_name not in op_names_in_bundle:
+                    errors.append(f"gap_record references '{p_name}', but operator is not found in proposed_operators")
+
+    # Extract existing sources from active library/registry if provided
+    existing_sources: dict[str, str] = {}
+    if existing_library is not None:
+        ops_iterable = []
+        if hasattr(existing_library, "all_operators"):
+            ops_iterable = existing_library.all_operators()
+        elif hasattr(existing_library, "registry") and hasattr(existing_library.registry, "all_operators"):
+            ops_iterable = existing_library.registry.all_operators()
+        for existing_op in ops_iterable:
+            if getattr(existing_op, "source", None):
+                existing_sources[canonicalize_ast_source(existing_op.source)] = getattr(
+                    existing_op, "qualified_name", getattr(existing_op, "name", "existing")
+                )
 
     seen_sources: dict[str, str] = {}
     for idx, op in enumerate(proposed_ops):
         op_name = op.get("name", f"operator_{idx}") if isinstance(op, Mapping) else f"operator_{idx}"
         if isinstance(op, Mapping):
             src = op.get("source", "").strip()
-            norm_src = " ".join(src.split())
-            if norm_src:
-                if norm_src in seen_sources:
+            if src:
+                ast_canon = canonicalize_ast_source(src)
+                if ast_canon in seen_sources:
                     errors.append(
-                        f"[{op_name}] Structural duplicate body: identical implementation to '{seen_sources[norm_src]}'"
+                        f"[{op_name}] Structural duplicate body: identical implementation to '{seen_sources[ast_canon]}'"
+                    )
+                elif ast_canon in existing_sources:
+                    errors.append(
+                        f"[{op_name}] Duplicate implementation: identical source to existing registered operator '{existing_sources[ast_canon]}'"
                     )
                 else:
-                    seen_sources[norm_src] = op_name
+                    seen_sources[ast_canon] = op_name
         op_errors = validate_operator_proposal(op)
         for err in op_errors:
             errors.append(f"[{op_name}] {err}")

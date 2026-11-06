@@ -52,13 +52,14 @@ class StaticRepairController:
         self,
         bundle: Mapping[str, Any],
         dataset_schema: Any = None,
+        existing_library: Any = None,
     ) -> tuple[list[str], list[OperatorSpec]]:
         """Validate syntax, schema, AST security, and strict Mypy types across all proposals."""
         errors: list[str] = []
         parsed_specs: list[OperatorSpec] = []
 
         # 1. Structural schema validation
-        schema_errors = validate_proposal_bundle(bundle)
+        schema_errors = validate_proposal_bundle(bundle, existing_library=existing_library)
         if schema_errors:
             return schema_errors, []
 
@@ -135,6 +136,7 @@ class StaticRepairController:
         initial_bundle: str | Mapping[str, Any],
         query_model_fn: Callable[[str], str],
         dataset_schema: Any = None,
+        existing_library: Any = None,
     ) -> tuple[bool, list[OperatorSpec], list[str], int]:
         """Run repair loop up to max_repairs, accurately counting model calls."""
         current_raw: Any = initial_bundle
@@ -147,7 +149,7 @@ class StaticRepairController:
                 errors = [parse_err]
                 specs: list[OperatorSpec] = []
             else:
-                errors, specs = self.validate_and_typecheck(bundle_dict or {}, dataset_schema)
+                errors, specs = self.validate_and_typecheck(bundle_dict or {}, dataset_schema, existing_library=existing_library)
 
             if not errors and specs:
                 return True, specs, [], repairs_used

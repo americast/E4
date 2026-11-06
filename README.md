@@ -1,82 +1,95 @@
-# E4
+# E4: Root-Cause Analysis Engine
 
-## Setup
+E4 is a lightweight, domain-agnostic Root-Cause Analysis (RCA) engine for microservice and distributed system telemetry. It executes a 3-stage progression loop (**Retrieve $\to$ Adapt $\to$ Evolve/Serve**) using typed Directed Acyclic Graphs (DAGs) and sandboxed Python operator synthesis.
 
-Use Python 3.10. Create a virtual environment and install the pinned runtime and test dependencies:
+---
+
+## 1. Installation & Environment Setup
+
+Use Python 3.10:
 
 ```bash
 python3.10 -m venv .venv
-.venv/bin/python -m pip install -r requirements-m3.lock
-.venv/bin/python -m pip check
+source .venv/bin/activate
+pip install -e .
 ```
 
-Run the test suite with Python's built-in unittest discovery:
+---
+
+## 2. Running Verification Tests
 
 ```bash
+# Run all maintained engine and regression tests (37 tests):
+.venv/bin/python -m unittest discover -s tests/test_e4 -v
+
+# Run entire discoverable test suite:
 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Worker tests expect `/usr/bin/python3.10` and a Linux host where bubblewrap user and network namespaces work.
+Execution is powered by `SubprocessRunner` by default, running portably without requiring unprivileged user namespaces or Bubblewrap. An optional `BubblewrapRunner` is available for environments requiring strict kernel namespace isolation.
 
-## Bank data
+---
 
-Prepare and verify the Bank dataset using the commands in the [Bank runbook](docs/BANK_RUNBOOK.md) before running the commands below.
+## 3. Quickstart: Programmatic Usage (10 Lines of Python)
 
-To run the four CPU-only seed controls, set `E4_RUN_DIR` to a fresh, existing, writable directory. For example:
+```python
+from adapters.bank_adapter import BankAdapter
+from adapters.bank_library import build_bank_registry, get_bank_seed_playbook
+from e4 import DiagnosisEngine, GroundTruthOracle
+from e4.controller.library import LibraryManager
 
-```bash
-mkdir -p artifacts/bank_controls/local_firstdev
-E4_RUN_DIR=artifacts/bank_controls/local_firstdev \
-  .venv/bin/python scripts/run_bank_development.py \
-  --case-id bank-20210323T0630-utc8 --controls
+# 1. Load telemetry adapter
+adapter = BankAdapter("data/prepared/bank/public/cases/bank-20210304T1800-utc8")
+
+# 2. Configure starter operator library and seed playbooks
+lib = LibraryManager(registry=build_bank_registry())
+lib.add_playbook(get_bank_seed_playbook())
+
+# 3. Initialize engine with LLM client and acceptance oracle
+engine = DiagnosisEngine(
+    model=model_client,
+    library=lib,
+    oracle=GroundTruthOracle(ground_truth_entities=["cartservice"]),
+)
+
+# 4. Run diagnosis
+result = engine.diagnose(adapter)
+print(f"Status: {result.status}, Stage: {result.stage}, Top Cause: {result.top_candidates[:3]}")
 ```
 
-The controls read the prepared public clips and make no model requests. The case output is written beneath `$E4_RUN_DIR/development/<case-id>/controls`. Use a fresh `E4_RUN_DIR` for each repeated run.
+---
 
-## Starter library
+## 4. Benchmark Evaluation
 
-With the prepared Bank experiment manifest at `artifacts/m5/experiments/bank_m6_initial_20261017_02/frozen_manifest.json`, create a validated starter-library snapshot:
-
-```bash
-.venv/bin/python scripts/freeze_paper_starter.py
-```
-
-The command prints the new artifact directory containing `bank_library/` and `freeze_manifest.json`.
-
-## Local Gemma inference
-
-The selected model is Gemma; see `config/experimental_model.json`. Its inference settings are in `config/gemma_m3_inference.json`, which uses the pinned `config/model_manifest.json`.
-
-First download the manifest-pinned model and build the pinned llama.cpp server. The downloader verifies the configured commit, file size, and SHA-256. Running it with no arguments uses the existing pin; `--resolve` changes that pin.
+To evaluate on the 10 scored Bank cases using the frozen evaluation settings (temperature 1.0, 8192 max tokens, top-p 0.95, top-k 40):
 
 ```bash
-.venv/bin/python scripts/fetch_model.py
-
-git clone --no-checkout https://github.com/ggml-org/llama.cpp third_party/llama.cpp
-git -C third_party/llama.cpp checkout d81235049384534c167caea52b85a694f6103d14
-export PATH=/usr/local/cuda-12.3/bin:$PATH
-export CUDACXX=/usr/local/cuda-12.3/bin/nvcc
-cmake -S third_party/llama.cpp -B third_party/llama.cpp/build-v100 \
-  -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=70 -DCMAKE_BUILD_TYPE=Release
-cmake --build third_party/llama.cpp/build-v100 \
-  --target llama-server llama-cli -j 12
+.venv/bin/python -m benchmarks.bank_benchmark \
+    --cases-dir data/prepared/bank/public/cases \
+    --split scored \
+    --seed 42 \
+    --temperature 1.0 \
+    --max-tokens 8192 \
+    --model-url http://127.0.0.1:19250
 ```
 
-Inference requires a CUDA-capable GPU, CUDA 12.3 and CMake 3.22 or newer for the pinned server build, and Linux bubblewrap with working user/network namespaces. The launcher checks the model checksum, llama.cpp revision, GPU memory reserve, and offline namespace before starting the run.
+---
 
-Use a new run ID for each model run:
+## 5. Dataset Adapters & Zero-Code Telemetry Ingestion
+
+For new telemetry datasets, implement the 4-method `TelemetrySource` protocol or use declarative JSON mappings with `FolderTelemetrySource`:
 
 ```bash
-.venv/bin/python scripts/run_m3_model.py \
-  --profile config/gemma_m3_inference.json \
-  --run-id bank_firstdev_local_01 -- \
-  .venv/bin/python scripts/run_bank_development.py \
-  --case-id bank-20210323T0630-utc8
+# Initialize boilerplate mapping
+e4 setup --output-dir ./my_project
+
+# Print AI prompt to generate custom adapter
+e4 adapter-prompt --schema ./my_project/mapping.sample.json
 ```
 
-The launcher saves its logs and provenance under `artifacts/m3/model_runs/<run-id>/`; the Bank DAG, calls, and execution records are saved under `development/<case-id>/` within that run directory. To bootstrap the Bank library or run the three-stage harness, follow the [three-stage harness runbook](docs/M4_RUNBOOK.md).
+---
 
-## Current results
+## 6. Current Results Reference
 
 The historical E4 rows below are from the **kernel-constrained variant** in commit `7de48fe`. The new typed operator-code variant has one completed seed42 evaluation; its authoring-interface fixes and planned simplification are pending.
 

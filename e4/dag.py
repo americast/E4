@@ -135,6 +135,14 @@ def _resolve_runtime_field(runtime: Any, field_name: str) -> Any:
     return None
 
 
+VALID_STATISTICS = {
+    "mean", "sum", "max", "min", "count", "median", "p90", "p95", "p99", "std", "variance", "rate", "latest", "raw"
+}
+VALID_GROUP_BY = {
+    "entity", "service", "endpoint", "caller", "callee", "component", "table", "metric_name"
+}
+
+
 def verify_dag(
     document: Mapping[str, Any],
     registry: OperatorRegistry,
@@ -142,6 +150,7 @@ def verify_dag(
     max_nodes: int = 40,
     max_depth: int = 12,
     external_inputs: Sequence[str] = ("telemetry", "data"),
+    dataset_schema: Any = None,
 ) -> VerifiedDAG:
     """Validate graph topology, types, acyclicity, and parameter bindings."""
     external_set = set(external_inputs)
@@ -237,6 +246,18 @@ def verify_dag(
             for src in target_list:
                 if src in external_set:
                     # Permitted external input source
+                    if op.input_requirements and port_name in op.input_requirements:
+                        reqs = op.input_requirements[port_name]
+                        if isinstance(reqs, Mapping):
+                            req_table = reqs.get("source_table") or reqs.get("table")
+                            if dataset_schema and req_table:
+                                known_tables = {t.name for t in getattr(dataset_schema, "tables", ())}
+                                if known_tables and req_table not in known_tables:
+                                    raise DAGValidationError(
+                                        "input_requirement_mismatch",
+                                        f"Port '{port_name}' requires table '{req_table}' which is not in dataset schema",
+                                        nid,
+                                    )
                     continue
                 if src not in node_ids:
                     raise DAGValidationError(
@@ -266,6 +287,54 @@ def verify_dag(
                                 nid,
                                 {"expected": req_output_type, "actual": src_op.output_type},
                             )
+                        req_stat = reqs.get("statistic")
+                        if req_stat:
+                            if req_stat not in VALID_STATISTICS:
+                                raise DAGValidationError(
+                                    "input_requirement_mismatch",
+                                    f"Port '{port_name}' requires unsupported statistic '{req_stat}'",
+                                    nid,
+                                    {"statistic": req_stat},
+                                )
+                            src_params = node_docs[src].get("params", {}) if isinstance(node_docs[src], Mapping) else {}
+                            if "statistic" in src_params and src_params["statistic"] != req_stat:
+                                raise DAGValidationError(
+                                    "input_requirement_mismatch",
+                                    f"Port '{port_name}' requires statistic '{req_stat}', but '{src}' provides '{src_params['statistic']}'",
+                                    nid,
+                                )
+                        req_group = reqs.get("group_by")
+                        if req_group and req_group not in VALID_GROUP_BY:
+                            raise DAGValidationError(
+                                "input_requirement_mismatch",
+                                f"Port '{port_name}' requires unsupported group_by '{req_group}'",
+                                nid,
+                                {"group_by": req_group},
+                            )
+                        req_table = reqs.get("source_table") or reqs.get("table")
+                        if req_table:
+                            src_params = node_docs[src].get("params", {}) if isinstance(node_docs[src], Mapping) else {}
+                            src_table = src_params.get("table")
+                            if src_table and src_table != req_table:
+                                raise DAGValidationError(
+                                    "input_requirement_mismatch",
+                                    f"Port '{port_name}' requires source_table '{req_table}', but '{src}' produces '{src_table}'",
+                                    nid,
+                                )
+                            if dataset_schema:
+                                known_tables = {t.name for t in getattr(dataset_schema, "tables", ())}
+                                if known_tables and req_table not in known_tables:
+                                    raise DAGValidationError(
+                                        "input_requirement_mismatch",
+                                        f"Port '{port_name}' requires table '{req_table}' which is not in dataset schema",
+                                        nid,
+                                    )
+                            elif "." in req_table and "/" not in req_table and not req_table.endswith(".csv"):
+                                raise DAGValidationError(
+                                    "input_requirement_mismatch",
+                                    f"Port '{port_name}' requires invalid/unsupported source_table format '{req_table}'",
+                                    nid,
+                                )
                 adj[src].append(nid)
                 in_degree[nid] += 1
 

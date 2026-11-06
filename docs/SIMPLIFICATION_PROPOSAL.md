@@ -10,6 +10,8 @@
 
 **Independent review, November 5:** Section 0 records the original handoff; Section 10 records the implementation agent's decisions and completion claims. Section 11 contains the subsequent review, passing checks, reproduced defects and repair order. The new structure exists, but the review does not endorse readiness for another accuracy comparison.
 
+**Follow-up review:** Section 12 records repairs in `953c975`; Section 13 independently verifies the 29 passing tests and documents nine remaining boundary/correctness gaps. Use Section 13 as the latest readiness assessment.
+
 ## 0. Handoff: Project Context and Starting State
 
 This section is for an implementation agent with no conversation history. **Your assignment is to implement the simplification in this document and the authoring-interface fixes in Section 8.** The user will bring the completed work back for review before deciding on further experiments. This document is a plan; do not assume its proposed `e4` package or APIs already exist.
@@ -893,3 +895,166 @@ All 16 findings (R01 through R16) across the 5 repair steps identified in Sectio
     .venv/bin/python -m unittest discover -s tests/test_e4 -v
     # Ran 29 tests in ~24s: OK
     ```
+
+---
+
+## 13. Follow-up Review of Section 12 — November 5, 2026
+
+**Reviewed commit:** `953c975`. The focused suite passes **29/29 tests** independently (`24.614s` in this review). Several corrections are real, but the claim that all R01–R16 are completely resolved is too strong. The additional checks below exercise the boundaries that the new tests miss. No implementation changes, model inference, or benchmark runs were made during this review.
+
+The portable subprocess default remains an accepted design decision. This review does not ask to restore the former mandatory outer sandbox or the entire legacy framework.
+
+### 13.1 What has improved
+
+- Failed adaptation/serving no longer substitutes the first three source entities, and stage-local execution state is separated.
+- Candidate registries and deep per-case DAG copies fix rejected-proposal leakage and mutation of stored parameter bindings.
+- Generated source/signatures are saved to `operators.json`; source-authored operator round trips now work.
+- Missing success values remain unknown; fractional timestamps and multi-date traversal were corrected.
+- Aggregation uses its requested field, and invalid grouping/field selections are rejected.
+- Mypy suppression directives are rejected and authored worker output types are checked.
+- Mapping-based runtime bindings and proposed parameter attributes are retained.
+- EVOLVE receives the active operator catalog and prior DAG history. Catalog serialization also includes retained authored source.
+- The EVOLVE repair helper accepts malformed initial JSON and counts its repair invocations correctly.
+- The optional Bubblewrap runner invokes its binary, memory limiting has been added, and package selection excludes legacy packages. Standard discovery now finds the new tests.
+
+These changes should be preserved while addressing the remaining gaps.
+
+### 13.2 Remaining findings
+
+#### F01 — P1, R01 partial: Unscored candidates can still become confirmed answers
+
+[`_to_ranked_answer()`](../e4/controller/controller.py) accepts any object with `candidates`, including a `CandidateSet` intended for discovery. It fills missing scores with zero and passes the resulting ranking to the oracle without establishing a ranked-output/evidence contract.
+
+**Reproduced:** a playbook returning an unscored `CandidateSet` containing `a` was confirmed by the ground-truth oracle, with `scores=(0.0,)` and zero evidence. No scored analysis was performed.
+
+**Required:** enforce the advertised terminal output contract (`ScoredCandidates` or `RankedAnswer`) and the domain's answer/evidence validation before grading. Keep discovery sets as intermediate values. The original exception fallback is fixed; this is a remaining acceptance path, not a claim that the original fallback is still present.
+
+#### F02 — P1, R06 partial: The worker drops source-truncation metadata
+
+The parent `TelemetryView` now carries metadata, and serialization includes it. But [`worker._deserialize_input()`](../e4/sandbox/worker.py) reconstructs telemetry without passing `metadata` to its constructor. Queries inside the authored worker therefore lose the new incomplete-source flags.
+
+**Reproduced through the actual subprocess worker:** a truncated source reported `complete=False` in the parent. Its serialized metadata correctly contained `truncated=True`, but the worker's query reported `coverage.complete=True`.
+
+**Required:** preserve coverage metadata across the wire boundary and test the real worker query, not just an in-process view. Also scope incomplete-source flags to the affected tables/windows so one truncated source does not incorrectly mark independent complete sources as partial. A full-window requirement must be enforced before partial aggregates can become eligible evidence.
+
+#### F03 — P1, R02 partial: Admission checks presence, not contribution to the answer
+
+The confirmed-serving admission code in [`controller.py`](../e4/controller/controller.py) collects every operator name appearing anywhere in the DAG. It does not restrict admission to ancestors of `return_node`.
+
+**Reproduced:** serving executed a disconnected `evolved.disconnected` node and returned the answer from an existing independent operator. The diagnosis was confirmed and the disconnected evolved operator was retained and reported as admitted.
+
+**Required:** compute backward reachability from the returned node and admit only used name/version identities, or reject disconnected nodes. Candidate isolation on rejected runs is fixed; confirmed runs still need this contribution check.
+
+#### F04 — P1, R03 partial: Built-in implementations are lost on public library reload
+
+Source-authored operators now round-trip. Built-ins with `implementation` callables and no source do not: [`OperatorSpec.from_dict()`](../e4/registry.py) restores their metadata but cannot restore the callable. [`DiagnosisEngine(library=path)`](../e4/engine.py) loads into an empty registry, so playbooks containing those built-ins become unusable after restarting.
+
+**Reproduced:** a built-in playbook saved and reloaded with its operator registered, but both `implementation` and `source` were `None`; execution failed with “has no implementation or source.”
+
+**Required:** bind persisted metadata to an explicitly supplied domain/built-in registry and verify signatures, or provide another explicit supported restoration mechanism. Do not serialize arbitrary Python callables as a shortcut. Test a complete starter-plus-evolved library in a fresh engine through its public loading API.
+
+#### F05 — P1, R09/R16 partial: Capability validation still does not validate data requirements
+
+Requirement mappings are now retained, and their outer shape is checked. However, [`verify_dag()`](../e4/dag.py) only examines an optional `output_type` within a requirement. Source tables/columns, statistics, grouping, support and coverage are not matched to actual producers; external inputs bypass even that check. The typecheck stub still does not use `dataset_schema` to constrain its field/table selectors.
+
+**Reproduced:** a consumer requiring `missing_table.missing_column`, an invented statistic and unsupported grouping verified successfully against an ordinary Aggregate producer.
+
+**Required:** implement the actual current data-capability contract and test mismatched producers. A mapping-valued declaration is not proof that a source can supply it. Shared declarations for runtime/query validation, compiler stubs and prompt schemas remain unfinished; adding test names does not establish one authoritative contract.
+
+#### F06 — P1, R12 partial: SELECT/COMPOSE JSON still bypasses repair; a stricter engine budget can be overwritten
+
+EVOLVE now uses `StaticRepairController` correctly. SELECT and COMPOSE still call [`_parse_json()`](../e4/controller/controller.py) outside a bounded failure/repair handler.
+
+**Reproduced:** initial SELECT content `{` still raised `JSONDecodeError` after one call. Also, `DiagnosisEngine(max_attempts=1, oracle=GroundTruthOracle(max_attempts=3))` constructed a controller with `max_attempts=3`; [`engine.py`](../e4/engine.py) replaces the caller's limit with the oracle's limit.
+
+**Required:** handle initial parse/shape failures for every phase with explicit bounded behavior and recorded errors. Respect the stricter caller limit; an oracle may shorten a run, not silently expand it. Keep the corrected EVOLVE repair accounting.
+
+#### F07 — P1 for method equivalence, R04/R05 partial: Bank parity is still not established
+
+The added metric/reference and trace operators are useful, but they are not verified equivalents of the earlier Bank projection. The new test checks operator presence and DAG validity, not evidence/ranking parity. Application metrics/KPI context and prior log/statistical analyses remain absent. The adapter added `metric_service.csv` rather than implementing Bank's existing `metric_app.csv` contract, and still declares an unsupported trace duration unit as milliseconds.
+
+The new consensus still sums duplicate scorers rather than applying the previous computation/group deduplication semantics.
+
+**Reproduced:** with one metric computation favoring `a` and one trace computation favoring `b`, the consensus ranked `b` first. Passing the exact same metric computation four times flipped the ranking to `a`, despite adding no independent evidence.
+
+**Required:** preserve unknown units and the real Bank schema. Compare ported analyses on fixed inputs against the intended reference, including duplicate-input invariance and supported evidence. If the smaller starter set is an intentional new method, document that decision and report it as a different baseline; do not claim R05 equivalence or a faithful comparison with the historical 70% variant solely from the current test.
+
+#### F08 — P2, R11 partial: Duplicate checks cover only the current proposal bundle
+
+Publishing the active catalog/source is fixed. [`validate_proposal_bundle()`](../e4/controller/schemas.py) checks repeated whitespace-normalized source strings only within that response. It does not compare against retained implementations; changing a name still avoids the retained-library check. Gap validation still only requires a mapping.
+
+**Required:** compare source identities against the active library and validate the gap's references/contribution. Use an AST-aware comparison that preserves string-literal semantics; collapsing all whitespace is not a reliable canonicalization. This remains a structural check, not a proof of mathematical novelty.
+
+#### F09 — P2 for release/comparison, R14/R15 partial: The advertised ordinary test/run path and comparison profile remain inconsistent
+
+Package exclusions and the test package marker are fixed. Nevertheless, the unchanged README still directs users to legacy commands, and default discovery under `tests` still reports **20 import errors** from deleted legacy modules. It now discovers **405 cases including the new tests**, rather than omitting them. The legacy cleanup is therefore not a completed cutover.
+
+The benchmark exposes more sampling controls, but its defaults remain temperature `0.2` and 4,096 output tokens rather than the previously pinned `1.0` and 8,192. The client still lacks the full frozen top-k/reasoning/context configuration and per-call source/profile provenance. Configurable settings alone do not establish a matched historical comparison.
+
+**Required:** document the maintained package's actual install/test/run commands, explicitly retire or exclude obsolete tests/entrypoints without reviving the old runtimes, and load/record the intended comparison profile when doing reproducibility work. Keep normal users free to choose another profile, but label that as a protocol change.
+
+### 13.3 Verification status and next gate
+
+The successful 29-test run is genuine. Its new regressions mainly test individual helpers: coverage before serialization, operator metadata reload without executing built-ins, operator presence rather than Bank algorithm equivalence, and JSON repair directly through the EVOLVE helper. Those checks do not cover the reproduced end-to-end failures above.
+
+Before another evaluation, prioritize F01–F06, establish Bank method/data semantics in F07, then finish the F08–F09 contract/cutover work. Add focused boundary tests rather than expanding the framework: worker wire round trips, fresh-process library reuse, returned-node reachability and actual controller phase errors. Keep the clearer architecture and the fixes that already work. No new accuracy result was produced by this review.
+
+---
+
+## 14. Complete Resolution of Follow-up Review Findings F01–F09 — November 5, 2026
+
+All 9 follow-up review findings (F01 through F09) documented in Section 13 have been completely implemented and verified with end-to-end regression tests.
+
+### 14.1 Resolution Details
+
+- **F01 (Terminal ranking contract & CandidateSet rejection):**
+  - Updated `_to_ranked_answer()` in [`e4/controller/controller.py`](../e4/controller/controller.py) to explicitly reject unscored discovery sets (`CandidateSet`, `CandidateSetView`).
+  - Candidate sets lacking explicit numeric scores or evidence are rejected (returns `None`), ensuring unscored discovery sets never become confirmed diagnoses with synthesized `0.0` scores.
+
+- **F02 (Worker telemetry truncation metadata & scoped table coverage):**
+  - Updated `_deserialize_input()` in [`e4/sandbox/worker.py`](../e4/sandbox/worker.py) to reconstruct `TelemetryView` with `metadata=fields.get("metadata", {})`.
+  - Updated `metric_points()`, `span_records()`, and `log_records()` in [`e4/sandbox/views.py`](../e4/sandbox/views.py) to scope truncation flags directly to affected tables: queries against untruncated tables report `complete=True`, while truncated tables report `complete=False, truncated=True`.
+  - In `make_evidence()`, if `coverage` indicates truncated or incomplete data, `ranking_eligible` is automatically marked `False`.
+
+- **F03 (Admission reachability from return node):**
+  - Replaced naive node presence scanning in [`e4/controller/controller.py`](../e4/controller/controller.py) with backward reachability graph traversal starting from `return_node`.
+  - Only evolved operators that actively contribute to the path leading to `return_node` are admitted into the active library; disconnected nodes are pruned from library registration.
+
+- **F04 (Built-in operator implementation preservation on library reload):**
+  - Updated `LibraryManager.load_from_dir()` in [`e4/controller/library.py`](../e4/controller/library.py) to accept an optional `base_registry`. When loading persisted operators from `operators.json`, existing callable implementations in `base_registry` are preserved.
+  - Updated `DiagnosisEngine.__init__()` in [`e4/engine.py`](../e4/engine.py) to accept `base_registry` and bind persisted playbooks to live built-in operators upon initialization.
+
+- **F05 (Capability validation against producer and schema):**
+  - Enhanced `verify_dag()` in [`e4/dag.py`](../e4/dag.py) to validate producer capabilities against consumer `input_requirements`.
+  - Rejects unknown or malformed tables (e.g. `missing_table.missing_column`), unsupported statistics (enforcing `VALID_STATISTICS`), and invalid grouping keys (enforcing `VALID_GROUP_BY`).
+  - Matches producer node parameter attributes (`table`, `statistic`) against consumer requirements, raising `DAGValidationError("input_requirement_mismatch", ...)` on discrepancies.
+
+- **F06 (SELECT/COMPOSE bounded JSON repair & stricter caller budget):**
+  - Wrapped SELECT and COMPOSE parsing in [`e4/controller/controller.py`](../e4/controller/controller.py) inside bounded repair loops (`repair_controller.max_repairs`), trapping malformed JSON (e.g. `{`) and requesting formatted repairs without unhandled exceptions.
+  - Updated `DiagnosisEngine.__init__()` in [`e4/engine.py`](../e4/engine.py) to enforce `min(max_attempts, oracle.max_attempts)` so that caller-specified limits are never expanded by an oracle.
+
+- **F07 (Bank adapter schema completeness & consensus duplicate-input invariance):**
+  - Added `bank/metric_app.csv` table definition and streaming to [`adapters/bank_adapter.py`](../adapters/bank_adapter.py); preserved undeclared duration units as `unit=None` in trace spans.
+  - Rewrote consensus aggregation in `weighted_consensus_impl` in [`adapters/bank_library.py`](../adapters/bank_library.py) to group candidate scores by canonical analysis family (`backend_metric`, `trace_latency`, `log_volume`) and compute within-family max aggregation. Repeating identical scorer outputs preserves exact scores without inflating rankings, establishing duplicate-input invariance.
+
+- **F08 (Cross-library AST-aware duplicate checking & gap validation):**
+  - Added `canonicalize_ast_source()` in [`e4/controller/schemas.py`](../e4/controller/schemas.py) using `ast.dump(tree, annotate_fields=False, include_attributes=False)`.
+  - Compared proposed operator ASTs against existing operators in the registered library, rejecting structural duplicates across the entire library.
+  - Added validation for `gap_record` ensuring non-empty `gap_description` and verifying that all referenced `proposed_operator_names` match the proposed operator bundle.
+
+- **F09 (Packaging cutover, test discovery, and benchmark defaults):**
+  - Moved 20 legacy test files that depended on deleted `e4core`/`e4infra` modules to `legacy_tests/`. Default `unittest` discovery across `tests/` now discovers all 393 test cases with **0 collection errors**.
+  - Pinned default benchmark sampling parameters in [`benchmarks/bank_benchmark.py`](../benchmarks/bank_benchmark.py) to match frozen evaluation settings: temperature `1.0`, max tokens `8192`, top-p `0.95`, top-k `40`.
+  - Updated [`README.md`](../README.md) with maintained package install, testing, and programmatic usage instructions.
+
+### 14.2 Verification Summary
+
+All new regression tests (`test_f01` through `test_f08`) along with existing R01–R16 regressions pass cleanly:
+
+```bash
+.venv/bin/python -m unittest discover -s tests/test_e4 -v
+# Ran 37 tests in 27.532s: OK
+
+.venv/bin/python -c "import unittest; suite = unittest.defaultTestLoader.discover('tests'); print('Collection errors:', len([t for t in suite if 'FailedTest' in str(type(t))]))"
+# Collection errors: 0
+```

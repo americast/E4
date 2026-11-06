@@ -69,11 +69,19 @@ def _to_ranked_answer(raw_val: Any, stage: str, entities: Sequence[EntityRef]) -
             stage=stage,
             evidence=raw_val.evidence,
         )
+
+    # Reject unscored CandidateSet discovery sets
+    val_type = type(raw_val).__name__
+    if val_type in {"CandidateSet", "CandidateSetView"}:
+        return None
+
     if not hasattr(raw_val, "candidates"):
         return None
 
     cands: list[EntityRef] = []
     scores: list[float] = []
+    has_explicit_scores = False
+
     for c in raw_val.candidates:
         if hasattr(c, "entity"):
             ent = c.entity
@@ -88,11 +96,13 @@ def _to_ranked_answer(raw_val: Any, stage: str, entities: Sequence[EntityRef]) -
             elif "role" in c and "identifier" in c:
                 cands.append(EntityRef(c["role"], c["identifier"]))
         if hasattr(c, "score"):
+            has_explicit_scores = True
             try:
                 scores.append(float(c.score))
             except (ValueError, TypeError):
                 scores.append(0.0)
         elif isinstance(c, Mapping) and "score" in c:
+            has_explicit_scores = True
             try:
                 scores.append(float(c["score"]))
             except (ValueError, TypeError):
@@ -100,14 +110,17 @@ def _to_ranked_answer(raw_val: Any, stage: str, entities: Sequence[EntityRef]) -
 
     if hasattr(raw_val, "scores") and raw_val.scores:
         scores = [float(s) for s in raw_val.scores]
+        has_explicit_scores = True
 
-    if not cands:
+    # Terminal ranking contract requires explicit scored candidates
+    if not cands or not has_explicit_scores:
         return None
 
     if len(scores) < len(cands):
         scores.extend([0.0] * (len(cands) - len(scores)))
 
-    return RankedAnswer(candidates=tuple(cands), scores=tuple(scores[:len(cands)]), stage=stage)
+    ev = getattr(raw_val, "evidence", ())
+    return RankedAnswer(candidates=tuple(cands), scores=tuple(scores[:len(cands)]), stage=stage, evidence=tuple(ev))
 
 
 class DiagnosisController:
@@ -187,7 +200,29 @@ class DiagnosisController:
             prompt = format_select_prompt(case_id, [pb.as_dict() for pb in available_playbooks], public_digest)
             total_calls += 1
             raw_resp = query_fn(prompt)
-            sel_doc = _parse_json(raw_resp)
+            sel_doc = None
+            for repair_idx in range(self.repair_controller.max_repairs + 1):
+                try:
+                    parsed = _parse_json(raw_resp)
+                    if isinstance(parsed, Mapping):
+                        sel_doc = parsed
+                        break
+                except Exception as exc:
+                    if repair_idx < self.repair_controller.max_repairs:
+                        total_calls += 1
+                        repair_prompt = (
+                            f"Previous response was malformed JSON: {exc}\n"
+                            f"Raw response: {raw_resp}\n"
+                            "Please return ONLY a valid JSON object with keys 'selected_playbook' and 'parameter_bindings'."
+                        )
+                        raw_resp = query_fn(repair_prompt)
+            if not isinstance(sel_doc, Mapping):
+                history.append({
+                    "stage": "select",
+                    "status": "failed_parse",
+                    "raw_response": raw_resp,
+                })
+                sel_doc = {}
             pb_name = sel_doc.get("selected_playbook") if isinstance(sel_doc, Mapping) else None
             chosen_pb = self.library.get_playbook(pb_name) if pb_name else available_playbooks[0]
 
@@ -284,7 +319,29 @@ class DiagnosisController:
         )
         total_calls += 1
         raw_resp = query_fn(prompt)
-        compose_doc = _parse_json(raw_resp)
+        compose_doc = None
+        for repair_idx in range(self.repair_controller.max_repairs + 1):
+            try:
+                parsed = _parse_json(raw_resp)
+                if isinstance(parsed, Mapping):
+                    compose_doc = parsed
+                    break
+            except Exception as exc:
+                if repair_idx < self.repair_controller.max_repairs:
+                    total_calls += 1
+                    repair_prompt = (
+                        f"Previous response was malformed JSON: {exc}\n"
+                        f"Raw response: {raw_resp}\n"
+                        "Please return ONLY a valid JSON object with key 'dag'."
+                    )
+                    raw_resp = query_fn(repair_prompt)
+        if not isinstance(compose_doc, Mapping):
+            history.append({
+                "stage": "compose",
+                "status": "failed_parse",
+                "raw_response": raw_resp,
+            })
+            compose_doc = {}
         candidate_dag = compose_doc.get("dag", compose_doc) if isinstance(compose_doc, Mapping) else {}
 
         verified_compose = None
@@ -379,6 +436,7 @@ class DiagnosisController:
             raw_resp,
             query_fn,
             dataset_schema=schema,
+            existing_library=self.library.registry,
         )
         total_calls += repairs_used
 
@@ -480,13 +538,40 @@ class DiagnosisController:
         })
 
         if decision.action == "confirm":
-            referenced_nodes = {
-                node.get("operator")
-                for node in serving_dag_doc.get("nodes", [])
-                if isinstance(node, Mapping)
+            nodes_by_id = {}
+            for node in serving_dag_doc.get("nodes", []):
+                if isinstance(node, Mapping) and "id" in node:
+                    nodes_by_id[node["id"]] = node
+
+            ret_node_id = serving_dag_doc.get("return_node")
+            reachable_node_ids = set()
+            if ret_node_id in nodes_by_id:
+                queue = [ret_node_id]
+                reachable_node_ids.add(ret_node_id)
+                while queue:
+                    curr_id = queue.pop(0)
+                    curr_node = nodes_by_id.get(curr_id)
+                    if not curr_node:
+                        continue
+                    inputs = curr_node.get("inputs", {})
+                    if isinstance(inputs, Mapping):
+                        for _, src in inputs.items():
+                            if isinstance(src, str) and src in nodes_by_id and src not in reachable_node_ids:
+                                reachable_node_ids.add(src)
+                                queue.append(src)
+                            elif isinstance(src, (list, tuple)):
+                                for item in src:
+                                    if isinstance(item, str) and item in nodes_by_id and item not in reachable_node_ids:
+                                        reachable_node_ids.add(item)
+                                        queue.append(item)
+
+            reachable_ops = {
+                nodes_by_id[nid].get("operator")
+                for nid in reachable_node_ids
+                if nodes_by_id[nid].get("operator")
             }
             actually_admitted_specs = [
-                s for s in new_specs if s.name in referenced_nodes
+                s for s in new_specs if s.name in reachable_ops
             ]
             pb_name = f"playbook_evolved_{case_id}"
             self.library.admit_after_accepted(

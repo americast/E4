@@ -77,15 +77,38 @@ class LibraryManager:
         self._admitted_playbooks.append(pb)
 
     @classmethod
-    def load_from_dir(cls, directory: Path | str, registry: OperatorRegistry | None = None) -> LibraryManager:
+    def load_from_dir(
+        cls,
+        directory: Path | str,
+        registry: OperatorRegistry | None = None,
+        base_registry: OperatorRegistry | None = None,
+    ) -> LibraryManager:
         p = Path(directory)
-        mgr = cls(registry=registry)
+        base = registry or base_registry
+        mgr = cls(registry=base.clone() if base else None)
         op_file = p / "operators.json"
         if op_file.is_file():
             raw_ops = json.loads(op_file.read_text(encoding="utf-8"))
             for op_data in raw_ops:
                 spec = OperatorSpec.from_dict(op_data)
-                if not mgr.registry.has(spec.name, spec.version):
+                if mgr.registry.has(spec.name, spec.version):
+                    existing = mgr.registry.require(spec.name, spec.version)
+                    if len(existing.inputs) == len(spec.inputs) and existing.output_type == spec.output_type:
+                        if existing.implementation and not spec.implementation:
+                            spec = OperatorSpec(
+                                name=spec.name,
+                                version=spec.version,
+                                inputs=spec.inputs,
+                                output_type=spec.output_type,
+                                parameters=spec.parameters,
+                                family=spec.family,
+                                description=spec.description,
+                                input_requirements=spec.input_requirements,
+                                implementation=existing.implementation,
+                                source=spec.source or existing.source,
+                            )
+                            mgr.registry._operators[(spec.name, spec.version)] = spec
+                else:
                     mgr.registry.register(spec)
 
         pb_file = p / "playbooks.json"

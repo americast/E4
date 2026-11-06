@@ -356,7 +356,11 @@ def metric_points(
             )
         row_idx += 1
 
-    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    trunc_tables = getattr(telemetry, "truncated_tables", None)
+    if trunc_tables is not None and len(trunc_tables) > 0:
+        table_truncated = source_table in trunc_tables
+    else:
+        table_truncated = bool(getattr(telemetry, "truncated", False))
     truncated = (total > (offset + limit)) or table_truncated
     next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
@@ -426,7 +430,11 @@ def span_records(
                 )
             )
 
-    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    trunc_tables = getattr(telemetry, "truncated_tables", None)
+    if trunc_tables is not None and len(trunc_tables) > 0:
+        table_truncated = source_table in trunc_tables
+    else:
+        table_truncated = bool(getattr(telemetry, "truncated", False))
     truncated = (total > (offset + limit)) or table_truncated
     next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
@@ -487,7 +495,11 @@ def log_records(
                 )
             )
 
-    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    trunc_tables = getattr(telemetry, "truncated_tables", None)
+    if trunc_tables is not None and len(trunc_tables) > 0:
+        table_truncated = source_table in trunc_tables
+    else:
+        table_truncated = bool(getattr(telemetry, "truncated", False))
     truncated = (total > (offset + limit)) or table_truncated
     next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
@@ -652,7 +664,11 @@ def aggregate_records(
             )
         )
 
-    table_truncated = (source_table in getattr(telemetry, "truncated_tables", set())) or getattr(telemetry, "truncated", False)
+    trunc_tables = getattr(telemetry, "truncated_tables", None)
+    if trunc_tables is not None and len(trunc_tables) > 0:
+        table_truncated = source_table in trunc_tables
+    else:
+        table_truncated = bool(getattr(telemetry, "truncated", False))
     truncated = (total > (offset + limit)) or table_truncated
     next_offset = (offset + limit) if (total > (offset + limit)) else None
     coverage = CoverageView(
@@ -788,7 +804,10 @@ def make_evidence(
     support: int,
     ranking_eligible: bool = True,
     details: Mapping[str, Any] | None = None,
+    coverage: CoverageView | None = None,
 ) -> Evidence:
+    if coverage is not None and (coverage.truncated or not coverage.complete):
+        ranking_eligible = False
     w = (
         window
         if isinstance(window, Window)
