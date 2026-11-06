@@ -136,11 +136,127 @@ def _resolve_runtime_field(runtime: Any, field_name: str) -> Any:
 
 
 VALID_STATISTICS = {
-    "mean", "sum", "max", "min", "count", "median", "p90", "p95", "p99", "std", "variance", "rate", "latest", "raw"
+    "mean", "sum", "max", "min", "count", "median", "quantile", "p90", "p95", "p99",
+    "std", "variance", "rate", "latest", "raw", "relative_shift", "relative_latency_shift", "per_trace_mean", "ratio"
 }
 VALID_GROUP_BY = {
     "entity", "service", "endpoint", "caller", "callee", "component", "table", "metric_name"
 }
+
+
+def _validate_port_requirements(
+    op: OperatorSpec,
+    port_name: str,
+    src: str,
+    nid: str,
+    node_docs: Mapping[str, Any],
+    dataset_schema: Any,
+    known_tables_map: dict[str, set[str]],
+    valid_group_dimensions: set[str],
+    is_external: bool,
+) -> None:
+    if not (op.input_requirements and port_name in op.input_requirements):
+        return
+    reqs = op.input_requirements[port_name]
+    if not isinstance(reqs, Mapping):
+        return
+
+    # Extract requested tables and columns
+    req_tables: dict[str, list[str]] = {}
+    if "source_columns" in reqs and isinstance(reqs["source_columns"], Mapping):
+        for tbl, cols in reqs["source_columns"].items():
+            if isinstance(cols, (list, tuple)):
+                req_tables[str(tbl)] = [str(c) for c in cols]
+            else:
+                req_tables[str(tbl)] = []
+    sing_table = reqs.get("source_table") or reqs.get("table")
+    if sing_table and isinstance(sing_table, str):
+        if sing_table not in req_tables:
+            req_tables[sing_table] = []
+
+    # Validate requested tables and columns
+    for tbl, cols in req_tables.items():
+        if dataset_schema and known_tables_map:
+            if tbl not in known_tables_map:
+                raise DAGValidationError(
+                    "input_requirement_mismatch",
+                    f"Port '{port_name}' requires table '{tbl}' which is not in dataset schema",
+                    nid,
+                    {"table": tbl},
+                )
+            valid_cols = known_tables_map[tbl]
+            for c in cols:
+                if valid_cols and c not in valid_cols:
+                    raise DAGValidationError(
+                        "input_requirement_mismatch",
+                        f"Port '{port_name}' requires column '{c}' which is not in table '{tbl}' of dataset schema",
+                        nid,
+                        {"table": tbl, "column": c},
+                    )
+        else:
+            if "." in tbl and "/" not in tbl and not tbl.endswith(".csv"):
+                raise DAGValidationError(
+                    "input_requirement_mismatch",
+                    f"Port '{port_name}' requires invalid/unsupported source_table format '{tbl}'",
+                    nid,
+                    {"table": tbl},
+                )
+
+    # Extract and validate statistics
+    req_stats: list[str] = []
+    if "statistics" in reqs and isinstance(reqs["statistics"], (list, tuple)):
+        req_stats.extend(str(s) for s in reqs["statistics"])
+    if "statistic" in reqs and isinstance(reqs["statistic"], str):
+        if reqs["statistic"] not in req_stats:
+            req_stats.append(reqs["statistic"])
+
+    for st in req_stats:
+        if st not in VALID_STATISTICS:
+            raise DAGValidationError(
+                "input_requirement_mismatch",
+                f"Port '{port_name}' requires unsupported/invented statistic '{st}'",
+                nid,
+                {"statistic": st},
+            )
+
+    # Extract and validate grouping dimensions
+    raw_group = reqs.get("group_by")
+    group_dims: list[str] = []
+    if isinstance(raw_group, (list, tuple)):
+        group_dims = [str(g) for g in raw_group]
+    elif isinstance(raw_group, str):
+        group_dims = [raw_group]
+
+    for dim in group_dims:
+        if dim not in valid_group_dimensions:
+            raise DAGValidationError(
+                "input_requirement_mismatch",
+                f"Port '{port_name}' requires unsupported grouping dimension '{dim}'",
+                nid,
+                {"group_by": dim},
+            )
+
+    # For internal producer nodes, validate producer capabilities against requirements
+    if not is_external:
+        src_params = node_docs[src].get("params", {}) if isinstance(node_docs[src], Mapping) else {}
+        src_table = src_params.get("table") or src_params.get("source_table")
+        if src_table and req_tables:
+            if src_table not in req_tables:
+                raise DAGValidationError(
+                    "input_requirement_mismatch",
+                    f"Port '{port_name}' requires table in {list(req_tables.keys())}, but '{src}' produces '{src_table}'",
+                    nid,
+                    {"expected_tables": list(req_tables.keys()), "actual_table": src_table},
+                )
+        src_stat = src_params.get("statistic")
+        if src_stat and req_stats:
+            if src_stat not in req_stats:
+                raise DAGValidationError(
+                    "input_requirement_mismatch",
+                    f"Port '{port_name}' requires statistic in {req_stats}, but '{src}' provides '{src_stat}'",
+                    nid,
+                    {"expected_statistics": req_stats, "actual_statistic": src_stat},
+                )
 
 
 def verify_dag(
@@ -156,6 +272,16 @@ def verify_dag(
     external_set = set(external_inputs)
     if not isinstance(document, Mapping):
         raise DAGValidationError("document_must_be_mapping", "DAG document must be a JSON mapping")
+
+    known_tables_map: dict[str, set[str]] = {}
+    valid_group_dimensions = set(VALID_GROUP_BY)
+    if dataset_schema:
+        for t in getattr(dataset_schema, "tables", ()):
+            tname = getattr(t, "name", "")
+            cols = {getattr(c, "name", "") for c in getattr(t, "columns", ())}
+            known_tables_map[tname] = cols
+            for r in getattr(t, "entity_roles", ()):
+                valid_group_dimensions.add(r)
 
     raw_nodes = document.get("nodes")
     return_node = document.get("return_node")
@@ -246,18 +372,17 @@ def verify_dag(
             for src in target_list:
                 if src in external_set:
                     # Permitted external input source
-                    if op.input_requirements and port_name in op.input_requirements:
-                        reqs = op.input_requirements[port_name]
-                        if isinstance(reqs, Mapping):
-                            req_table = reqs.get("source_table") or reqs.get("table")
-                            if dataset_schema and req_table:
-                                known_tables = {t.name for t in getattr(dataset_schema, "tables", ())}
-                                if known_tables and req_table not in known_tables:
-                                    raise DAGValidationError(
-                                        "input_requirement_mismatch",
-                                        f"Port '{port_name}' requires table '{req_table}' which is not in dataset schema",
-                                        nid,
-                                    )
+                    _validate_port_requirements(
+                        op=op,
+                        port_name=port_name,
+                        src=src,
+                        nid=nid,
+                        node_docs=node_docs,
+                        dataset_schema=dataset_schema,
+                        known_tables_map=known_tables_map,
+                        valid_group_dimensions=valid_group_dimensions,
+                        is_external=True,
+                    )
                     continue
                 if src not in node_ids:
                     raise DAGValidationError(
@@ -275,7 +400,7 @@ def verify_dag(
                         nid,
                         {"expected": port_spec.value_type, "actual": src_op.output_type},
                     )
-                # Check input requirements satisfiability
+                # Check output requirements satisfiability
                 if op.input_requirements and port_name in op.input_requirements:
                     reqs = op.input_requirements[port_name]
                     if isinstance(reqs, Mapping):
@@ -287,54 +412,17 @@ def verify_dag(
                                 nid,
                                 {"expected": req_output_type, "actual": src_op.output_type},
                             )
-                        req_stat = reqs.get("statistic")
-                        if req_stat:
-                            if req_stat not in VALID_STATISTICS:
-                                raise DAGValidationError(
-                                    "input_requirement_mismatch",
-                                    f"Port '{port_name}' requires unsupported statistic '{req_stat}'",
-                                    nid,
-                                    {"statistic": req_stat},
-                                )
-                            src_params = node_docs[src].get("params", {}) if isinstance(node_docs[src], Mapping) else {}
-                            if "statistic" in src_params and src_params["statistic"] != req_stat:
-                                raise DAGValidationError(
-                                    "input_requirement_mismatch",
-                                    f"Port '{port_name}' requires statistic '{req_stat}', but '{src}' provides '{src_params['statistic']}'",
-                                    nid,
-                                )
-                        req_group = reqs.get("group_by")
-                        if req_group and req_group not in VALID_GROUP_BY:
-                            raise DAGValidationError(
-                                "input_requirement_mismatch",
-                                f"Port '{port_name}' requires unsupported group_by '{req_group}'",
-                                nid,
-                                {"group_by": req_group},
-                            )
-                        req_table = reqs.get("source_table") or reqs.get("table")
-                        if req_table:
-                            src_params = node_docs[src].get("params", {}) if isinstance(node_docs[src], Mapping) else {}
-                            src_table = src_params.get("table")
-                            if src_table and src_table != req_table:
-                                raise DAGValidationError(
-                                    "input_requirement_mismatch",
-                                    f"Port '{port_name}' requires source_table '{req_table}', but '{src}' produces '{src_table}'",
-                                    nid,
-                                )
-                            if dataset_schema:
-                                known_tables = {t.name for t in getattr(dataset_schema, "tables", ())}
-                                if known_tables and req_table not in known_tables:
-                                    raise DAGValidationError(
-                                        "input_requirement_mismatch",
-                                        f"Port '{port_name}' requires table '{req_table}' which is not in dataset schema",
-                                        nid,
-                                    )
-                            elif "." in req_table and "/" not in req_table and not req_table.endswith(".csv"):
-                                raise DAGValidationError(
-                                    "input_requirement_mismatch",
-                                    f"Port '{port_name}' requires invalid/unsupported source_table format '{req_table}'",
-                                    nid,
-                                )
+                _validate_port_requirements(
+                    op=op,
+                    port_name=port_name,
+                    src=src,
+                    nid=nid,
+                    node_docs=node_docs,
+                    dataset_schema=dataset_schema,
+                    known_tables_map=known_tables_map,
+                    valid_group_dimensions=valid_group_dimensions,
+                    is_external=False,
+                )
                 adj[src].append(nid)
                 in_degree[nid] += 1
 

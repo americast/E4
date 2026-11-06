@@ -20,6 +20,16 @@ from e4.engine import DiagnosisEngine
 from e4.oracle import GroundTruthOracle
 
 
+def load_pinned_inference_config() -> dict[str, Any]:
+    cfg_path = Path("config/gemma_m3_inference.json")
+    if cfg_path.is_file():
+        try:
+            return json.loads(cfg_path.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {"temperature": 1.0, "top_p": 0.95, "top_k": 64, "max_generation_tokens": 8192}
+
+
 class LocalLlamaClient:
     """HTTP client querying local llama-server chat endpoint with profile tracking."""
 
@@ -30,7 +40,7 @@ class LocalLlamaClient:
         seed: int = 42,
         temperature: float = 1.0,
         top_p: float = 0.95,
-        top_k: int = 40,
+        top_k: int = 64,
         max_tokens: int = 8192,
         timeout: float = 300.0,
     ):
@@ -199,7 +209,7 @@ def main() -> None:
     parser.add_argument("--seed", type=int, default=42, help="Random seed for model sampling")
     parser.add_argument("--temperature", type=float, default=1.0, help="Sampling temperature")
     parser.add_argument("--top-p", type=float, default=0.95, help="Top-p nucleus sampling")
-    parser.add_argument("--top-k", type=int, default=40, help="Top-k sampling")
+    parser.add_argument("--top-k", type=int, default=64, help="Top-k sampling (frozen: 64)")
     parser.add_argument("--max-tokens", type=int, default=8192, help="Maximum generated tokens")
     parser.add_argument("--limit", type=int, default=None, help="Limit number of cases to evaluate")
     args = parser.parse_args()

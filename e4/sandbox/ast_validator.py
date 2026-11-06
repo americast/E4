@@ -40,6 +40,7 @@ ANNOTATION_ONLY_NAMES = frozenset({
     "ScoredCandidateView", "ScoredCandidatesView", "MetricField", "SpanField",
     "LogField", "SourceField", "Statistic", "RecordType", "SourceTable",
     "Scalar", "Sequence", "Mapping", "Literal", "Optional", "Union",
+    "ScoredCandidates", "Aggregate", "CandidateSet", "Evidence", "Candidate",
 })
 
 

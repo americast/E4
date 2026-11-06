@@ -6,7 +6,7 @@ import copy
 import json
 from typing import Any, Callable, Mapping, Sequence
 
-from ..dag import DAGValidationError, SerialExecutor, verify_dag
+from ..dag import DAGValidationError, SerialExecutor, VerifiedDAG, verify_dag
 from ..data.adapter import TelemetrySource
 from ..oracle import AcceptanceOracle, BudgetStopPolicy, Decision, DiagnosticContext
 from ..prompts.templates import (
@@ -237,7 +237,7 @@ class DiagnosisController:
                 verified = None
                 answer = None
                 try:
-                    verified = verify_dag(dag_doc, self.library.registry)
+                    verified = verify_dag(dag_doc, self.library.registry, dataset_schema=schema)
                     executor = SerialExecutor(self.library.registry)
                     exec_res = executor.execute_verified(
                         verified,
@@ -348,7 +348,7 @@ class DiagnosisController:
         answer_compose = None
         try:
             candidate_dag_copy = _deep_copy_doc(candidate_dag)
-            verified_compose = verify_dag(candidate_dag_copy, self.library.registry)
+            verified_compose = verify_dag(candidate_dag_copy, self.library.registry, dataset_schema=schema)
             executor = SerialExecutor(self.library.registry)
             exec_res = executor.execute_verified(
                 verified_compose,
@@ -498,7 +498,7 @@ class DiagnosisController:
             serving_dag_doc = serve_doc.get("dag", serve_doc) if isinstance(serve_doc, Mapping) else {}
 
             serving_dag_copy = _deep_copy_doc(serving_dag_doc)
-            verified_serve = verify_dag(serving_dag_copy, candidate_registry)
+            verified_serve = verify_dag(serving_dag_copy, candidate_registry, dataset_schema=schema)
             executor = SerialExecutor(candidate_registry)
             exec_res = executor.execute_verified(
                 verified_serve,
@@ -573,10 +573,23 @@ class DiagnosisController:
             actually_admitted_specs = [
                 s for s in new_specs if s.name in reachable_ops
             ]
+            pruned_nodes = [
+                n for n in verified_serve.nodes if n.node_id in reachable_node_ids
+            ]
+            pruned_dag = VerifiedDAG(
+                nodes=tuple(pruned_nodes),
+                return_node=verified_serve.return_node,
+                max_depth=verified_serve.max_depth,
+                measured_node_count=len(pruned_nodes),
+            )
             pb_name = f"playbook_evolved_{case_id}"
             self.library.admit_after_accepted(
-                pb_name, "Admitted from Stage 3", verified_serve, actually_admitted_specs
+                pb_name, "Admitted from Stage 3", pruned_dag, actually_admitted_specs
             )
+            # Validate that the admitted playbook DAG verifies cleanly against the resulting library registry
+            admitted_pb_obj = self.library.get_playbook(pb_name)
+            if admitted_pb_obj is not None:
+                verify_dag(admitted_pb_obj.dag, self.library.registry, dataset_schema=schema)
             admitted_pb = pb_name
             admitted_ops = [s.qualified_name for s in actually_admitted_specs]
             status = "confirmed"

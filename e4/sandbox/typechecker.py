@@ -243,7 +243,7 @@ def _generate_stub(
         "@overload\ndef top_k(rows: Sequence[LogRecordView], field: str, k: int, descending: bool = ...) -> Sequence[LogRecordView]: ...",
         "def make_window(name: Literal['reference', 'alert'], start_ms_utc: int, end_ms_utc: int) -> WindowView: ...",
         "def make_entity_ref(role: str, identifier: str) -> EntityRefView: ...",
-        "def make_evidence(source: str, window: WindowView, statistic: str, value: float | str | bool | None, contributing_entities: Sequence[EntityRefView], support: int, ranking_eligible: bool = ..., details: JSONMapping | None = ...) -> EvidenceView: ...",
+        "def make_evidence(source: str, window: WindowView, statistic: str, value: float | str | bool | None, contributing_entities: Sequence[EntityRefView], support: int, ranking_eligible: bool = ..., details: JSONMapping | None = ..., coverage: CoverageView | None = ...) -> EvidenceView: ...",
         "def make_candidate(entity: EntityRefView, rationale: str = ...) -> CandidateView: ...",
         "def make_candidate_set(candidates: Sequence[CandidateView], source: str) -> CandidateSetView: ...",
         "def make_aggregate_row(entity: EntityRefView, metric_key: str, window: WindowView, statistic: str, value: float | None, support: int, source_tables: Sequence[str] = ..., contributing_entities: Sequence[EntityRefView] = ..., details: JSONMapping | None = ...) -> AggregateRowView: ...",

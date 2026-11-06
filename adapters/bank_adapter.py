@@ -88,11 +88,13 @@ class BankAdapter(BaseDatasetAdapter):
                     record_type="metric",
                     columns=(
                         ColumnSchema("timestamp", "timestamp", unit="s"),
-                        ColumnSchema("cmdb_id", "string", description="Component/Service ID"),
-                        ColumnSchema("kpi_name", "string", description="Metric KPI name"),
-                        ColumnSchema("value", "number", description="Measurement value"),
+                        ColumnSchema("tc", "string", description="Application transaction code / test case"),
+                        ColumnSchema("rr", "number", unit="percent", description="Response rate"),
+                        ColumnSchema("sr", "number", unit="percent", description="Success rate"),
+                        ColumnSchema("cnt", "number", unit="count", description="Request count"),
+                        ColumnSchema("mrt", "number", unit="ms", description="Mean response time"),
                     ),
-                    entity_roles=("service", "application"),
+                    entity_roles=("app_kpi",),
                 ),
                 TableSchema(
                     name="bank/trace_span.csv",
@@ -133,7 +135,7 @@ class BankAdapter(BaseDatasetAdapter):
     def extract_suspect_entities(self) -> list[EntityRef]:
         entities: set[str] = set()
         for ddir in self.data_dirs:
-            for sub, file_name in [("metric", "metric_container.csv"), ("metric", "metric_service.csv"), ("metric", "metric_app.csv"), ("trace", "trace_span.csv")]:
+            for sub, file_name in [("metric", "metric_container.csv"), ("metric", "metric_service.csv"), ("trace", "trace_span.csv")]:
                 metric_file = ddir / sub / file_name
                 if metric_file.is_file():
                     with metric_file.open("r", encoding="utf-8") as f:
@@ -146,13 +148,54 @@ class BankAdapter(BaseDatasetAdapter):
         return [EntityRef(role="service", identifier=cid) for cid in sorted(entities)]
 
     def stream_records(self, table_name: str, window: Window) -> Iterator[TelemetryRecord]:
+        if "metric_app" in table_name:
+            for ddir in self.data_dirs:
+                file_path = ddir / "metric" / "metric_app.csv"
+                if not file_path.is_file():
+                    continue
+                with file_path.open("r", encoding="utf-8") as f:
+                    reader = csv.DictReader(f)
+                    metric_fields = [
+                        ("rr", "percent"),
+                        ("sr", "percent"),
+                        ("cnt", "count"),
+                        ("mrt", "ms"),
+                    ]
+                    for row_idx, row in enumerate(reader):
+                        raw_ts = row.get("timestamp")
+                        if not raw_ts:
+                            continue
+                        try:
+                            ts_ms = int(round(float(raw_ts) * 1000))
+                        except ValueError:
+                            continue
+
+                        if not (window.start_ms_utc <= ts_ms < window.end_ms_utc):
+                            continue
+
+                        tc = row.get("tc", "unknown_tc")
+                        ent = EntityRef(role="app_kpi", identifier=tc)
+                        for col_name, unit in metric_fields:
+                            val_str = row.get(col_name)
+                            if val_str is None or val_str == "":
+                                continue
+                            try:
+                                val = float(val_str)
+                            except ValueError:
+                                val = None
+                            yield MetricRecord(
+                                source_table=table_name,
+                                timestamp_ms_utc=ts_ms,
+                                entity=ent,
+                                metric_name=col_name,
+                                value=val,
+                                unit=unit,
+                                details={"tc": tc, "kpi_column": col_name, "origin_row_id": f"metric_app.csv:{row_idx}:{col_name}"},
+                            )
+            return
+
         if "metric" in table_name:
-            if "metric_container" in table_name:
-                sub_file = "metric_container.csv"
-            elif "metric_app" in table_name:
-                sub_file = "metric_app.csv"
-            else:
-                sub_file = "metric_service.csv"
+            sub_file = "metric_container.csv" if "metric_container" in table_name else "metric_service.csv"
             for ddir in self.data_dirs:
                 file_path = ddir / "metric" / sub_file
                 if not file_path.is_file():

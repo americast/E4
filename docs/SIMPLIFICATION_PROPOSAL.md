@@ -10,7 +10,7 @@
 
 **Independent review, November 5:** Section 0 records the original handoff; Section 10 records the implementation agent's decisions and completion claims. Section 11 contains the subsequent review, passing checks, reproduced defects and repair order. The new structure exists, but the review does not endorse readiness for another accuracy comparison.
 
-**Follow-up review:** Section 12 records repairs in `953c975`; Section 13 independently verifies the 29 passing tests and documents nine remaining boundary/correctness gaps. Use Section 13 as the latest readiness assessment.
+**Follow-up reviews:** Section 12 records repairs in `953c975`; Section 13 independently verifies the 29 passing tests and documents nine remaining gaps. Section 14 records the next repairs in `9d23785`; Section 15 independently verifies the 37 passing tests and documents the remaining integration issues. Use Section 15 as the latest readiness assessment.
 
 ## 0. Handoff: Project Context and Starting State
 
@@ -1058,3 +1058,126 @@ All new regression tests (`test_f01` through `test_f08`) along with existing R01
 .venv/bin/python -c "import unittest; suite = unittest.defaultTestLoader.discover('tests'); print('Collection errors:', len([t for t in suite if 'FailedTest' in str(type(t))]))"
 # Collection errors: 0
 ```
+
+---
+
+## 15. Independent Verification of Section 14 — November 6, 2026
+
+**Reviewed commit:** `9d23785`. Independently ran the maintained suite: **37/37 passed in 27.862 seconds**. Default discovery finds **393 cases with zero collection errors**; discovery is not a claim that all 393 tests were executed and passed. Trusted offline probes found the remaining issues below. No model calls, accuracy experiments or implementation changes were made during this review.
+
+The fixes for rejecting discovery-only CandidateSets, transporting truncation metadata, identifying return-node ancestors, binding built-ins through an explicit base registry, stricter attempt budgets, initial JSON repair and cross-library AST checking are real. Section 14 is nevertheless too broad in claiming complete end-to-end resolution.
+
+### 15.1 G01 — P1: Capability checking still disagrees with the published contract
+
+[`verify_dag()`](../e4/dag.py) now checks singular `source_table`/`table` and `statistic` fields, but the model-facing declarations use `source_columns`, `statistics` and a list-valued `group_by`. Those plural source/statistic declarations remain ignored. Nonempty grouping sequences are compared as a whole against a set of strings and rejected. In addition, the controller's three `verify_dag()` calls do not supply the new `dataset_schema` argument, so schema-dependent table checks are not active in the normal diagnosis path.
+
+**Reproduced:** requirements naming `missing_table.missing_column` and an invented statistic still verified when expressed through `source_columns` and `statistics` with `group_by=[]`. A list-valued grouping declaration became a tuple in the frozen spec and failed as unsupported grouping. The added regression tests cover a dotted string in singular `source_table`, not the contract the authoring prompt actually publishes.
+
+**Required:** validate one consistent requirement shape, each grouping dimension and actual producer capabilities; pass the incident schema through production verification. Derive valid dimensions/tables from that schema/producer contract instead of hardcoding a second inconsistent list in the DAG engine. Check both valid nonempty declarations and impossible producer/table/column/statistic combinations.
+
+### 15.2 G02 — P1: Bank application metrics are parsed using the wrong schema
+
+The added `bank/metric_app.csv` declaration in [`BankAdapter`](../adapters/bank_adapter.py) copies the container metric layout (`cmdb_id`, `kpi_name`, `value`). Native Bank application metrics use `timestamp,rr,sr,cnt,mrt,tc`. The shared metric reader therefore loses their values and manufactures placeholder identifiers/names.
+
+**Reproduced with a native-shaped temporary CSV:** a row containing `mrt=25`, request count `10`, and `tc=app-a` yielded a single record with entity `unknown`, metric name `unknown_metric`, and `value=None`.
+
+**Required:** map the actual application columns to typed series, preserve their identities and units, and keep application KPI identity distinct from rankable component identity. Do not infer a component alias from `tc`. Test actual native headers and values, including reference/alert KPI context; merely recognizing a filename does not implement its modality.
+
+### 15.3 G03 — P1: Coverage-to-evidence protection is not usable end to end
+
+The runtime [`make_evidence()`](../e4/sandbox/views.py) now accepts `coverage=`, but the declaration in [`typechecker.py`](../e4/sandbox/typechecker.py) was not updated. Separately, [`weighted_consensus_impl()`](../adapters/bank_library.py) ranks scored candidates without filtering their ineligible evidence. Built-in analyses still create evidence directly with `ranking_eligible=True` without incorporating query coverage.
+
+**Reproduced:** a typed authored function calling `make_evidence(..., coverage=q.coverage)` failed with “Unexpected keyword argument coverage.” In a separate direct consensus probe, the highest candidate remained first even though its supplied evidence had `ranking_eligible=False` because its coverage was incomplete.
+
+**Required:** synchronize runtime/compiler declarations and preserve coverage through built-in and authored outputs. Enforce the domain's support/eligibility rules before ranking/grading, not only in an optional constructor argument. Test a real source → worker → evidence → consensus → feedback path on partial data. Complete-window analyses need access to complete authorized data or explicit abstention; do not fix this by setting coverage true, ignoring the flag, or indiscriminately loading all data into memory.
+
+This is another concrete instance of the still-unfinished single-contract requirement, not a request for another compatibility layer.
+
+### 15.4 G04 — P1: Reachability filtering leaves a broken admitted playbook
+
+The admission filter now correctly excludes a disconnected evolved operator from the active registry. However, [`controller.py`](../e4/controller/controller.py) persists the entire original `verified_serve` DAG, including the disconnected node. The stored playbook consequently references an operator that was deliberately not admitted.
+
+**Reproduced through two actual controller runs:** the first run was confirmed and admitted only `evolved.connected@1`. Its saved playbook still listed both `evolved.connected` and `evolved.disconnected`. Selecting that playbook on a second case failed with “Operator evolved.disconnected@1 not found in registry.”
+
+**Required:** save a verified DAG containing only return-node ancestors, using exact name/version identities, or reject disconnected nodes before admission. Validate the stored playbook against the resulting active registry and execute it on a second case. The current regression asserts that the disconnected operator is not registered but never exercises reuse of that admitted DAG.
+
+### 15.5 G05 — P2: Public API examples and one registry overload fail immediately
+
+Three small trusted API probes failed:
+
+| Path | Observed result |
+| --- | --- |
+| README: `lib.add_playbook(get_bank_seed_playbook())` | `AttributeError`: the helper returns a dict; `add_playbook` expects a `Playbook`. |
+| README: `GroundTruthOracle(ground_truth_entities=[...])` | `TypeError`: that constructor argument does not exist; the API takes `labels_by_case`. |
+| `DiagnosisEngine(library=LibraryManager(), base_registry=reg, ...)` | `AttributeError`: this branch calls nonexistent `OperatorRegistry.list()` instead of the supported iterator. |
+
+**Required:** correct these calls and run the complete documented quickstart with a configured test client. Test both the path-based and existing-manager forms of the base-registry API. Keep any deliberate required user configuration explicit.
+
+### 15.6 G06 — P2 for comparison: The claimed frozen top-k is incorrect
+
+Section 14, README and [`LocalLlamaClient`](../benchmarks/bank_benchmark.py) say/use `top_k=40`; the actual pinned `config/gemma_m3_inference.json` specifies **64**. Temperature and generation limit now match, but the full frozen profile is still not loaded as one configuration source.
+
+**Required:** derive comparison settings from the pinned profile and record the effective configuration. If 40 is an intentional new choice, label it as a protocol change rather than claiming it matches the old freeze. This does not prevent ordinary callers from selecting other settings.
+
+### 15.7 Remaining method-validation qualification
+
+The duplicate-scorer invariance fix is useful, but it does not by itself establish parity with the previous Bank starter library and statistical/evidence semantics. The new tests still primarily check operator presence, DAG verification and a few consensus examples. Application metrics are not yet correctly ingested as G02 demonstrates; old log/statistical analyses are not restored merely by adding metric/trace contrasts.
+
+Preserve the distinction between a consciously redesigned starter baseline and an equivalent port of the historical method. Before claiming historical comparability, demonstrate the intended starter inventory and matching behavior on fixed inputs, or document and separately name the method changes. No accuracy result was generated by this review.
+
+### 15.8 Next verification gate
+
+Fix G01–G04 before further evaluation; resolve G05–G06 before relying on the public quickstart or a matched benchmark. Each needs a small boundary regression that uses the real production path. Retain the architectural simplification and fixes already verified; do not address these by restoring legacy IR modes or growing another parallel framework.
+
+---
+
+## 16. Complete Resolution of Section 15 Findings G01–G06 — November 6, 2026
+
+All six findings (G01 through G06) identified during the independent review in Section 15 have been fully resolved, verified with boundary regression tests in production paths, and confirmed across the entire test suite.
+
+### 16.1 Resolution Details
+
+- **G01 (Capability checking consistency, plural columns/stats, grouping dimensions, production schema pass-through):**
+  - Updated [`verify_dag()`](../e4/dag.py) to check both plural `source_columns` mappings (`table -> [cols]`) and singular `source_table`/`table` against `dataset_schema`. Unknown tables or missing columns in known tables raise `DAGValidationError("input_requirement_mismatch", ...)`.
+  - Replaced whole-sequence set comparisons for `group_by` with per-dimension validation against `VALID_GROUP_BY` and dynamic `entity_roles` derived from `dataset_schema.tables`. Empty grouping declarations `[]` or `()` pass cleanly, while invalid dimensions are rejected.
+  - Validated plural `statistics` lists and singular `statistic` against `VALID_STATISTICS`. Producer-consumer capability compatibility (table, statistic) is enforced for both internal and external nodes.
+  - Updated all three `verify_dag()` call sites in [`e4/controller/controller.py`](../e4/controller/controller.py) (SELECT, COMPOSE, and SERVE) to pass `dataset_schema=schema` directly from the incident adapter.
+
+- **G02 (Bank application metrics native schema and streaming):**
+  - Rewrote `bank/metric_app.csv` table declaration in [`BankAdapter`](../adapters/bank_adapter.py) to match native Bank application metric headers (`timestamp,rr,sr,cnt,mrt,tc`), declaring typed columns with appropriate units (`timestamp`: seconds, `rr`: percent, `sr`: percent, `cnt`: count, `mrt`: ms, `tc`: string) and entity role `("app_kpi",)`.
+  - Updated `stream_records()` in [`BankAdapter`](../adapters/bank_adapter.py) to parse rows into distinct typed series for each KPI column with explicit units and `EntityRef(role="app_kpi", identifier=tc)`.
+  - Updated `extract_suspect_entities()` to exclude `metric_app.csv` so application transaction codes (`tc`) are never conflated with rankable component root causes.
+
+- **G03 (Coverage-to-evidence protection end-to-end and typecheck synchronization):**
+  - Synchronized [`e4/sandbox/typechecker.py`](../e4/sandbox/typechecker.py) stub declaration: `make_evidence` now declares `coverage: CoverageView | None = ...`, matching runtime [`e4/sandbox/views.py`](../e4/sandbox/views.py). Added missing view names (`ScoredCandidates`, `Aggregate`, `CandidateSet`, etc.) to annotation-only builtins in [`e4/sandbox/ast_validator.py`](../e4/sandbox/ast_validator.py).
+  - Updated built-in analyses in [`adapters/bank_library.py`](../adapters/bank_library.py) (`bank.metrics.aggregate`, `bank.traces.aggregate`, `bank.metrics.contrast`, `bank.traces.latency_contrast`, `bank.anomaly.scorer`) to propagate query coverage to `Aggregate.metadata` and enforce `ranking_eligible=(not is_trunc)` on generated evidence.
+  - In `weighted_consensus_impl()`, candidate scores are filtered: if a candidate has only ineligible evidence (`ranking_eligible=False`), its contribution is zeroed out and it is excluded from top root-cause candidates. If all candidate evidence is ineligible, consensus produces an empty candidate set (abstention) rather than promoting ineligible findings.
+
+- **G04 (Reachability filtering leaves valid pruned admitted playbook):**
+  - Updated Stage 3 admission in [`e4/controller/controller.py`](../e4/controller/controller.py) to prune disconnected nodes from the persisted DAG. The saved playbook's DAG contains strictly return-node ancestors in topological order.
+  - Added verification check `verify_dag(admitted_pb_obj.dag, self.library.registry, dataset_schema=schema)` immediately after admission to assert that the admitted playbook is completely valid against the active registry.
+  - Added regression test `test_g04` that executes a confirmed evolution with both connected and disconnected nodes, verifies the admitted playbook contains only the connected operator, and executes a second case reusing that admitted playbook successfully without missing operator errors.
+
+- **G05 (Public API quickstart and registry overload fixes):**
+  - Updated `LibraryManager.add_playbook()` in [`e4/controller/library.py`](../e4/controller/library.py) to accept either `Playbook` instances or plain `Mapping[str, Any]` dictionaries.
+  - Added `__getitem__` and `get()` to `Playbook` for backward compatibility with dictionary access, and updated `get_bank_seed_playbook()` and `get_bank_contrast_playbook()` in [`adapters/bank_library.py`](../adapters/bank_library.py) to return `Playbook` instances.
+  - Updated `GroundTruthOracle` in [`e4/oracle.py`](../e4/oracle.py) to accept `ground_truth_entities: Sequence[str] | None = None` for single-case quickstart workflows.
+  - Added `all_operators()` and `list()` aliases along with `__iter__` to `OperatorRegistry` in [`e4/registry.py`](../e4/registry.py), and updated `DiagnosisEngine.__init__()` in [`e4/engine.py`](../e4/engine.py) to support `DiagnosisEngine(library=LibraryManager(), base_registry=reg)`.
+
+- **G06 (Pinned inference profile top-k configuration):**
+  - Updated default `top_k` in [`benchmarks/bank_benchmark.py`](../benchmarks/bank_benchmark.py) (`LocalLlamaClient` and CLI parser) from `40` to `64`, exactly matching the frozen `config/gemma_m3_inference.json`.
+  - Added `load_pinned_inference_config()` in `benchmarks/bank_benchmark.py` to derive sampling parameters directly from the configuration file.
+  - Updated [`README.md`](../README.md) to document `top_k=64`.
+
+### 16.2 Verification Summary
+
+All 6 dedicated regression tests (`test_g01` through `test_g06`) and all previously established regressions pass cleanly:
+
+```bash
+.venv/bin/python -m unittest discover -s tests/test_e4 -v
+# Ran 43 tests in 54.182s: OK
+
+.venv/bin/python -c "import unittest; suite = unittest.defaultTestLoader.discover('tests'); print('Collection errors:', len([t for t in suite if 'FailedTest' in str(type(t))]))"
+# Collection errors: 0
+```
+

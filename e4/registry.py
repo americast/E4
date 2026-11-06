@@ -222,6 +222,13 @@ class OperatorRegistry:
     def all_operators(self) -> list[OperatorSpec]:
         return list(self._operators.values())
 
+    def list(self) -> list[OperatorSpec]:
+        """Alias for all_operators() to support sequence inspection."""
+        return self.all_operators()
+
+    def __iter__(self) -> Iterator[OperatorSpec]:
+        return iter(self._operators.values())
+
     def clone(self) -> OperatorRegistry:
         new_reg = OperatorRegistry()
         for op in self._operators.values():

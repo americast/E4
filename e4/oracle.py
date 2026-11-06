@@ -79,11 +79,15 @@ class GroundTruthOracle:
         labels_by_case: Mapping[str, Sequence[str]] | None = None,
         top_k: int = 3,
         max_attempts: int = 3,
+        ground_truth_entities: Sequence[str] | None = None,
     ):
         self._labels_by_case: dict[str, list[str]] = {}
         if labels_by_case:
             for cid, labels in labels_by_case.items():
                 self._labels_by_case[cid] = [canonical_component_id(lbl) for lbl in labels]
+        self._default_labels: list[str] = []
+        if ground_truth_entities:
+            self._default_labels = [canonical_component_id(lbl) for lbl in ground_truth_entities]
         self.top_k = top_k
         self.max_attempts = max_attempts
 
@@ -91,7 +95,7 @@ class GroundTruthOracle:
         self._labels_by_case[case_id] = [canonical_component_id(lbl) for lbl in labels]
 
     def evaluate(self, answer: RankedAnswer, context: DiagnosticContext) -> Decision:
-        targets = self._labels_by_case.get(context.case_id, [])
+        targets = self._labels_by_case.get(context.case_id, self._default_labels)
         top_candidates = [c.canonical_id for c in answer.candidates[: self.top_k]]
 
         matched = [tgt for tgt in targets if tgt in top_candidates]

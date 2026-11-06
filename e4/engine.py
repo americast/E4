@@ -46,7 +46,12 @@ class DiagnosisEngine:
         elif isinstance(library, LibraryManager):
             self.library = library
             if base_reg:
-                for s in base_reg.list():
+                specs = (
+                    base_reg.all_operators()
+                    if hasattr(base_reg, "all_operators")
+                    else (base_reg.list() if hasattr(base_reg, "list") else list(base_reg))
+                )
+                for s in specs:
                     if not self.library.registry.has(s.name, s.version):
                         self.library.registry.register(s)
         elif base_reg:

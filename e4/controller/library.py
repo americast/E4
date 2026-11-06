@@ -19,6 +19,15 @@ class Playbook:
     target_components: tuple[str, ...] = ()
     metadata: Mapping[str, Any] = field(default_factory=dict)
 
+    def __getitem__(self, key: str) -> Any:
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        return getattr(self, key, default)
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
@@ -45,8 +54,20 @@ class LibraryManager:
         self._admitted_operators: list[OperatorSpec] = []
         self._admitted_playbooks: list[Playbook] = []
 
-    def add_playbook(self, playbook: Playbook) -> None:
-        self._playbooks[playbook.name] = playbook
+    def add_playbook(self, playbook: Playbook | Mapping[str, Any]) -> None:
+        if isinstance(playbook, Playbook):
+            pb = playbook
+        elif isinstance(playbook, Mapping):
+            pb = Playbook(
+                name=str(playbook["name"]),
+                description=str(playbook.get("description", "")),
+                dag=dict(playbook.get("dag", {})),
+                target_components=tuple(playbook.get("target_components", ())),
+                metadata=dict(playbook.get("metadata", {})),
+            )
+        else:
+            raise TypeError(f"Expected Playbook or Mapping, got {type(playbook).__name__}")
+        self._playbooks[pb.name] = pb
 
     def get_playbook(self, name: str) -> Playbook | None:
         return self._playbooks.get(name)

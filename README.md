@@ -61,7 +61,7 @@ print(f"Status: {result.status}, Stage: {result.stage}, Top Cause: {result.top_c
 
 ## 4. Benchmark Evaluation
 
-To evaluate on the 10 scored Bank cases using the frozen evaluation settings (temperature 1.0, 8192 max tokens, top-p 0.95, top-k 40):
+To evaluate on the 10 scored Bank cases using the frozen evaluation settings (temperature 1.0, 8192 max tokens, top-p 0.95, top-k 64 from pinned `config/gemma_m3_inference.json`):
 
 ```bash
 .venv/bin/python -m benchmarks.bank_benchmark \
@@ -70,6 +70,7 @@ To evaluate on the 10 scored Bank cases using the frozen evaluation settings (te
     --seed 42 \
     --temperature 1.0 \
     --max-tokens 8192 \
+    --top-k 64 \
     --model-url http://127.0.0.1:19250
 ```
 

@@ -16,7 +16,7 @@ from adapters.bank_library import (
     get_bank_seed_playbook,
     weighted_consensus_impl,
 )
-from benchmarks.bank_benchmark import LocalLlamaClient, load_ground_truth
+from benchmarks.bank_benchmark import LocalLlamaClient, load_ground_truth, load_pinned_inference_config
 from e4.controller.controller import DiagnosisController, _to_ranked_answer
 from e4.controller.library import LibraryManager, Playbook
 from e4.controller.repair import StaticRepairController
@@ -25,7 +25,7 @@ from e4.dag import DAGValidationError, SerialExecutor, verify_dag
 from e4.data.adapter import BaseDatasetAdapter
 from e4.data.folder import FolderTelemetrySource
 from e4.engine import DiagnosisEngine
-from e4.oracle import AcceptanceOracle, BudgetStopPolicy, Decision, DiagnosticContext
+from e4.oracle import AcceptanceOracle, BudgetStopPolicy, Decision, DiagnosticContext, GroundTruthOracle
 from e4.prompts.examples import METRIC_ANOMALY_EXAMPLE
 from e4.prompts.templates import format_evolve_prompt
 from e4.registry import OperatorRegistry, OperatorSpec, ParameterSpec, PortSpec
@@ -48,7 +48,7 @@ from e4.sandbox.views import (
     make_evidence,
     metric_points,
 )
-from e4.types import RankedAnswer
+from e4.types import Evidence, RankedAnswer
 
 
 class FixedOracle(AcceptanceOracle):
@@ -828,6 +828,381 @@ class TestReviewRepairs(unittest.TestCase):
         }
         errors = validate_proposal_bundle(bundle, existing_library=existing_reg)
         self.assertTrue(any("Duplicate implementation: identical source to existing" in e for e in errors))
+
+    # -------------------------------------------------------------------------
+    # G01: Consistent requirement shape, plural columns/stats, group_by dimensions
+    # -------------------------------------------------------------------------
+    def test_g01_capability_checking_plural_and_schema(self):
+        reg = OperatorRegistry()
+        reg.register(
+            OperatorSpec(
+                name="test.producer",
+                version="1",
+                inputs=(),
+                output_type="Aggregate",
+                parameters={
+                    "table": ParameterSpec("table", "string", default="bank/metric_container.csv"),
+                    "statistic": ParameterSpec("statistic", "string", default="mean"),
+                },
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        adapter = BankAdapter("data/prepared/bank/public/cases/bank-20210304T1800-utc8")
+        schema = adapter.get_schema()
+
+        # 1. Invalid table in source_columns with dataset_schema
+        reg.register(
+            OperatorSpec(
+                name="test.consumer_bad_source_columns_table",
+                version="1",
+                inputs=(PortSpec("data", "Aggregate"),),
+                output_type="ScoredCandidates",
+                input_requirements={"data": {"source_columns": {"missing_table": ["col"]}}},
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        bad_dag1 = {
+            "nodes": [
+                {"id": "n1", "operator": "test.producer", "version": "1", "inputs": {}},
+                {"id": "n2", "operator": "test.consumer_bad_source_columns_table", "version": "1", "inputs": {"data": "n1"}},
+            ],
+            "return_node": "n2",
+        }
+        with self.assertRaises(DAGValidationError) as raised:
+            verify_dag(bad_dag1, reg, dataset_schema=schema)
+        self.assertEqual(raised.exception.code, "input_requirement_mismatch")
+
+        # 2. Invalid column in existing table in dataset_schema
+        reg.register(
+            OperatorSpec(
+                name="test.consumer_bad_column",
+                version="1",
+                inputs=(PortSpec("data", "Aggregate"),),
+                output_type="ScoredCandidates",
+                input_requirements={"data": {"source_columns": {"bank/metric_container.csv": ["nonexistent_col"]}}},
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        bad_dag2 = {
+            "nodes": [
+                {"id": "n1", "operator": "test.producer", "version": "1", "inputs": {}},
+                {"id": "n2", "operator": "test.consumer_bad_column", "version": "1", "inputs": {"data": "n1"}},
+            ],
+            "return_node": "n2",
+        }
+        with self.assertRaises(DAGValidationError) as raised:
+            verify_dag(bad_dag2, reg, dataset_schema=schema)
+        self.assertEqual(raised.exception.code, "input_requirement_mismatch")
+
+        # 3. Invented statistic in statistics list
+        reg.register(
+            OperatorSpec(
+                name="test.consumer_invented_stat",
+                version="1",
+                inputs=(PortSpec("data", "Aggregate"),),
+                output_type="ScoredCandidates",
+                input_requirements={"data": {"statistics": ["invented_statistic"], "group_by": []}},
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        bad_dag3 = {
+            "nodes": [
+                {"id": "n1", "operator": "test.producer", "version": "1", "inputs": {}},
+                {"id": "n2", "operator": "test.consumer_invented_stat", "version": "1", "inputs": {"data": "n1"}},
+            ],
+            "return_node": "n2",
+        }
+        with self.assertRaises(DAGValidationError) as raised:
+            verify_dag(bad_dag3, reg, dataset_schema=schema)
+        self.assertEqual(raised.exception.code, "input_requirement_mismatch")
+
+        # 4. Valid group_by list and valid producer capability passes
+        reg.register(
+            OperatorSpec(
+                name="test.consumer_valid",
+                version="1",
+                inputs=(PortSpec("data", "Aggregate"),),
+                output_type="ScoredCandidates",
+                input_requirements={
+                    "data": {
+                        "source_columns": {"bank/metric_container.csv": ["timestamp", "value"]},
+                        "statistics": ["mean"],
+                        "group_by": ["service"],
+                    }
+                },
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        good_dag = {
+            "nodes": [
+                {"id": "n1", "operator": "test.producer", "version": "1", "inputs": {}, "params": {"table": "bank/metric_container.csv", "statistic": "mean"}},
+                {"id": "n2", "operator": "test.consumer_valid", "version": "1", "inputs": {"data": "n1"}},
+            ],
+            "return_node": "n2",
+        }
+        verified = verify_dag(good_dag, reg, dataset_schema=schema)
+        self.assertEqual(verified.return_node, "n2")
+
+        # 5. Unsupported grouping dimension fails
+        reg.register(
+            OperatorSpec(
+                name="test.consumer_bad_group",
+                version="1",
+                inputs=(PortSpec("data", "Aggregate"),),
+                output_type="ScoredCandidates",
+                input_requirements={"data": {"group_by": ["invented_dimension"]}},
+                implementation=lambda i, p, r: 1,
+            )
+        )
+        bad_dag4 = {
+            "nodes": [
+                {"id": "n1", "operator": "test.producer", "version": "1", "inputs": {}},
+                {"id": "n2", "operator": "test.consumer_bad_group", "version": "1", "inputs": {"data": "n1"}},
+            ],
+            "return_node": "n2",
+        }
+        with self.assertRaises(DAGValidationError) as raised:
+            verify_dag(bad_dag4, reg, dataset_schema=schema)
+        self.assertEqual(raised.exception.code, "input_requirement_mismatch")
+
+    # -------------------------------------------------------------------------
+    # G02: Bank application metrics native schema (timestamp, rr, sr, cnt, mrt, tc)
+    # -------------------------------------------------------------------------
+    def test_g02_bank_application_metrics_schema_and_streaming(self):
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            td = Path(tmp_dir)
+            metric_dir = td / "source_dates" / "2021_03_04" / "metric"
+            metric_dir.mkdir(parents=True)
+            app_csv = metric_dir / "metric_app.csv"
+            app_csv.write_text(
+                "timestamp,rr,sr,cnt,mrt,tc\n"
+                "1614850200,99.5,100.0,10,25.0,app-a\n"
+                "1614850260,98.0,99.0,15,30.0,app-a\n",
+                encoding="utf-8",
+            )
+            alert_json = td / "alert.json"
+            alert_json.write_text(json.dumps({
+                "analysis_window_start_local": "2021-03-04 17:30:00",
+                "alert_window_start_local": "2021-03-04 18:00:00",
+                "alert_window_end_local": "2021-03-04 18:30:00",
+                "analysis_window_start_epoch_ms_utc": 1614848400000,
+                "alert_window_start_epoch_ms_utc": 1614850200000,
+                "alert_window_end_epoch_ms_utc": 1614852000000,
+            }), encoding="utf-8")
+
+            adapter = BankAdapter(td)
+            records = list(adapter.stream_records("bank/metric_app.csv", adapter._alt_window))
+            self.assertEqual(len(records), 8)
+
+            mrt_records = [r for r in records if r.metric_name == "mrt"]
+            self.assertEqual(len(mrt_records), 2)
+            self.assertEqual(mrt_records[0].value, 25.0)
+            self.assertEqual(mrt_records[0].unit, "ms")
+            self.assertEqual(mrt_records[0].entity.role, "app_kpi")
+            self.assertEqual(mrt_records[0].entity.identifier, "app-a")
+
+            cnt_records = [r for r in records if r.metric_name == "cnt"]
+            self.assertEqual(cnt_records[0].value, 10.0)
+            self.assertEqual(cnt_records[0].unit, "count")
+
+            suspects = adapter.extract_suspect_entities()
+            self.assertFalse(any(s.identifier == "app-a" for s in suspects))
+
+    # -------------------------------------------------------------------------
+    # G03: Coverage-to-evidence protection end-to-end and typecheck
+    # -------------------------------------------------------------------------
+    def test_g03_coverage_to_evidence_protection_end_to_end(self):
+        source = (
+            "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> ScoredCandidates:\n"
+            "    tel = telemetry_view(inputs['telemetry'])\n"
+            "    q = metric_points(tel, 'bank/metric_container.csv', tel.alert_window)\n"
+            "    ev = make_evidence(\n"
+            "        source='custom',\n"
+            "        window=tel.alert_window,\n"
+            "        statistic='mean',\n"
+            "        value=1.0,\n"
+            "        contributing_entities=[make_entity_ref('service', 'svc_a')],\n"
+            "        support=10,\n"
+            "        coverage=q.coverage,\n"
+            "    )\n"
+            "    c = make_scored_candidate(make_entity_ref('service', 'svc_a'), 1.0, evidence=[ev])\n"
+            "    return make_scored_candidates([c], scorer='custom')\n"
+        )
+        spec = {
+            "name": "custom.op",
+            "version": "1",
+            "authoring_profile": "typed-operator-code-v1",
+            "input_ports": [{"name": "telemetry", "type": "Telemetry"}],
+            "output_type": "ScoredCandidates",
+            "parameters": {},
+            "input_requirements": {"telemetry": {}},
+            "source": source,
+        }
+        report = check_operator_types(spec)
+        self.assertEqual(report["status"], "passed")
+
+        ent_a = EntityRef("service", "service_a")
+        ent_b = EntityRef("service", "service_b")
+        win = Window("alert", 100, 200)
+
+        ineligible_ev = Evidence(
+            source="test", window=win, statistic="mean", value=10.0,
+            contributing_entities=(ent_a,), support=5, ranking_eligible=False,
+        )
+        eligible_ev = Evidence(
+            source="test", window=win, statistic="mean", value=2.0,
+            contributing_entities=(ent_b,), support=5, ranking_eligible=True,
+        )
+
+        cand_a = ScoredCandidate(entity=ent_a, score=10.0, evidence=(ineligible_ev,), analysis_family="metric")
+        cand_b = ScoredCandidate(entity=ent_b, score=2.0, evidence=(eligible_ev,), analysis_family="metric")
+
+        scorers = [ScoredCandidates(candidates=(cand_a, cand_b), scorer="test_scorer")]
+        ans = weighted_consensus_impl({"scores": scorers}, {}, None)
+
+        self.assertGreater(len(ans.candidates), 0)
+        self.assertEqual(ans.candidates[0].identifier, "service_b")
+
+        scorers_all_ineligible = [ScoredCandidates(candidates=(cand_a,), scorer="test_scorer")]
+        ans_ineligible = weighted_consensus_impl({"scores": scorers_all_ineligible}, {}, None)
+        self.assertEqual(len(ans_ineligible.candidates), 0)
+
+    # -------------------------------------------------------------------------
+    # G04: Reachability filtering leaves valid pruned admitted playbook
+    # -------------------------------------------------------------------------
+    def test_g04_reachability_filtering_pruned_admitted_playbook_reuse(self):
+        class MockClient:
+            def __init__(self):
+                self.calls = 0
+            def complete(self, prompt: str) -> str:
+                self.calls += 1
+                if "Stage 1" in prompt:
+                    return json.dumps({"selected_playbook": "bank.starter.metric_consensus", "parameter_bindings": {}})
+                elif "Stage 2" in prompt:
+                    return json.dumps({
+                        "adapted": False,
+                        "identified_gap": {"gap_description": "Need custom score", "missing_capabilities": ["custom"]},
+                    })
+                elif "Stage 3A" in prompt:
+                    return json.dumps({
+                        "gap_record": {"gap_description": "Add connected and disconnected", "proposed_operator_names": ["evolved.connected", "evolved.disconnected"]},
+                        "proposed_operators": [
+                            {
+                                "name": "evolved.connected",
+                                "version": "1",
+                                "authoring_profile": "typed-operator-code-v1",
+                                "description": "Connected operator",
+                                "family": "custom",
+                                "input_ports": [{"name": "telemetry", "type": "Telemetry"}],
+                                "output_type": "ScoredCandidates",
+                                "parameters": {},
+                                "input_requirements": {"telemetry": {}},
+                                "source": (
+                                    "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> ScoredCandidates:\n"
+                                    "    tel = telemetry_view(inputs['telemetry'])\n"
+                                    "    ev = make_evidence('conn', tel.alert_window, 'mean', 1.0, [make_entity_ref('service', 'target_svc')], 5)\n"
+                                    "    c = make_scored_candidate(make_entity_ref('service', 'target_svc'), 5.0, evidence=[ev], analysis_family='backend_metric')\n"
+                                    "    return make_scored_candidates([c], scorer='conn')\n"
+                                ),
+                            },
+                            {
+                                "name": "evolved.disconnected",
+                                "version": "1",
+                                "authoring_profile": "typed-operator-code-v1",
+                                "description": "Disconnected operator",
+                                "family": "custom",
+                                "input_ports": [{"name": "telemetry", "type": "Telemetry"}],
+                                "output_type": "Aggregate",
+                                "parameters": {},
+                                "input_requirements": {"telemetry": {}},
+                                "source": (
+                                    "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Aggregate:\n"
+                                    "    tel = telemetry_view(inputs['telemetry'])\n"
+                                    "    return make_aggregate(tel.alert_window, [])\n"
+                                ),
+                            },
+                        ],
+                    })
+                else:
+                    return json.dumps({
+                        "dag": {
+                            "nodes": [
+                                {"id": "n_conn", "operator": "evolved.connected", "version": "1", "inputs": {"telemetry": "telemetry"}},
+                                {"id": "n_disc", "operator": "evolved.disconnected", "version": "1", "inputs": {"telemetry": "telemetry"}},
+                                {"id": "n_consensus", "operator": "paper.answers.weighted_consensus", "version": "1", "inputs": {"scores": ["n_conn"]}},
+                            ],
+                            "return_node": "n_consensus",
+                        }
+                    })
+
+        reg = build_bank_registry()
+        lib = LibraryManager(registry=reg)
+        seed = get_bank_seed_playbook()
+        lib.add_playbook(seed)
+
+        adapter = BankAdapter("data/prepared/bank/public/cases/bank-20210304T1800-utc8")
+        oracle = FixedOracle(target_id="target_svc")
+        ctrl = DiagnosisController(library=lib, oracle=oracle, runner=InProcessRunner(), max_attempts=3)
+
+        client = MockClient()
+        res = ctrl.run_diagnostic(telemetry=adapter, model_client=client, case_id="case_1")
+        self.assertEqual(res.status, "confirmed")
+
+        admitted_pb_name = res.admitted_playbook
+        self.assertIsNotNone(admitted_pb_name)
+        pb = lib.get_playbook(admitted_pb_name)
+        self.assertIsNotNone(pb)
+        pb_node_ops = [n["operator"] for n in pb.dag["nodes"]]
+        self.assertIn("evolved.connected", pb_node_ops)
+        self.assertNotIn("evolved.disconnected", pb_node_ops)
+
+        class SecondClient:
+            def complete(self, prompt: str) -> str:
+                return json.dumps({"selected_playbook": admitted_pb_name, "parameter_bindings": {}})
+
+        res2 = ctrl.run_diagnostic(telemetry=adapter, model_client=SecondClient(), case_id="case_2")
+        self.assertEqual(res2.status, "confirmed")
+        self.assertEqual(res2.stage, "select")
+
+    # -------------------------------------------------------------------------
+    # G05: Quickstart and base registry API overloads
+    # -------------------------------------------------------------------------
+    def test_g05_public_api_quickstart_and_base_registry_overloads(self):
+        reg = build_bank_registry()
+        lib = LibraryManager(registry=reg)
+        seed_pb = get_bank_seed_playbook()
+        lib.add_playbook(seed_pb)
+        self.assertIsNotNone(lib.get_playbook("bank.starter.metric_consensus"))
+
+        oracle = GroundTruthOracle(ground_truth_entities=["cartservice"])
+        ans = RankedAnswer(
+            candidates=(EntityRef("service", "cartservice"),),
+            scores=(1.0,),
+            stage="test",
+            evidence=(),
+        )
+        decision = oracle.evaluate(ans, DiagnosticContext("case_x", "select", 1, 3))
+        self.assertTrue(decision.accepted)
+        self.assertEqual(decision.action, "confirm")
+
+        empty_lib = LibraryManager()
+        engine = DiagnosisEngine(
+            model=lambda p: "{}",
+            library=empty_lib,
+            base_registry=reg,
+            oracle=oracle,
+        )
+        self.assertGreater(len(engine.library.registry.all_operators()), 0)
+        self.assertTrue(engine.library.registry.has("bank.metrics.contrast", "1"))
+
+    # -------------------------------------------------------------------------
+    # G06: Frozen inference profile top-k is 64
+    # -------------------------------------------------------------------------
+    def test_g06_frozen_profile_top_k(self):
+        cfg = load_pinned_inference_config()
+        self.assertEqual(cfg.get("top_k"), 64)
+        client = LocalLlamaClient()
+        self.assertEqual(client.top_k, 64)
 
 
 if __name__ == "__main__":

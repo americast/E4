@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 from typing import Any, Mapping
 
+from e4.controller.library import Playbook
 from e4.dag import VerifiedDAG
 from e4.registry import OperatorRegistry, OperatorSpec, ParameterSpec, PortSpec
 from e4.sandbox.views import (
@@ -89,7 +90,8 @@ def bank_metric_aggregate_impl(
                 details={"mean": sm_mean.value, "median": sm_med.value},
             )
         )
-    return Aggregate(window=target_w, rows=tuple(rows), source_tables=(tbl,))
+    is_trunc = bool(points_res.coverage.truncated or (not points_res.coverage.complete))
+    return Aggregate(window=target_w, rows=tuple(rows), source_tables=(tbl,), metadata={"truncated": is_trunc})
 
 
 def bank_metrics_contrast_impl(
@@ -98,6 +100,10 @@ def bank_metrics_contrast_impl(
     """Paired reference-to-alert window metric contrast scoring."""
     ref_agg = aggregate_view(inputs["reference"])
     alt_agg = aggregate_view(inputs["alert"])
+
+    ref_meta = getattr(ref_agg, "metadata", {}) or {}
+    alt_meta = getattr(alt_agg, "metadata", {}) or {}
+    is_trunc = bool(ref_meta.get("truncated", False) or alt_meta.get("truncated", False))
 
     # Index reference metrics by (entity_identifier, metric_key)
     ref_map: dict[tuple[str, str], AggregateRow] = {}
@@ -134,7 +140,7 @@ def bank_metrics_contrast_impl(
                 value=shift,
                 contributing_entities=(entity,),
                 support=min(ref_r.support, alt_r.support),
-                ranking_eligible=True,
+                ranking_eligible=(not is_trunc),
                 details={
                     "metric_key": alt_r.metric_key,
                     "reference_value": ref_val,
@@ -194,7 +200,8 @@ def bank_traces_aggregate_impl(
                 source_tables=(tbl,),
             )
         )
-    return Aggregate(window=target_w, rows=tuple(rows), source_tables=(tbl,))
+    is_trunc = bool(spans_res.coverage.truncated or (not spans_res.coverage.complete))
+    return Aggregate(window=target_w, rows=tuple(rows), source_tables=(tbl,), metadata={"truncated": is_trunc})
 
 
 def bank_traces_latency_contrast_impl(
@@ -203,6 +210,10 @@ def bank_traces_latency_contrast_impl(
     """Contrast trace durations between reference and alert windows."""
     ref_agg = aggregate_view(inputs["reference"])
     alt_agg = aggregate_view(inputs["alert"])
+
+    ref_meta = getattr(ref_agg, "metadata", {}) or {}
+    alt_meta = getattr(alt_agg, "metadata", {}) or {}
+    is_trunc = bool(ref_meta.get("truncated", False) or alt_meta.get("truncated", False))
 
     ref_map = {r.entity.identifier: r for r in ref_agg.rows}
     scored: list[ScoredCandidate] = []
@@ -225,7 +236,7 @@ def bank_traces_latency_contrast_impl(
             value=shift,
             contributing_entities=(alt_r.entity,),
             support=min(ref_r.support, alt_r.support),
-            ranking_eligible=True,
+            ranking_eligible=(not is_trunc),
             details={"reference_duration_ms": ref_dur, "alert_duration_ms": alt_dur},
         )
         scored.append(
@@ -246,6 +257,9 @@ def bank_anomaly_scorer_impl(
 ) -> ScoredCandidates:
     """Baseline operator: score components based on highest aggregate alert anomaly."""
     agg = aggregate_view(inputs["aggregate"])
+    agg_meta = getattr(agg, "metadata", {}) or {}
+    is_trunc = bool(agg_meta.get("truncated", False))
+
     scores_by_entity: dict[str, tuple[EntityRef, float, list[Evidence]]] = {}
 
     for r in agg.rows:
@@ -259,7 +273,7 @@ def bank_anomaly_scorer_impl(
                 value=val,
                 contributing_entities=(r.entity,),
                 support=r.support,
-                ranking_eligible=True,
+                ranking_eligible=(not is_trunc),
             )
             scores_by_entity[cid] = (r.entity, float(val), [ev])
 
@@ -326,7 +340,17 @@ def weighted_consensus_impl(
             e_role = ent.role if hasattr(ent, "role") else ent.get("role", "service")
             canonical_fam = CANONICAL_FAMILY_ALIASES.get(raw_fam, raw_fam)
 
-            norm_score = score_val / max_scorer_val
+            # Support/eligibility rule: if evidence is provided, at least one item must be ranking-eligible
+            is_candidate_eligible = True
+            if ev_seq:
+                is_candidate_eligible = any(
+                    bool(getattr(ev, "ranking_eligible", True) if hasattr(ev, "ranking_eligible") else (ev.get("ranking_eligible", True) if isinstance(ev, Mapping) else True))
+                    for ev in ev_seq
+                )
+            if not is_candidate_eligible:
+                score_val = 0.0
+
+            norm_score = (score_val / max_scorer_val) if max_scorer_val > 0 else 0.0
             entities[cid] = EntityRef(e_role, cid)
 
             if canonical_fam not in family_scores:
@@ -374,15 +398,21 @@ def weighted_consensus_impl(
         for cid, score in cid_scores.items():
             totals[cid] = totals.get(cid, 0.0) + (score * fam_weight)
 
-    sorted_cids = sorted(totals.keys(), key=lambda k: totals[k], reverse=True)
+    # Rank candidates with positive score and ranking-eligible evidence (or synthetic candidate without evidence)
+    eligible_cids = [
+        cid for cid, total in totals.items()
+        if total > 0.0 and (not all_evidence.get(cid) or any(ev.ranking_eligible for ev in all_evidence.get(cid, [])))
+    ]
+    eligible_cids.sort(key=lambda k: totals[k], reverse=True)
+
     limit = int(params.get("limit", 10))
-    top_cids = sorted_cids[:limit]
+    top_cids = eligible_cids[:limit]
 
     cands = tuple(entities[k] for k in top_cids)
     scores = tuple(totals[k] for k in top_cids)
     ev_list: list[Evidence] = []
     for k in top_cids:
-        ev_list.extend(all_evidence.get(k, []))
+        ev_list.extend([ev for ev in all_evidence.get(k, []) if ev.ranking_eligible])
 
     return RankedAnswer(candidates=cands, scores=scores, stage="consensus", evidence=tuple(ev_list))
 
@@ -516,12 +546,12 @@ def build_bank_registry() -> OperatorRegistry:
     return reg
 
 
-def get_bank_contrast_playbook() -> dict[str, Any]:
+def get_bank_contrast_playbook() -> Playbook:
     """Canonical reference-alert metric contrast diagnosis DAG."""
-    return {
-        "name": "bank.starter.metric_contrast",
-        "description": "Baseline 4-node reference-alert contrast diagnosis DAG for Bank metrics",
-        "dag": {
+    return Playbook(
+        name="bank.starter.metric_contrast",
+        description="Baseline 4-node reference-alert contrast diagnosis DAG for Bank metrics",
+        dag={
             "nodes": [
                 {
                     "id": "node_metric_ref",
@@ -555,15 +585,15 @@ def get_bank_contrast_playbook() -> dict[str, Any]:
             ],
             "return_node": "node_consensus",
         },
-    }
+    )
 
 
-def get_bank_seed_playbook() -> dict[str, Any]:
+def get_bank_seed_playbook() -> Playbook:
     """Default retrieve playbook for OpenRCA Bank."""
-    return {
-        "name": "bank.starter.metric_consensus",
-        "description": "Baseline 3-node diagnosis DAG for Bank container metrics",
-        "dag": {
+    return Playbook(
+        name="bank.starter.metric_consensus",
+        description="Baseline 3-node diagnosis DAG for Bank container metrics",
+        dag={
             "nodes": [
                 {
                     "id": "node_metric_agg",
@@ -587,4 +617,4 @@ def get_bank_seed_playbook() -> dict[str, Any]:
             ],
             "return_node": "node_consensus",
         },
-    }
+    )
