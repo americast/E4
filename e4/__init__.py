@@ -7,8 +7,24 @@ from .data.adapter import (
     check_adapter_conformance,
 )
 from .data.agent_prompt import get_adapter_generation_prompt
+from .data.submissions import (
+    AdapterInputRequired,
+    AdapterSubmissionError,
+    adapter_code_template,
+    adapter_submission_schema,
+    load_adapter_submission,
+    parse_adapter_submission,
+    validate_adapter_config,
+)
 from .data.folder import FolderTelemetrySource
 from .engine import DiagnosisEngine, setup
+from .onboarding import (
+    normalize_dataset_schema,
+    paper_availability,
+    paper_catalog,
+    paper_reference_examples,
+    prepare_library,
+)
 from .oracle import (
     AcceptanceOracle,
     BudgetStopPolicy,
@@ -44,6 +60,11 @@ __version__ = "0.2.0"
 
 __all__ = [
     "DiagnosisEngine",
+    "prepare_library",
+    "normalize_dataset_schema",
+    "paper_catalog",
+    "paper_availability",
+    "paper_reference_examples",
     "setup",
     "TelemetrySource",
     "BaseDatasetAdapter",
@@ -51,6 +72,13 @@ __all__ = [
     "AdapterConformanceError",
     "check_adapter_conformance",
     "get_adapter_generation_prompt",
+    "adapter_submission_schema",
+    "adapter_code_template",
+    "parse_adapter_submission",
+    "validate_adapter_config",
+    "load_adapter_submission",
+    "AdapterSubmissionError",
+    "AdapterInputRequired",
     "AcceptanceOracle",
     "BudgetStopPolicy",
     "GroundTruthOracle",

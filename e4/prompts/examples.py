@@ -4,10 +4,12 @@ from __future__ import annotations
 
 from dataclasses import fields
 from inspect import signature
+from typing import get_type_hints
 
 from e4.sandbox.views import (
     AggregateRowView,
     AggregateView,
+    AggregateGroupView,
     CandidateSetView,
     CandidateView,
     EntityRefView,
@@ -16,11 +18,14 @@ from e4.sandbox.views import (
     MetricPointView,
     ScoredCandidateView,
     ScoredCandidatesView,
+    SummaryResult,
+    CoverageView,
     SpanView,
     WindowView,
     aggregate_view,
     aggregate_records,
     candidate_views,
+    entity_id,
     group_by,
     log_records,
     make_aggregate,
@@ -42,7 +47,7 @@ from e4.sandbox.views import (
 
 
 def typed_api_reference() -> str:
-    """Render signatures and row fields from the runtime implementation."""
+    """Render actual runtime helper signatures and typed-view fields."""
     helpers = (
         metric_points,
         span_records,
@@ -61,13 +66,15 @@ def typed_api_reference() -> str:
         make_aggregate,
         make_scored_candidate,
         make_scored_candidates,
+        entity_id,
         aggregate_view,
         candidate_views,
         scored_views,
     )
-    lines = ["Typed data helper signatures (from the runtime API):"]
+    lines = ["Typed data helper signatures (rendered from the runtime API):"]
     lines.extend(f"- {fn.__name__}{signature(fn)}" for fn in helpers)
     for label, row_type in (
+        ("CoverageView", CoverageView),
         ("MetricPointView", MetricPointView),
         ("SpanView", SpanView),
         ("LogRecordView", LogRecordView),
@@ -78,13 +85,24 @@ def typed_api_reference() -> str:
         ("CandidateSetView", CandidateSetView),
         ("AggregateRowView", AggregateRowView),
         ("AggregateView", AggregateView),
+        ("AggregateGroupView", AggregateGroupView),
+        ("SummaryResult", SummaryResult),
         ("ScoredCandidateView", ScoredCandidateView),
         ("ScoredCandidatesView", ScoredCandidatesView),
     ):
-        lines.append(f"{label} fields: {', '.join(field.name for field in fields(row_type))}")
+        hints = get_type_hints(row_type)
+        field_types = ", ".join(
+            f"{field.name}: {hints.get(field.name, field.type)}"
+            for field in fields(row_type)
+        )
+        lines.append(f"{label} fields: {field_types}")
     lines.append(
-        "QueryResult exposes rows, window, source_tables, and coverage; "
-        "CoverageView exposes complete, truncated, offset, next_offset, total_matches, and support."
+        "TelemetryView fields: case_id: str, reference_window: WindowView, "
+        "alert_window: WindowView, source_tables: Sequence[str], point_count: int"
+    )
+    lines.append(
+        "QueryResult[T] fields: rows: Sequence[T], window: WindowView, "
+        "source_tables: Sequence[str], coverage: CoverageView"
     )
     return "\n".join(lines)
 
@@ -92,62 +110,154 @@ def typed_api_reference() -> str:
 # This is a data access/output example, not a prescribed diagnostic algorithm.
 METRIC_ANOMALY_EXAMPLE = '''
 def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
-    """Read one schema-selected metric table and return a typed aggregate."""
+    """Compare full-window per-entity metric means; this is an API example."""
     tel = telemetry_view(inputs["telemetry"])
+    ref_w = tel.reference_window
     alt_w = tel.alert_window
     source_table = params["source_table"]
 
-    # A capped result is incomplete; do not build downstream evidence from it.
-    alt_res = metric_points(tel, source_table, alt_w)
-    if not alt_res.coverage.complete:
+    # Aggregation scans the requested window. If its grouped output exceeds the
+    # helper bound, it reports incomplete coverage and this example abstains.
+    ref_res = aggregate_records(
+        tel, source_table, ref_w, "metric", "value", "mean",
+        group_by=["entity_role", "entity_identifier", "metric_key"],
+    )
+    alt_res = aggregate_records(
+        tel, source_table, alt_w, "metric", "value", "mean",
+        group_by=["entity_role", "entity_identifier", "metric_key"],
+    )
+    if not ref_res.coverage.complete or not alt_res.coverage.complete:
         return make_aggregate(
             alt_w,
             [],
             source_tables=[source_table],
-            metadata={"abstained": "incomplete query coverage"},
+            metadata={"abstained": "incomplete full-window aggregation coverage"},
         )
 
-    by_entity = group_by(alt_res.rows, ["entity_identifier"])
+    reference_by_key: dict[tuple[Scalar, ...], AggregateGroupView] = {
+        group.key: group for group in ref_res.rows
+    }
 
     rows: list[AggregateRowView] = []
-    for (ent_id,), points in by_entity.items():
-        if not ent_id or not points:
+    for alert_group in alt_res.rows:
+        key = alert_group.key
+        if len(key) != 3:
             continue
-        vals = [p.value for p in points]
-        summary = summarize(vals, "mean")
-        if summary.value is not None:
-            ent = make_entity_ref(points[0].entity_role, str(ent_id))
-            rows.append(
-                make_aggregate_row(
-                    entity=ent,
-                    metric_key=points[0].metric_key,
-                    window=alt_w,
-                    statistic="mean",
-                    value=float(summary.value),
-                    support=summary.support,
-                    source_tables=[source_table],
-                )
+        role, identifier, metric_key = key
+        if not isinstance(role, str) or not isinstance(identifier, str):
+            continue
+        if not isinstance(metric_key, str) or alert_group.value is None:
+            continue
+        reference_group = reference_by_key.get(key)
+        # A missing reference group is unknown, not a zero-valued baseline.
+        if reference_group is None or reference_group.value is None:
+            continue
+        entity = make_entity_ref(role, identifier)
+        rows.append(
+            make_aggregate_row(
+                entity=entity,
+                metric_key=metric_key,
+                window=alt_w,
+                statistic="alert_mean_minus_reference_mean",
+                value=float(alert_group.value) - float(reference_group.value),
+                support=min(alert_group.support, reference_group.support),
+                source_tables=[source_table],
+                contributing_entities=[entity],
             )
+        )
 
-    return make_aggregate(alt_w, rows, source_tables=[source_table])
+    metadata: dict[str, str] = {}
+    if not rows:
+        metadata["abstained"] = "no complete matched entity/metric groups"
+    return make_aggregate(alt_w, rows, source_tables=[source_table], metadata=metadata)
+'''.strip()
+
+# This is a complete log-analysis example. It illustrates full-window grouped
+# aggregation and coverage handling, not a prescribed diagnostic algorithm.
+LOG_ANALYSIS_EXAMPLE = '''
+def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
+    """Summarize alert-window log event counts for identified entities."""
+    tel = telemetry_view(inputs["telemetry"])
+    window = tel.alert_window
+    source_table = params["source_table"]
+    result = aggregate_records(
+        tel,
+        source_table,
+        window,
+        "log",
+        "count",
+        "count",
+        group_by=["entity_role", "entity_identifier"],
+    )
+    if not result.coverage.complete:
+        return make_aggregate(
+            window,
+            [],
+            source_tables=[source_table],
+            metadata={"abstained": "incomplete log query coverage"},
+        )
+
+    rows: list[AggregateRowView] = []
+    for group in result.rows:
+        if len(group.key) != 2:
+            continue
+        role, identifier = group.key
+        if not isinstance(role, str) or not isinstance(identifier, str):
+            continue
+        if not isinstance(group.value, (int, float)):
+            continue
+        entity = make_entity_ref(role, identifier)
+        rows.append(
+            make_aggregate_row(
+                entity=entity,
+                metric_key="log.event_count",
+                window=window,
+                statistic="count",
+                value=float(group.value),
+                support=group.support,
+                source_tables=[source_table],
+                contributing_entities=[entity],
+            )
+        )
+    metadata: dict[str, str] = {}
+    if not rows:
+        metadata["abstained"] = "no complete identified log records"
+    return make_aggregate(window, rows, source_tables=[source_table], metadata=metadata)
 '''.strip()
 
 # Example 2: Scored Candidates Operator
 SCORED_CANDIDATE_EXAMPLE = '''
 def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
-    """Rank entities based on aggregate anomaly rows."""
+    """Convert supported aggregate rows into an illustrative scored output."""
     agg = aggregate_view(inputs["aggregate"])
     scores: list[ScoredCandidateView] = []
 
+    if (
+        agg.metadata.get("truncated") is True
+        or agg.metadata.get("coverage_complete") is False
+        or "abstained" in agg.metadata
+    ):
+        return make_scored_candidates(
+            scores,
+            scorer="anomaly_scorer",
+            status="abstained",
+            status_details={"reason": "input aggregate is incomplete or abstained"},
+        )
+
     for r in agg.rows:
-        val = r.value if r.value is not None else 0.0
-        score = min(1.0, max(0.0, float(val) / 100.0))
+        if r.value is None or r.support <= 0:
+            continue
+        contributors = r.contributing_entities
+        if not contributors:
+            continue
+        # Example mapping only; choose a justified mapping for the domain.
+        score = abs(float(r.value))
         ev = make_evidence(
-            source="anomaly_detector",
+            source="aggregate_input",
             window=r.window,
             statistic=r.statistic,
-            value=val,
-            contributing_entities=[r.entity],
+            value=r.value,
+            contributing_entities=contributors,
             support=r.support,
             ranking_eligible=True,
         )
@@ -160,5 +270,12 @@ def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
             )
         )
 
+    if not scores:
+        return make_scored_candidates(
+            scores,
+            scorer="anomaly_scorer",
+            status="abstained",
+            status_details={"reason": "no rows with supported non-null values"},
+        )
     return make_scored_candidates(scores, scorer="anomaly_scorer")
 '''.strip()

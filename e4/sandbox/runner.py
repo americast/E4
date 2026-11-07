@@ -11,7 +11,12 @@ import time
 from typing import Any, Mapping, Protocol
 
 from ..registry import OperatorSpec
-from .worker import _deserialize_input, _serialize_output, _validate_runtime_output_type
+from .worker import (
+    _deserialize_input,
+    _safe_builtins,
+    _serialize_output,
+    _validate_runtime_output_type,
+)
 
 DEFAULT_TIMEOUT_SECONDS = 30
 
@@ -247,7 +252,6 @@ class InProcessRunner:
         if not operator.source:
             raise ExecutionError(f"Operator '{operator.qualified_name}' has no implementation or source")
         # Compile and execute
-        from .worker import SAFE_BUILTINS
         from .views import (
             Window, EntityRef, Evidence, Candidate, CandidateSet,
             AggregateRow, Aggregate, ScoredCandidate, ScoredCandidates,
@@ -264,10 +268,8 @@ class InProcessRunner:
             entity_identifier, entity_id, aggregate_view, candidate_views, scored_views,
         )
 
-        import builtins
-        safe_builtins_dict = {name: getattr(builtins, name) for name in SAFE_BUILTINS if hasattr(builtins, name)}
         exec_globals = {
-            "__builtins__": safe_builtins_dict,
+            "__builtins__": _safe_builtins(),
             "math": __import__("math"),
             "statistics": __import__("statistics"),
             "itertools": __import__("itertools"),
@@ -298,9 +300,8 @@ class InProcessRunner:
             "aggregate_view": aggregate_view, "candidate_views": candidate_views,
             "scored_views": scored_views,
         }
-        loc: dict[str, Any] = {}
-        exec(operator.source, exec_globals, loc)
-        fn = loc["operator"]
+        exec(operator.source, exec_globals, exec_globals)
+        fn = exec_globals["operator"]
         res = fn(inputs, params, runtime)
         _validate_runtime_output_type(res, operator.output_type)
         return res

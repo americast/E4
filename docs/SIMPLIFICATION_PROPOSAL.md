@@ -1187,7 +1187,7 @@ All 6 dedicated regression tests (`test_g01` through `test_g06`) and all previou
 
 **Reviewed baseline:** `9e40342`. The Section 16 fixes passed an independent **43-test** run, but practical full-data and authoring-path checks exposed additional blockers. The user authorized fixing these before running seeds **42, 43 and 44**, using local and Wingtip GPUs, with a six-hour morning target. Implementation writes were delegated to the available Luna agents; the supervising agent reviewed changes, validated the actual paths and launched the experiment.
 
-**Current status (updated after the original launch):** the first campaign completed all thirty trajectories, but its accuracy is **invalid** because an entity-type boundary bug discarded valid evidence. Its outputs and costs are preserved. The correction passed **75/75 tests**, including actual starter-to-controller integration, and both starter playbooks passed a label-free public development smoke. A new immutable V2 runtime launched the clean thirty-trajectory restart at **16:03:01 UTC / 11:03 America/New_York on November 6**. See Section 17.6. The original **14:19 UTC / 09:19 America/New_York** target was missed; it is not being silently extended or reported as met.
+**Current status:** the clean V2 campaign completed all thirty trajectories at **17:23:18 UTC / 12:23 America/New_York on November 6**. Each seed scored 7/10; all successes were at retrieval. The original framework-invalid campaign remains preserved and excluded from accuracy. See Sections 17.6–17.7 for the correction and final results. New initialization/evolution templates are being prepared for a separate user review; no new generation or experiment is implied.
 
 ### 17.1 Additional findings and fixes
 
@@ -1297,3 +1297,20 @@ The preliminary V2 canary script initially called the client object instead of i
 **V2 launch confirmed:** 16:03:01 UTC / 11:03 America/New_York on November 6. PID/PGID `2313683`; exact ownership, command and fingerprints are in `launch_v2.json`. Both actual frozen clients passed neutral JSON/token-preflight canaries before launch. `campaign_v2/campaign_manifest.json` tracks the six queues, each chain checkpoints under `campaign_v2/chains/`, and `campaign_v2/combined_result.json` will be written automatically after completion. Planning estimate is **18:00–20:00 UTC / 13:00–15:00 America/New_York**. This is a restart estimate and does not erase the missed original target.
 
 **First checkpoint sanity check:** Wingtip seed42/shard1 completed `bank-20210309T0800-utc8` with a confirmed Stage 1 answer in one model call. This verifies that valid starter evidence now survives the corrected boundary in an actual scored path. One case is not an accuracy estimate; the remaining fixed trajectories continue unchanged.
+
+
+### 17.7 Completed corrected campaign
+
+The V2 campaign ran from 16:03:01 to **17:23:18 UTC** (about 80 minutes) across local and Wingtip inference endpoints. All six independent five-case chains completed; the scheduler reported no infrastructure errors and reported usage is complete.
+
+| Seed | Retrieval | + Adaptation | + Evolution | Reported tokens |
+| --- | --- | --- | --- | --- |
+| 42 | 7/10 (70%) | 7/10 (70%) | 7/10 (70%) | 117,450 |
+| 43 | 7/10 (70%) | 7/10 (70%) | 7/10 (70%) | 104,811 |
+| 44 | 7/10 (70%) | 7/10 (70%) | 7/10 (70%) | 113,931 |
+
+Total: **336,192 reported tokens**, separate from the invalid first run's 894,463 tokens. These are thirty trajectories on the same ten incidents, not thirty independent incidents. No new T2 comparison was run.
+
+All 21 confirmations came from retrieval. The same three incidents remained unsuccessful in each seed. Eight of nine unsuccessful trajectories exhausted operator-authoring repairs on AST/type errors; one passed source checks but failed serving DAG verification on malformed `source_columns`. A completed trajectory is not evidence that every stage executed successfully. These results establish neither starter overfitting nor useful evolution: most new analyses did not reach execution.
+
+`campaign_v2/combined_result.json`, each chain's checkpoints and call journals remain the authoritative evidence. The subsequent prompt/authoring-contract changes are a new unscored version, documented in [INITIALIZATION_PROMPT_REVIEW.md](INITIALIZATION_PROMPT_REVIEW.md), and must not be credited with these 70% results. The user requested reviewing those templates before generating starters or running further experiments.

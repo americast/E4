@@ -5,7 +5,15 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Iterator, Protocol, Sequence
 
-from ..types import DatasetSchema, EntityRef, TelemetryRecord, Window
+from ..types import (
+    DatasetSchema,
+    EntityRef,
+    LogRecord,
+    MetricRecord,
+    SpanRecord,
+    TelemetryRecord,
+    Window,
+)
 
 
 class TelemetrySource(Protocol):
@@ -145,7 +153,7 @@ def check_adapter_conformance(adapter: BaseDatasetAdapter) -> dict[str, Any]:
     except Exception as exc:
         raise AdapterConformanceError(f"get_windows() failed: {exc}") from exc
 
-    if not isinstance(windows, (tuple, list)) or len(windows) != 2:
+    if not isinstance(windows, tuple) or len(windows) != 2:
         raise AdapterConformanceError("get_windows() must return a 2-tuple (reference_window, alert_window)")
     ref_w, alt_w = windows[0], windows[1]
     if not isinstance(ref_w, Window) or not isinstance(alt_w, Window):
@@ -167,28 +175,65 @@ def check_adapter_conformance(adapter: BaseDatasetAdapter) -> dict[str, Any]:
         if not isinstance(ent, EntityRef) or not ent.role or not ent.identifier:
             raise AdapterConformanceError(f"Invalid EntityRef in suspect entities: {ent!r}")
 
-    # 4. Check stream_records for each table
+    # 4. Check stream_records against the declared canonical table type and
+    # both windows. Empty iterables are valid for an available empty table.
+    record_types = {
+        "metric": MetricRecord,
+        "span": SpanRecord,
+        "log": LogRecord,
+    }
     total_records = 0
+    total_records_checked = 0
     table_record_counts: dict[str, int] = {}
+    table_window_counts: dict[str, dict[str, int]] = {}
     for table in schema.tables:
-        count = 0
-        try:
-            it = adapter.stream_records(table.name, alt_w)
-            for r in it:
-                count += 1
-                if not (alt_w.start_ms_utc <= r.timestamp_ms_utc < alt_w.end_ms_utc):
+        expected_type = record_types.get(table.record_type)
+        if expected_type is None:
+            raise AdapterConformanceError(
+                f"Table '{table.name}' has unsupported canonical record_type {table.record_type!r}"
+            )
+        table_window_counts[table.name] = {}
+        for window in (ref_w, alt_w):
+            count = 0
+            try:
+                records = adapter.stream_records(table.name, window)
+                iterator = iter(records)
+                if iterator is not records:
                     raise AdapterConformanceError(
-                        f"Record timestamp {r.timestamp_ms_utc} in table '{table.name}' outside alert window [{alt_w.start_ms_utc}, {alt_w.end_ms_utc})"
+                        f"stream_records('{table.name}', {window.name}_window) must return an iterator or generator"
                     )
-                if r.source_table != table.name:
-                    raise AdapterConformanceError(
-                        f"Record source_table '{r.source_table}' does not match requested table '{table.name}'"
-                    )
-        except Exception as exc:
-            raise AdapterConformanceError(f"stream_records('{table.name}', alert_window) failed: {exc}") from exc
+                for record in iterator:
+                    count += 1
+                    if not isinstance(record, expected_type):
+                        raise AdapterConformanceError(
+                            f"Table '{table.name}' declares record_type '{table.record_type}' "
+                            f"but stream_records returned {type(record).__name__}"
+                        )
+                    timestamp = record.timestamp_ms_utc
+                    if type(timestamp) is not int:
+                        raise AdapterConformanceError(
+                            f"Record timestamp in table '{table.name}' must be an integer UTC millisecond value"
+                        )
+                    if not (window.start_ms_utc <= timestamp < window.end_ms_utc):
+                        raise AdapterConformanceError(
+                            f"Record timestamp {timestamp} in table '{table.name}' outside "
+                            f"{window.name} window [{window.start_ms_utc}, {window.end_ms_utc})"
+                        )
+                    if record.source_table != table.name:
+                        raise AdapterConformanceError(
+                            f"Record source_table '{record.source_table}' does not match "
+                            f"requested table '{table.name}'"
+                        )
+            except Exception as exc:
+                raise AdapterConformanceError(
+                    f"stream_records('{table.name}', {window.name}_window) failed: {exc}"
+                ) from exc
 
-        table_record_counts[table.name] = count
-        total_records += count
+            table_window_counts[table.name][window.name] = count
+            total_records_checked += count
+            if window.name == "alert":
+                table_record_counts[table.name] = count
+                total_records += count
 
     return {
         "status": "conforming",
@@ -196,4 +241,6 @@ def check_adapter_conformance(adapter: BaseDatasetAdapter) -> dict[str, Any]:
         "suspect_entities_count": len(entities),
         "total_records_sampled": total_records,
         "table_counts": table_record_counts,
+        "total_records_checked": total_records_checked,
+        "table_window_counts": table_window_counts,
     }

@@ -1,0 +1,40 @@
+"""Trusted dataset adapter template. Replace every method placeholder before submission."""
+
+from __future__ import annotations
+
+from collections.abc import Iterator, Mapping
+from pathlib import Path
+
+from e4.data.adapter import BaseDatasetAdapter
+from e4.types import (
+    ColumnSchema,
+    DatasetSchema,
+    EntityRef,
+    LogRecord,
+    MetricRecord,
+    SpanRecord,
+    TableSchema,
+    TelemetryRecord,
+    Window,
+)
+
+
+class DatasetAdapter(BaseDatasetAdapter):
+    def __init__(self, config: Mapping[str, object]) -> None:
+        self._config = dict(config)
+
+    def get_schema(self) -> DatasetSchema:
+        raise NotImplementedError("E4_ADAPTER_IMPLEMENTATION_REQUIRED: return the normalized dataset schema")
+
+    def get_windows(self) -> tuple[Window, Window]:
+        raise NotImplementedError("E4_ADAPTER_IMPLEMENTATION_REQUIRED: return reference and alert windows")
+
+    def extract_suspect_entities(self) -> list[EntityRef]:
+        raise NotImplementedError("E4_ADAPTER_IMPLEMENTATION_REQUIRED: return observed candidate identities")
+
+    def stream_records(self, table_name: str, window: Window) -> Iterator[TelemetryRecord]:
+        raise NotImplementedError("E4_ADAPTER_IMPLEMENTATION_REQUIRED: stream canonical records for this table/window")
+
+
+def create_adapter(config: Mapping[str, object]) -> BaseDatasetAdapter:
+    return DatasetAdapter(config)

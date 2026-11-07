@@ -363,7 +363,7 @@ def _annotate_source(source: str) -> str:
         "    group_by, summarize, top_k, make_window, make_entity_ref, make_evidence,\n"
         "    make_candidate, make_candidate_set, make_aggregate_row, make_aggregate,\n"
         "    make_scored_candidate, make_scored_candidates, entity_identifier, entity_id,\n"
-        "    aggregate_view, candidate_views, scored_views\n"
+        "    aggregate_view, candidate_views, scored_views, JSONValue, JSONMapping\n"
         ")\n\n"
     ).encode()
 

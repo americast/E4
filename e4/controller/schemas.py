@@ -6,6 +6,14 @@ import ast
 import re
 from typing import Any, Mapping, Sequence
 
+from ..dag import (
+    DAGValidationError,
+    GROUP_BY_BY_RECORD_TYPE,
+    VALID_GROUP_BY,
+    _validate_port_requirements,
+)
+from ..registry import OperatorSpec
+
 EVOLVED_NAME_PATTERN = re.compile(r"^evolved\.[a-z][a-z0-9_]{0,62}$")
 VERSION_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 VALID_OUTPUT_TYPES = frozenset({"Aggregate", "CandidateSet", "ScoredCandidates"})
@@ -21,6 +29,9 @@ MAX_PROPOSED_OPERATORS = 3
 def validate_operator_proposal(spec: Mapping[str, Any]) -> list[str]:
     """Validate a single operator proposal and return all detected errors."""
     errors: list[str] = []
+
+    if not isinstance(spec, Mapping):
+        return [f"Operator proposal must be a mapping, got {type(spec).__name__}"]
 
     # Check top-level required fields
     missing_fields = REQUIRED_SPEC_FIELDS - set(spec.keys())
@@ -67,7 +78,9 @@ def validate_operator_proposal(spec: Mapping[str, Any]) -> list[str]:
         for port in input_ports:
             if isinstance(port, Mapping) and "name" in port:
                 pname = port["name"]
-                if pname not in input_reqs:
+                if not isinstance(pname, str) or not pname:
+                    errors.append(f"input_ports contains an invalid port name {pname!r}")
+                elif pname not in input_reqs:
                     errors.append(f"input_requirements missing declaration for port '{pname}'")
                 elif not isinstance(input_reqs[pname], Mapping):
                     errors.append(
@@ -89,7 +102,62 @@ def canonicalize_ast_source(source: str) -> str:
         return " ".join(source.split())
 
 
-def validate_proposal_bundle(bundle: Mapping[str, Any], existing_library: Any = None) -> list[str]:
+def _requirement_schema_context(dataset_schema: Any) -> tuple[dict[str, set[str]], dict[str, set[str]], set[str]]:
+    known_tables: dict[str, set[str]] = {}
+    table_dimensions: dict[str, set[str]] = {}
+    valid_dimensions = set(VALID_GROUP_BY)
+    if dataset_schema:
+        for table in getattr(dataset_schema, "tables", ()):
+            table_name = getattr(table, "name", "")
+            columns = {getattr(column, "name", "") for column in getattr(table, "columns", ())}
+            roles = set(getattr(table, "entity_roles", ()))
+            dimensions = columns | roles | GROUP_BY_BY_RECORD_TYPE.get(getattr(table, "record_type", ""), set())
+            known_tables[table_name] = columns
+            table_dimensions[table_name] = dimensions
+            valid_dimensions.update(dimensions)
+    return known_tables, table_dimensions, valid_dimensions
+
+
+def _validate_input_requirements(
+    requirements: Mapping[str, Any], dataset_schema: Any
+) -> list[str]:
+    """Apply the serving DAG's requirement checks at proposal time.
+
+    Calling the shared checker keeps proposal-time shape, statistic, table,
+    column, and grouping rules aligned with verify_dag.
+    """
+    errors: list[str] = []
+    known_tables, table_dimensions, valid_dimensions = _requirement_schema_context(dataset_schema)
+    for port_name, port_requirements in requirements.items():
+        if not isinstance(port_requirements, Mapping):
+            continue  # The structural validator reports this with the port name.
+        try:
+            _validate_port_requirements(
+                op=OperatorSpec(
+                    name="evolved.requirement_check",
+                    version="1",
+                    inputs=(),
+                    output_type="Aggregate",
+                    input_requirements={port_name: port_requirements},
+                ),
+                port_name=port_name,
+                src="telemetry",
+                nid="proposal",
+                node_docs={},
+                dataset_schema=dataset_schema,
+                known_tables_map=known_tables,
+                table_group_dimensions_map=table_dimensions,
+                valid_group_dimensions=valid_dimensions,
+                is_external=True,
+            )
+        except DAGValidationError as exc:
+            errors.append(f"input_requirements for port '{port_name}': {exc}")
+    return errors
+
+
+def validate_proposal_bundle(
+    bundle: Mapping[str, Any], existing_library: Any = None, dataset_schema: Any = None
+) -> list[str]:
     """Validate full EVOLVE output bundle and collect all errors across all operators."""
     errors: list[str] = []
 
@@ -142,7 +210,8 @@ def validate_proposal_bundle(bundle: Mapping[str, Any], existing_library: Any = 
     for idx, op in enumerate(proposed_ops):
         op_name = op.get("name", f"operator_{idx}") if isinstance(op, Mapping) else f"operator_{idx}"
         if isinstance(op, Mapping):
-            src = op.get("source", "").strip()
+            source = op.get("source", "")
+            src = source.strip() if isinstance(source, str) else ""
             if src:
                 ast_canon = canonicalize_ast_source(src)
                 if ast_canon in seen_sources:
@@ -158,5 +227,8 @@ def validate_proposal_bundle(bundle: Mapping[str, Any], existing_library: Any = 
         op_errors = validate_operator_proposal(op)
         for err in op_errors:
             errors.append(f"[{op_name}] {err}")
+        if isinstance(op, Mapping) and isinstance(op.get("input_requirements"), Mapping):
+            for err in _validate_input_requirements(op["input_requirements"], dataset_schema):
+                errors.append(f"[{op_name}] {err}")
 
     return errors

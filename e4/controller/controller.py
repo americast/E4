@@ -31,6 +31,16 @@ def _deep_copy_doc(val: Any) -> Any:
     return val
 
 
+def _select_available_playbook(
+    available_playbooks: Sequence[Playbook], selected_name: Any
+) -> Playbook | None:
+    """Resolve a model choice only within the schema-compatible active list."""
+    available_by_name = {playbook.name: playbook for playbook in available_playbooks}
+    if isinstance(selected_name, str) and selected_name in available_by_name:
+        return available_by_name[selected_name]
+    return available_playbooks[0] if available_playbooks else None
+
+
 def _parse_json(text: str) -> dict[str, Any]:
     clean = text.strip()
     try:
@@ -177,6 +187,45 @@ def _to_ranked_answer(raw_val: Any, stage: str, entities: Sequence[EntityRef]) -
     )
 
 
+def _bounded_answer_summary(answer: RankedAnswer) -> dict[str, Any]:
+    """Return compact, supported public facts for a rejected stage attempt."""
+    def clipped_text(value: Any, limit: int) -> tuple[Any, bool]:
+        if isinstance(value, str) and len(value) > limit:
+            return value[:limit], True
+        return value, False
+
+    candidates = []
+    for index, candidate in enumerate(answer.candidates[:3]):
+        item: dict[str, Any] = {"entity": candidate.as_dict()}
+        if index < len(answer.scores):
+            item["score"] = answer.scores[index]
+        candidates.append(item)
+
+    evidence = []
+    for item in answer.evidence[:6]:
+        source, source_truncated = clipped_text(item.source, 128)
+        statistic, statistic_truncated = clipped_text(item.statistic, 128)
+        value, value_truncated = clipped_text(item.value, 256)
+        window_name, window_name_truncated = clipped_text(item.window.name, 64)
+        evidence.append({
+            "source": source,
+            "source_truncated": source_truncated,
+            "window": {
+                "name": window_name,
+                "name_truncated": window_name_truncated,
+                "start_ms_utc": item.window.start_ms_utc,
+                "end_ms_utc": item.window.end_ms_utc,
+            },
+            "statistic": statistic,
+            "statistic_truncated": statistic_truncated,
+            "value": value,
+            "value_truncated": value_truncated,
+            "support": item.support,
+            "contributors": [entity.as_dict() for entity in item.contributing_entities[:3]],
+        })
+    return {"candidates": candidates, "evidence": evidence}
+
+
 class DiagnosisController:
     """Orchestrates 3-stage diagnosis: Retrieve -> Adapt -> Evolve/Serve."""
 
@@ -250,9 +299,28 @@ class DiagnosisController:
         # STAGE 1: Playbook Retrieval (SELECT)
         # =====================================================================
         attempt = 1
-        available_playbooks = self.library.list_playbooks()
+        if hasattr(self.library, "list_playbooks_for_schema"):
+            available_playbooks = self.library.list_playbooks_for_schema(schema)
+        else:
+            available_playbooks = self.library.list_playbooks()
         if available_playbooks:
-            prompt = format_select_prompt(case_id, [pb.as_dict() for pb in available_playbooks], public_digest)
+            active_operator_keys = {
+                (node.get("operator"), node.get("version"))
+                for pb in available_playbooks
+                for node in pb.dag.get("nodes", [])
+                if isinstance(node, Mapping)
+            }
+            active_signatures = [
+                signature
+                for signature in self.library.registry.signatures()
+                if (signature.get("name"), signature.get("version")) in active_operator_keys
+            ]
+            prompt = format_select_prompt(
+                case_id,
+                [pb.as_dict() for pb in available_playbooks],
+                public_digest,
+                operators=active_signatures,
+            )
             total_calls += 1
             raw_resp = query_fn(prompt)
             sel_doc = None
@@ -279,7 +347,7 @@ class DiagnosisController:
                 })
                 sel_doc = {}
             pb_name = sel_doc.get("selected_playbook") if isinstance(sel_doc, Mapping) else None
-            chosen_pb = self.library.get_playbook(pb_name) if pb_name else available_playbooks[0]
+            chosen_pb = _select_available_playbook(available_playbooks, pb_name)
 
             if chosen_pb:
                 dag_doc = _deep_copy_doc(chosen_pb.dag)
@@ -306,6 +374,7 @@ class DiagnosisController:
                         "stage": "select",
                         "playbook": chosen_pb.name,
                         "status": "failed_execution",
+                        "dag": dag_doc,
                         "error": str(exc),
                     })
 
@@ -320,6 +389,7 @@ class DiagnosisController:
                         "playbook": chosen_pb.name,
                         "dag": dag_doc,
                         "top_candidates": [c.as_dict() for c in answer.candidates[:3]],
+                        **({"evidence_summary": _bounded_answer_summary(answer)} if decision.action != "confirm" else {}),
                         "decision": decision.as_dict(),
                     })
 
@@ -349,6 +419,7 @@ class DiagnosisController:
                             "stage": "select",
                             "playbook": chosen_pb.name,
                             "status": "empty_answer",
+                            "dag": dag_doc,
                         })
 
                 if attempt >= eff_max_attempts:
@@ -369,8 +440,9 @@ class DiagnosisController:
         prompt = format_compose_prompt(
             case_id,
             history,
-            self.library.registry.signatures(),
+            self.library.signatures_for_schema(schema),
             public_digest,
+            dataset_schema=schema.as_dict(),
         )
         total_calls += 1
         raw_resp = query_fn(prompt)
@@ -416,6 +488,7 @@ class DiagnosisController:
             history.append({
                 "stage": "compose",
                 "status": "failed_execution",
+                "dag": candidate_dag,
                 "error": str(exc),
             })
 
@@ -429,6 +502,7 @@ class DiagnosisController:
                 "stage": "compose",
                 "dag": candidate_dag,
                 "top_candidates": [c.as_dict() for c in answer_compose.candidates[:3]],
+                **({"evidence_summary": _bounded_answer_summary(answer_compose)} if decision.action != "confirm" else {}),
                 "decision": decision.as_dict(),
             })
 
@@ -459,6 +533,7 @@ class DiagnosisController:
                 history.append({
                     "stage": "compose",
                     "status": "empty_answer",
+                    "dag": candidate_dag,
                 })
 
         if attempt >= eff_max_attempts:
@@ -481,7 +556,7 @@ class DiagnosisController:
             history,
             public_digest,
             schema.as_dict(),
-            available_operators=self.library.registry.signatures(),
+            available_operators=self.library.signatures_for_schema(schema),
         )
         total_calls += 1
         raw_resp = query_fn(evolve_prompt)
@@ -540,8 +615,10 @@ class DiagnosisController:
         serve_prompt = format_serve_prompt(
             case_id,
             registered_evolved_docs,
-            candidate_registry.signatures(),
+            self.library.signatures_for_schema(schema, registry=candidate_registry),
             public_digest,
+            prior_attempts=history,
+            dataset_schema=schema.as_dict(),
         )
         total_calls += 1
         verified_serve = None

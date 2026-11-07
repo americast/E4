@@ -1,6 +1,6 @@
 # Code review guide
 
-This guide follows the current simplified implementation in `e4/`. Start with the reading route below, then trace one starter playbook through the controller. The source implements retrieval, adaptation, and Python operator evolution; the running Bank experiment uses this implementation.
+This guide follows the current simplified implementation in `e4/`. Start with the reading route below, then trace one starter playbook through the controller. The completed Bank experiment used an explicit Bank starter library; the new package defaults and bootstrap workflow are unscored.
 
 The design decisions and review history are in [SIMPLIFICATION_PROPOSAL.md](SIMPLIFICATION_PROPOSAL.md), especially Sections 16–17. Historical scripts elsewhere in the repository are not the entry point for the current experiment. Results from the earlier kernel implementation are a separate variant.
 
@@ -47,7 +47,7 @@ Read `run_diagnostic()` from top to bottom with these questions:
 
 There are three diagnosis attempts, not necessarily three model calls. EVOLVE and SERVE are separate calls; repairs also consume calls and tokens. A failed later attempt can return the previous supported answer with status `unverified`; that is not a confirmed success.
 
-## 3. Understand the starter library
+## 3. Understand the explicit Bank benchmark starter library
 
 All six operators are registered in [bank_library.py](../adapters/bank_library.py). Their implementations are ordinary trusted Python functions.
 
@@ -145,7 +145,7 @@ Next read [oracle.py](../e4/oracle.py):
 
 The benchmark loads labels on the evaluator side. Model prompts receive public telemetry context and attempt history, including oracle feedback; no ground-truth component is inserted into those prompts.
 
-Read the actual formatters in [templates.py](../e4/prompts/templates.py) to assess context limitations. SELECT receives playbook names/descriptions, not their full DAGs. COMPOSE receives history, signatures and the public digest. EVOLVE additionally receives the dataset schema, typed API and source example. SERVE receives proposed operator documents, candidate-registry signatures and the digest; it currently does **not** receive the earlier history as a separate argument. History contains recorded DAGs, top candidates, decisions or errors, not a complete transcript of every intermediate analysis.
+Read the actual formatters in [templates.py](../e4/prompts/templates.py) to assess context limitations. SELECT receives playbook names/descriptions, not their full DAGs. COMPOSE receives history, signatures and the public digest. EVOLVE additionally receives the dataset schema, typed API and source example. SERVE receives proposed operator documents, candidate-registry signatures, the digest, prior diagnosis history and the public schema. Failed SELECT/COMPOSE history retains the attempted DAG, and rejected supported answers include bounded candidate scores and evidence summaries. This is recorded execution context, not a complete transcript of every intermediate analysis.
 
 ## 8. Review tests and the experiment harness
 
@@ -183,3 +183,9 @@ Section 17 of the proposal records the immutable source hashes and artifact loca
 Use [demo_adapter.py](../adapters/demo_adapter.py) and [folder.py](../e4/data/folder.py) as alternative data-source examples. A new domain needs its own adapter/schema, rankable identity policy, useful starter library and acceptance policy. Those choices determine which analyses are possible; merely renaming the Bank starter is insufficient.
 
 A useful final review exercise is to follow one component identity and one evidence item from `stream_records()` through aggregation, scoring, worker serialization, `_to_ranked_answer()` and oracle evaluation. Then follow a rejected operator through repair and check that a failed proposal never reaches the active library.
+
+
+For the new initialization/evolution template review checkpoint, see [INITIALIZATION_PROMPT_REVIEW.md](INITIALIZATION_PROMPT_REVIEW.md). The packaged templates and offline exporter are reviewed before any starter generation. Initialization and evolution share [authoring.py](../e4/prompts/authoring.py); the worker supports the existing import allowlist and module-level helpers. No new accuracy result is implied by these changes.
+
+
+For the revised package defaults, start at [onboarding.py](../e4/onboarding.py), then read [the six paper-family implementations and gaps](PAPER_DEFAULT_LIBRARY.md). `DiagnosisEngine` delays automatic default loading until it sees the adapter schema; explicitly supplied libraries are preserved. `LibraryManager` persists the mode and restores native functions, while schema-specific signatures/playbooks are used in prompts. The complete revised stage order is in the short [prompt review guide](INITIALIZATION_PROMPT_REVIEW.md).

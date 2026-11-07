@@ -59,7 +59,11 @@ class StaticRepairController:
         parsed_specs: list[OperatorSpec] = []
 
         # 1. Structural schema validation
-        schema_errors = validate_proposal_bundle(bundle, existing_library=existing_library)
+        schema_errors = validate_proposal_bundle(
+            bundle,
+            existing_library=existing_library,
+            dataset_schema=dataset_schema,
+        )
         if schema_errors:
             return schema_errors, []
 

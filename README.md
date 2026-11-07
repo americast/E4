@@ -1,12 +1,8 @@
-# E4: Root-Cause Analysis Engine
+# E4
 
-E4 is a lightweight, domain-agnostic Root-Cause Analysis (RCA) engine for microservice and distributed system telemetry. It executes a 3-stage progression loop (**Retrieve $\to$ Adapt $\to$ Evolve/Serve**) using typed Directed Acyclic Graphs (DAGs) and sandboxed Python operator synthesis.
+## Install
 
----
-
-## 1. Installation & Environment Setup
-
-Use Python 3.10:
+Use Python 3.10 or newer:
 
 ```bash
 python3.10 -m venv .venv
@@ -14,96 +10,73 @@ source .venv/bin/activate
 pip install -e .
 ```
 
----
+## Prepare a dataset and library
 
-## 2. Running Verification Tests
+Export the adapter-development prompt using your task description, public source metadata and sample rows:
 
 ```bash
-# Run all maintained engine and regression tests (37 tests):
-.venv/bin/python -m unittest discover -s tests/test_e4 -v
-
-# Run entire discoverable test suite:
-.venv/bin/python -m unittest discover -s tests -v
+e4 setup ./my_project
+e4 adapter-prompt samples.txt \
+  --domain-file domain.md \
+  --metadata-file metadata.json > adapter_prompt.md
 ```
 
-Execution is powered by `SubprocessRunner` by default, running portably without requiring unprivileged user namespaces or Bubblewrap. An optional `BubblewrapRunner` is available for environments requiring strict kernel namespace isolation.
+The coding model returns `adapter_response.json` with the filled Python template and its configuration schema, or typed missing-input fields. Inspect the starter and validate the response without executing it:
 
----
-
-## 3. Quickstart: Programmatic Usage (10 Lines of Python)
-
-```python
-from adapters.bank_adapter import BankAdapter
-from adapters.bank_library import build_bank_registry, get_bank_seed_playbook
-from e4 import DiagnosisEngine, GroundTruthOracle
-from e4.controller.library import LibraryManager
-
-# 1. Load telemetry adapter
-adapter = BankAdapter("data/prepared/bank/public/cases/bank-20210304T1800-utc8")
-
-# 2. Configure starter operator library and seed playbooks
-lib = LibraryManager(registry=build_bank_registry())
-lib.add_playbook(get_bank_seed_playbook())
-
-# 3. Initialize engine with LLM client and acceptance oracle
-engine = DiagnosisEngine(
-    model=model_client,
-    library=lib,
-    oracle=GroundTruthOracle(ground_truth_entities=["cartservice"]),
-)
-
-# 4. Run diagnosis
-result = engine.diagnose(adapter)
-print(f"Status: {result.status}, Stage: {result.stage}, Top Cause: {result.top_candidates[:3]}")
+```bash
+e4 adapter-template > adapter_template.py
+e4 adapter-validate adapter_response.json --config adapter_config.json
 ```
 
----
+Load a ready response through `load_adapter_submission(response, config)` from `e4`. After implementing and validating the adapter, save `adapter.get_schema().as_dict()` as `schema.json`. Export the pre-run bootstrap prompt to extend the compatible shipped library:
 
-## 4. Benchmark Evaluation
+```bash
+e4 initialization-prompt domain.md --schema schema.json > bootstrap_prompt.md
+```
 
-To evaluate on the 10 scored Bank cases using the frozen evaluation settings (temperature 1.0, 8192 max tokens, top-p 0.95, top-k 64 from pinned `config/gemma_m3_inference.json`):
+To generate a domain library from an empty executable inventory instead:
+
+```bash
+e4 initialization-prompt domain.md --schema schema.json \
+  --clean-slate > clean_slate_prompt.md
+```
+
+These commands export prompts; they do not call a model or generate a library. The prompts are awaiting review before generation or further experiments. Reference examples remain visible in clean-slate mode without being registered.
+
+## Run the prepared Bank benchmark
+
+Requires prepared Bank data and a running model endpoint:
 
 ```bash
 .venv/bin/python -m benchmarks.bank_benchmark \
-    --cases-dir data/prepared/bank/public/cases \
-    --split scored \
-    --seed 42 \
-    --temperature 1.0 \
-    --max-tokens 8192 \
-    --top-k 64 \
-    --model-url http://127.0.0.1:19250
+  --cases-dir data/prepared/bank/public/cases \
+  --split scored --seed 42 \
+  --temperature 1.0 --max-tokens 8192 --top-k 64 \
+  --model-url http://127.0.0.1:19250
 ```
 
----
+This benchmark explicitly selects its Bank library. It does not evaluate the new shipped paper defaults or pre-run bootstrapping.
 
-## 5. Dataset Adapters & Zero-Code Telemetry Ingestion
-
-For new telemetry datasets, implement the 4-method `TelemetrySource` protocol or use declarative JSON mappings with `FolderTelemetrySource`:
+## Run checks
 
 ```bash
-# Initialize boilerplate mapping
-e4 setup --output-dir ./my_project
-
-# Print AI prompt to generate custom adapter
-e4 adapter-prompt --schema ./my_project/mapping.sample.json
+.venv/bin/python -m unittest discover -s tests/test_e4 -v
 ```
 
----
+## Recorded results
 
-## 6. Current Results Reference
+Accuracy is ground-truth inclusion in the top three on the same ten Bank incidents. Cost is reported input/output tokens, including repairs, as a percentage of the historical T2 seed42 cost (5,314,218 tokens). Cost percentages use seed42 only; T2 seed43 usage is incomplete.
 
-The historical E4 rows below are from the **kernel-constrained variant** in commit `7de48fe`. The new typed operator-code variant has one completed seed42 evaluation; its authoring-interface fixes and planned simplification are pending.
+| Variant | Accuracy | Token cost (% of T2; seed42) |
+| --- | ---: | ---: |
+| Historical kernel E4: retrieval | 30.0% | 4.2% |
+| Historical kernel E4: + adaptation | 55.0% | 8.1% |
+| Historical kernel E4: + evolution | 70.0% | 11.4% |
+| Earlier Python operator-code E4 | 50.0% | 14.7% |
+| Simplified E4 with explicit Bank starters | 70.0% | 2.2% |
+| New paper defaults and bootstrap workflow | TBD | TBD |
+| Historical T2 | 40.0% | 100.0% |
 
-Accuracy measures ground-truth inclusion in the top three on ten Bank incidents. Historical rows average decoding seeds 42 and 43; the operator-code row is seed42 only. Historical E4 rows are cumulative stage prefixes. Token cost includes input and output tokens for all model calls and repairs, relative to the same-seed T2 baseline (100%).
+Kernel accuracies average seeds 42/43; the earlier Python row is seed42 only. The simplified Bank row is 70% in each of seeds 42/43/44, with all successes at retrieval and no additional adaptation/evolution successes. These are separate implementations and repeat the same incidents; they do not establish statistical significance or an isolated causal improvement. The new default library and prompts have no accuracy result yet.
 
-| Method | Accuracy | Token cost (% of T2; seed42) |
-|---|---:|---:|
-| E4: retrieval | 30.0% | 4.2% |
-| E4: retrieval + adaptation | 55.0% | 8.1% |
-| E4: retrieval + adaptation + evolution | 70.0% | 11.4% |
-| E4: typed operator-code variant (seed42 only) | 50.0% | 14.7% |
-| T2: up to three diagnoses | 40.0% | 100.0% |
-
-Historical final E4 accuracy is 80% for seed42 and 60% for seed43. The operator-code run scored 20% after retrieval and 50% after adaptation; all five evolution attempts failed proposal validation, adding no successes. Cost covers seed42 only because T2 seed43 token usage is incomplete. These exploratory runs reuse ten distinct incidents and do not establish statistical significance.
-
-See the [verified results](docs/BANK_CURRENT_RESULTS.md) for per-seed counts, token totals and result hashes.
+Recorded evidence: [historical results](docs/BANK_CURRENT_RESULTS.md) and [corrected simplified campaign](docs/SIMPLIFICATION_PROPOSAL.md#177-completed-corrected-campaign).

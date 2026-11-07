@@ -1,0 +1,434 @@
+{
+  "schema_version": "e4-paper-starter-reconstruction/1",
+  "source": {
+    "paper": "Agentic RCA for Internet-Scale Services Using Constrained Creativity",
+    "paper_revision": "arXiv:2610.08622v1",
+    "table": "Table 2",
+    "identity_status": "reconstructed families; exact original operator names, equations, contracts, and DAGs are not published"
+  },
+  "counts": {
+    "operators": 19,
+    "candidate_generators": 7,
+    "scorers": 10,
+    "summarizers": 2,
+    "playbooks": 11
+  },
+  "operators": [
+    {
+      "id": "C1",
+      "name": "paper.cohorts.attribute",
+      "category": "candidate_generators",
+      "purpose": "Partition sessions by an observed categorical attribute; retain supported cohorts.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "The canonical telemetry API has no session/client-attribute record type or stable session identity.",
+        "future_requirement": "The canonical telemetry API has no session/client-attribute record type or stable session identity."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "C2",
+      "name": "paper.cohorts.conjunction",
+      "category": "candidate_generators",
+      "purpose": "Bounded frequent conjunction mining over observed client attributes.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "The canonical telemetry API has no session/client-attribute rows for bounded conjunction mining.",
+        "future_requirement": "The canonical telemetry API has no session/client-attribute rows for bounded conjunction mining."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "C3",
+      "name": "paper.cohorts.activity",
+      "category": "candidate_generators",
+      "purpose": "Form activity cohorts from pre-alert user history.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "The canonical telemetry API has no user/session history or activity-cohort contract.",
+        "future_requirement": "The canonical telemetry API has no user/session history or activity-cohort contract."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "C4",
+      "name": "paper.backend.metric_conditions",
+      "category": "candidate_generators",
+      "purpose": "Propose observed components with supported native metric excursions.",
+      "implementation": {
+        "status": "implemented_generic",
+        "module": "e4.starters.paper",
+        "semantics": "Full-window reference/alert metric contrast, preserving entity role, identifier, metric name, and unit; emits observed entities with support and a declared absolute-change threshold.",
+        "reconstruction_assumptions": [
+          "The paper does not publish the exact implementation equation or source code."
+        ]
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "C5",
+      "name": "paper.events.subsequences",
+      "category": "candidate_generators",
+      "purpose": "Mine bounded contiguous event subsequences with distinct-session support.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "The canonical telemetry API has no ordered event-stream record type.",
+        "future_requirement": "The canonical telemetry API has no ordered event-stream record type."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "C6",
+      "name": "paper.urls.failure_conditions",
+      "category": "candidate_generators",
+      "purpose": "Select endpoints with supported request failure-rate increases.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "There is no request denominator, success outcome, URL identity, or endpoint candidate contract.",
+        "future_requirement": "There is no request denominator, success outcome, URL identity, or endpoint candidate contract."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "C7",
+      "name": "paper.urls.delay_conditions",
+      "category": "candidate_generators",
+      "purpose": "Select endpoints with supported latency-quantile increases in declared units.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "There is no endpoint/URL identity or request-latency observation contract.",
+        "future_requirement": "There is no endpoint/URL identity or request-latency observation contract."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S1",
+      "name": "paper.cohorts.welch",
+      "category": "scorers",
+      "purpose": "Welch comparison of cohort KPI observations across baseline and alert.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No canonical cohort KPI observations or client/session grouping contract exists.",
+        "future_requirement": "No canonical cohort KPI observations or client/session grouping contract exists."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S2",
+      "name": "paper.cohorts.permutation",
+      "category": "scorers",
+      "purpose": "Independent-unit permutation contrast for cohort KPI observations.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No canonical cohort KPI observations or independent session unit exists.",
+        "future_requirement": "No canonical cohort KPI observations or independent session unit exists."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S3",
+      "name": "paper.cohorts.tree_likelihood",
+      "category": "scorers",
+      "purpose": "Regression-tree historical KPI attribution with an explicit alert-residual likelihood.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No canonical client feature/KPI rows or published tree likelihood details exist.",
+        "future_requirement": "No canonical client feature/KPI rows or published tree likelihood details exist."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S4",
+      "name": "paper.backend.mean_welch",
+      "category": "scorers",
+      "purpose": "Welch comparison over supported independent time-block means.",
+      "implementation": {
+        "status": "implemented_generic",
+        "module": "e4.starters.paper",
+        "semantics": "Welch two-sample test over independent fixed-width time-block means; block means are the independent units.",
+        "reconstruction_assumptions": [
+          "The paper does not specify this implementation equation or its parameter defaults.",
+          "Fixed-width UTC time blocks are treated as independent sampling units for the statistical tests."
+        ]
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S5",
+      "name": "paper.backend.location_permutation",
+      "category": "scorers",
+      "purpose": "Block permutation test for a declared location statistic.",
+      "implementation": {
+        "status": "implemented_generic",
+        "module": "e4.starters.paper",
+        "semantics": "Two-sided independent-block permutation test for mean difference.",
+        "reconstruction_assumptions": [
+          "The paper does not specify this implementation equation or its parameter defaults.",
+          "Fixed-width UTC time blocks are treated as independent sampling units for the statistical tests."
+        ]
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S6",
+      "name": "paper.backend.tail_permutation",
+      "category": "scorers",
+      "purpose": "Block permutation test for a separately declared tail statistic.",
+      "implementation": {
+        "status": "implemented_generic",
+        "module": "e4.starters.paper",
+        "semantics": "Two-sided independent-block permutation test for a separately selected quantile difference.",
+        "reconstruction_assumptions": [
+          "The paper does not specify this implementation equation or its parameter defaults.",
+          "Fixed-width UTC time blocks are treated as independent sampling units for the statistical tests."
+        ]
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S7",
+      "name": "paper.urls.welch",
+      "category": "scorers",
+      "purpose": "Welch contrast over endpoint request or latency observations.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No endpoint request/latency observations are represented by the canonical schema.",
+        "future_requirement": "No endpoint request/latency observations are represented by the canonical schema."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S8",
+      "name": "paper.urls.permutation",
+      "category": "scorers",
+      "purpose": "Request/session-group permutation contrast over endpoint observations.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No endpoint or request/session grouping contract exists.",
+        "future_requirement": "No endpoint or request/session grouping contract exists."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S9",
+      "name": "paper.urls.flow_contribution",
+      "category": "scorers",
+      "purpose": "Shared additive flow model with endpoint contribution-change attribution.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No URL flow matrix or endpoint-contribution output contract exists.",
+        "future_requirement": "No URL flow matrix or endpoint-contribution output contract exists."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "S10",
+      "name": "paper.events.outcome_support",
+      "category": "scorers",
+      "purpose": "Aho-Corasick event-pattern support contrast between valid outcome groups.",
+      "implementation": {
+        "status": "not_implemented",
+        "module": null,
+        "reason": "No event stream or valid success/failure outcome field is represented.",
+        "future_requirement": "No event stream or valid success/failure outcome field is represented."
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "U1",
+      "name": "paper.scores.dependency_adjust",
+      "category": "summarizers",
+      "purpose": "Adjust scores using supported trace-local dependency edges and corroborated anomalies.",
+      "implementation": {
+        "status": "implemented_generic",
+        "module": "e4.starters.paper",
+        "semantics": "Reconstruction: reduce a caller score only when an observed same-trace parent edge points to a child with eligible corroborating anomaly evidence; preserve source evidence unchanged.",
+        "reconstruction_assumptions": [
+          "The paper does not publish the exact implementation equation or source code."
+        ]
+      },
+      "reference_location": "Table 2"
+    },
+    {
+      "id": "U2",
+      "name": "paper.answers.weighted_consensus",
+      "category": "summarizers",
+      "purpose": "Normalize independent scorer votes and combine using explicit weights.",
+      "implementation": {
+        "status": "implemented_generic",
+        "module": "e4.starters.paper",
+        "semantics": "Normalize each scorer within its declared family, average scorer votes within family, apply caller-supplied family weights, and retain eligible evidence unchanged.",
+        "reconstruction_assumptions": [
+          "The paper does not publish the exact implementation equation or source code."
+        ]
+      },
+      "reference_location": "Table 2"
+    }
+  ],
+  "playbooks": [
+    {
+      "id": "B1",
+      "name": "attribute_cohort_shift",
+      "operators": [
+        "paper.cohorts.attribute",
+        "paper.cohorts.welch",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B2",
+      "name": "joint_cohort_interaction",
+      "operators": [
+        "paper.cohorts.conjunction",
+        "paper.cohorts.permutation",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B3",
+      "name": "activity_cohort_explanation",
+      "operators": [
+        "paper.cohorts.activity",
+        "paper.cohorts.tree_likelihood",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B4",
+      "name": "backend_mean_shift",
+      "operators": [
+        "paper.backend.metric_conditions",
+        "paper.backend.mean_welch",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Generate metric-supported component candidates, score independent time-block mean changes with Welch tests, then combine eligible family evidence.",
+      "implementation_status": "implemented_reconstruction"
+    },
+    {
+      "id": "B5",
+      "name": "backend_location_shift",
+      "operators": [
+        "paper.backend.metric_conditions",
+        "paper.backend.location_permutation",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Generate metric-supported component candidates, test mean-location differences by block permutation, then combine eligible family evidence.",
+      "implementation_status": "implemented_reconstruction"
+    },
+    {
+      "id": "B6",
+      "name": "backend_tail_degradation",
+      "operators": [
+        "paper.backend.metric_conditions",
+        "paper.backend.tail_permutation",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Generate metric-supported component candidates, test a declared upper-tail quantile change by block permutation, then combine eligible family evidence.",
+      "implementation_status": "implemented_reconstruction"
+    },
+    {
+      "id": "B7",
+      "name": "url_failure_diagnosis",
+      "operators": [
+        "paper.urls.failure_conditions",
+        "paper.urls.welch",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B8",
+      "name": "url_delay_flow_attribution",
+      "operators": [
+        "paper.urls.delay_conditions",
+        "paper.urls.permutation",
+        "paper.urls.flow_contribution",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B9",
+      "name": "failed_session_event_patterns",
+      "operators": [
+        "paper.events.subsequences",
+        "paper.events.outcome_support",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B10",
+      "name": "combined_client_backend",
+      "operators": [
+        "paper.cohorts.attribute",
+        "paper.cohorts.permutation",
+        "paper.backend.metric_conditions",
+        "paper.backend.location_permutation",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Reconstructed composition whose required operator families need data contracts not available in the current typed package.",
+      "implementation_status": "not_implemented",
+      "gap_reason": "At least one referenced family is not implemented because the canonical typed schema cannot express the necessary inputs/outputs."
+    },
+    {
+      "id": "B11",
+      "name": "dependency_adjusted_backend_consensus",
+      "operators": [
+        "paper.backend.metric_conditions",
+        "paper.backend.mean_welch",
+        "paper.backend.location_permutation",
+        "paper.backend.tail_permutation",
+        "paper.scores.dependency_adjust",
+        "paper.answers.weighted_consensus"
+      ],
+      "description": "Combine the three backend statistical scorers, then apply only trace-local caller-to-callee adjustments supported by eligible anomaly evidence before final consensus.",
+      "implementation_status": "implemented_reconstruction"
+    }
+  ],
+  "implementation_summary": {
+    "implemented_operator_families": [
+      "paper.answers.weighted_consensus",
+      "paper.backend.location_permutation",
+      "paper.backend.mean_welch",
+      "paper.backend.metric_conditions",
+      "paper.backend.tail_permutation",
+      "paper.scores.dependency_adjust"
+    ],
+    "implemented_books": [
+      "backend_mean_shift",
+      "backend_location_shift",
+      "backend_tail_degradation",
+      "dependency_adjusted_backend_consensus"
+    ],
+    "meaning": "All formulas, defaults, independent-block assumptions, and compositions are package reconstructions, not claims of exact paper implementation."
+  },
+  "formula_disclosure": "Specific likelihood, block, tail, adjustment, and consensus equations are implementation reconstructions, not equations specified by Table 2."
+}

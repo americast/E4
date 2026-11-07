@@ -13,6 +13,7 @@ dependencies = [
   "scipy==1.15.3",
   "scikit-learn==1.7.2",
   "mypy==1.19.1",
+  "jsonschema==4.26.0",
   "typing_extensions>=4.5.0",
 ]
 
@@ -22,6 +23,11 @@ e4 = "e4.cli:main"
 [tool.setuptools.packages.find]
 include = ["e4", "e4.*", "adapters", "adapters.*", "benchmarks", "benchmarks.*"]
 exclude = ["e4core*", "e4infra*", "e4baseline*"]
+
+[tool.setuptools.package-data]
+"e4.data" = ["resources/*.json", "resources/*.txt"]
+"e4.prompts" = ["resources/*.md"]
+"e4.starters" = ["resources/*.json"]
 
 [tool.ruff]
 line-length = 100

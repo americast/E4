@@ -1,6 +1,7 @@
 """Prompt templates and statically checked reference API examples."""
 
 from .examples import METRIC_ANOMALY_EXAMPLE, SCORED_CANDIDATE_EXAMPLE
+from .initialization import load_initialization_resource, render_initialization_prompt
 from .templates import (
     COMPOSE_TEMPLATE,
     EVOLVE_TEMPLATE,
@@ -29,4 +30,6 @@ __all__ = [
     "format_evolve_prompt",
     "format_serve_prompt",
     "format_repair_prompt",
+    "load_initialization_resource",
+    "render_initialization_prompt",
 ]

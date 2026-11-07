@@ -7,9 +7,10 @@ import math
 import resource
 import sys
 import time
+import builtins
 from typing import Any, Mapping
 
-from e4.sandbox.ast_validator import SAFE_BUILTINS, validate_source
+from e4.sandbox.ast_validator import ALLOWED_MODULES, SAFE_BUILTINS, validate_source
 from e4.types import RankedAnswer
 from e4.sandbox.views import (
     Aggregate,
@@ -64,6 +65,26 @@ from e4.sandbox.views import (
     telemetry_view,
     top_k,
 )
+
+
+def _restricted_import(
+    name: str,
+    globals: Mapping[str, Any] | None = None,
+    locals: Mapping[str, Any] | None = None,
+    fromlist: tuple[str, ...] = (),
+    level: int = 0,
+) -> Any:
+    """Import only exact modules already allowed by authored-source validation."""
+    if level != 0 or name not in ALLOWED_MODULES:
+        raise ImportError(f"Importing unauthorized module: {name}")
+    return builtins.__import__(name, globals, locals, fromlist, level)
+
+
+def _safe_builtins() -> dict[str, Any]:
+    """Build authored builtins, with import syntax limited to the AST allowlist."""
+    names = {name: getattr(builtins, name) for name in SAFE_BUILTINS if hasattr(builtins, name)}
+    names["__import__"] = _restricted_import
+    return names
 
 
 def _deserialize_input(val: Any) -> Any:
@@ -268,10 +289,8 @@ def main() -> None:
     inputs = {k: _deserialize_input(v) for k, v in raw_inputs.items()}
 
     # Construct safe execution globals
-    import builtins
-    safe_builtins_dict = {name: getattr(builtins, name) for name in SAFE_BUILTINS if hasattr(builtins, name)}
     exec_globals: dict[str, Any] = {
-        "__builtins__": safe_builtins_dict,
+        "__builtins__": _safe_builtins(),
         # Math & collections
         "math": __import__("math"),
         "statistics": __import__("statistics"),
@@ -337,7 +356,7 @@ def main() -> None:
 
     runtime_obj = RuntimeShim(runtime_dict)
 
-    local_namespace: dict[str, Any] = {}
+    local_namespace = exec_globals
     try:
         compiled = compile(source, "<authored-operator>", "exec")
         exec(compiled, exec_globals, local_namespace)
