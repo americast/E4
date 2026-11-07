@@ -17,6 +17,7 @@ from .data.submissions import (
     validate_adapter_config,
 )
 from .data.folder import FolderTelemetrySource
+from .bootstrap import LibrarySubmissionError, apply_library_submission, parse_library_submission
 from .engine import DiagnosisEngine, setup
 from .onboarding import (
     normalize_dataset_schema,
@@ -60,6 +61,9 @@ __version__ = "0.2.0"
 
 __all__ = [
     "DiagnosisEngine",
+    "LibrarySubmissionError",
+    "parse_library_submission",
+    "apply_library_submission",
     "prepare_library",
     "normalize_dataset_schema",
     "paper_catalog",

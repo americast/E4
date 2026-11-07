@@ -10,7 +10,7 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Callable, Mapping
 
 from adapters.bank_adapter import BankAdapter
 from adapters.bank_library import (
@@ -76,6 +76,9 @@ class LocalLlamaClient:
         self.usage_complete = True
         self.finish_reasons: list[str] = []
         self.calls: list[dict[str, Any]] = []
+        # Filled by resumable orchestration before each exact request; this is
+        # durable in the same fsynced call record so replay stays request-scoped.
+        self.request_context: dict[str, Any] = {}
 
     @property
     def usage(self) -> dict[str, Any]:
@@ -183,6 +186,7 @@ class LocalLlamaClient:
 
     def _record_call(self, record: dict[str, Any]) -> None:
         """Keep call metadata in memory and durably append each completed call."""
+        record = {**record, "request_context": dict(self.request_context)}
         self.calls.append(record)
         if self.call_journal_path is None:
             return
@@ -220,30 +224,23 @@ def run_benchmark(
     deadline_epoch: float | None = None,
     operator_timeout_seconds: float | None = None,
     operator_memory_limit_mb: int | None = None,
+    library: LibraryManager | None = None,
+    adapter_factory: Callable[[Path], Any] | None = None,
+    resume_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     gt_map = load_ground_truth(ground_truth_path)
     oracle = GroundTruthOracle(labels_by_case=gt_map, top_k=3, max_attempts=max_attempts)
 
-    # Initialize library with Bank baseline playbooks
-    reg = build_bank_registry()
-    lib = LibraryManager(registry=reg)
-    seed_pb = get_bank_seed_playbook()
-    contrast_pb = get_bank_contrast_playbook()
-    lib.add_playbook(
-        Playbook(
-            name=seed_pb["name"],
-            description=seed_pb["description"],
-            dag=seed_pb["dag"],
-        )
-    )
-
-    lib.add_playbook(
-        Playbook(
-            name=contrast_pb["name"],
-            description=contrast_pb["description"],
-            dag=contrast_pb["dag"],
-        )
-    )
+    if library is None:
+        # Preserve legacy defaults for all existing callers.
+        reg = build_bank_registry()
+        lib = LibraryManager(registry=reg)
+        seed_pb = get_bank_seed_playbook()
+        contrast_pb = get_bank_contrast_playbook()
+        lib.add_playbook(Playbook(name=seed_pb["name"], description=seed_pb["description"], dag=seed_pb["dag"]))
+        lib.add_playbook(Playbook(name=contrast_pb["name"], description=contrast_pb["description"], dag=contrast_pb["dag"]))
+    else:
+        lib = library
 
     sandbox_runner = None
     if operator_timeout_seconds is not None or operator_memory_limit_mb is not None:
@@ -260,12 +257,21 @@ def run_benchmark(
     if case_ids is not None:
         if not case_ids:
             raise ValueError("Requested case_ids list is empty")
-        all_case_dirs = [d for d in all_case_dirs if d.name in case_ids]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("Requested case_ids must be unique")
+        by_name = {directory.name: directory for directory in all_case_dirs}
+        missing = [case_id for case_id in case_ids if case_id not in by_name]
+        if missing:
+            raise ValueError(f"Requested case directories are missing: {missing}")
+        all_case_dirs = [by_name[case_id] for case_id in case_ids]
 
     if not all_case_dirs:
         raise ValueError(f"No valid case directories found in {cases_dir}")
 
-    results: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = list(resume_results or [])
+    processed_ids = {
+        row.get("case_id") for row in results if row.get("status") != "not_started"
+    }
     hits = 0
     stage_counts = {"select": 0, "compose": 0, "serve": 0}
     terminal_stage_counts = {"select": 0, "compose": 0, "evolve": 0,
@@ -273,6 +279,8 @@ def run_benchmark(
 
     for case_index, case_dir in enumerate(all_case_dirs):
         cid = case_dir.name
+        if cid in processed_ids:
+            continue
         if deadline_epoch is not None and time.time() >= deadline_epoch:
             for pending in all_case_dirs[case_index:]:
                 results.append({"case_id": pending.name, "status": "not_started",
@@ -288,7 +296,7 @@ def run_benchmark(
         try:
             # The engine/library persists only within this invocation. The
             # three-seed driver invokes this once per five-case shard.
-            adapter = BankAdapter(case_dir)
+            adapter = adapter_factory(case_dir) if adapter_factory is not None else BankAdapter(case_dir)
             diag = engine.diagnose(adapter, case_id=cid)
         except Exception as exc:
             category = classify_case_error(exc, model_client, before_calls)
@@ -363,7 +371,23 @@ def run_benchmark(
         if on_result:
             on_result(results[-1])
 
+    results_by_id: dict[str, dict[str, Any]] = {}
+    for row in results:
+        case_id = row.get("case_id")
+        if case_id in results_by_id:
+            raise ValueError(f"Duplicate benchmark result for case {case_id!r}")
+        results_by_id[case_id] = row
+    results = [results_by_id[cid] for cid in [path.name for path in all_case_dirs] if cid in results_by_id]
     total = len(all_case_dirs)
+    hits = sum(row.get("status") == "confirmed" for row in results)
+    stage_counts = {stage: sum(row.get("status") == "confirmed" and row.get("stage") == stage for row in results)
+                    for stage in ("select", "compose", "serve")}
+    terminal_stage_counts = {
+        stage: sum(row.get("stage") == stage for row in results)
+        for stage in ("select", "compose", "evolve", "serve")
+    }
+    terminal_stage_counts["error"] = sum(row.get("status") == "error" for row in results)
+    terminal_stage_counts["not_started"] = sum(row.get("status") == "not_started" for row in results)
     acc = (hits / total) if total > 0 else 0.0
     stage_prefix_counts = {
         "select": stage_counts["select"],

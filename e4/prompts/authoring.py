@@ -77,6 +77,11 @@ generated from declared parameter metadata; mark a parameter required or provide
 a default before indexing it directly. Optional and nullable parameters need a
 `.get(...)` default or a `None` check. The static `Runtime` protocol currently
 exposes only `dag_depth: int`; do not assume other runtime attributes.
+
+Variadic input ports are read-only `Sequence[DeclaredViewType]` values in the
+typed profile (for example, a variadic `ScoredCandidates` port is a
+`Sequence[ScoredCandidatesView]`). Annotate local references as `Sequence[...]`
+or iterate the input directly; do not assign a variadic input to a `list[...]`.
 """,
             """Coverage and source requirements:
 

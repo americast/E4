@@ -40,6 +40,8 @@ ANNOTATION_ONLY_NAMES = frozenset({
     "ScoredCandidateView", "ScoredCandidatesView", "MetricField", "SpanField",
     "LogField", "SourceField", "Statistic", "RecordType", "SourceTable",
     "Scalar", "Sequence", "Mapping", "Literal", "Optional", "Union",
+    # Native record names are also imported by the typed profile as view aliases.
+    "Window", "EntityRef", "AggregateRow", "ScoredCandidate",
     "ScoredCandidates", "Aggregate", "CandidateSet", "Evidence", "Candidate",
     "JSONValue", "JSONMapping",
 })

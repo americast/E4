@@ -55,8 +55,8 @@ def _type_for(value_type: str, nullable: bool = False) -> str:
         "positive_integer": "int",
         "string_list": "Sequence[str]",
         "boolean": "bool",
-        "object": "Mapping[str, Any]",
-        "array": "Sequence[Any]",
+        "object": "JSONMapping",
+        "array": "Sequence[JSONValue]",
     }
     res = types.get(value_type, "Any")
     return f"{res} | None" if nullable and res != "Any" else res

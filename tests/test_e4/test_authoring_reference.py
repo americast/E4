@@ -34,9 +34,11 @@ from e4.sandbox.views import (
 from e4.types import (
     Aggregate,
     AggregateRow,
+    Evidence,
     EntityRef,
     LogRecord,
     MetricRecord,
+    ScoredCandidate,
     ScoredCandidates,
     Window,
 )
@@ -275,6 +277,159 @@ class AuthoringReferenceTests(unittest.TestCase):
 '''
         with self.assertRaisesRegex(SecurityValidationError, "type annotation only"):
             validate_source(invalid_source)
+
+    def test_native_record_aliases_are_valid_annotations_but_not_runtime_constructors(self) -> None:
+        source = '''def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
+    entity: EntityRef = make_entity_ref("service", "typed-alias")
+    window: Window = make_window("alert", 0, 1)
+    row: AggregateRow = make_aggregate_row(
+        entity, "latency", window, "mean", 2.0, 1,
+        contributing_entities=[entity],
+    )
+    evidence = make_evidence(
+        source="typed-alias",
+        window=row.window,
+        statistic=row.statistic,
+        value=row.value,
+        contributing_entities=[row.entity],
+        support=row.support,
+    )
+    candidate: ScoredCandidate = make_scored_candidate(
+        row.entity, 2.0, evidence=[evidence],
+    )
+    return make_scored_candidates([candidate], scorer="typed_aliases")
+'''
+        self.assertEqual(validate_source(source), None)
+        spec = {
+            "name": "evolved.native_alias_annotations",
+            "authoring_profile": "typed-operator-code-v1",
+            "input_ports": [],
+            "output_type": "ScoredCandidates",
+            "parameters": {},
+            "source": source,
+        }
+        self.assertEqual(check_operator_types(spec)["status"], "passed")
+        operator = OperatorSpec(
+            name="evolved.native_alias_annotations",
+            version="1",
+            inputs=(),
+            output_type="ScoredCandidates",
+            source=source,
+        )
+        result = SubprocessRunner(timeout_seconds=20).run(operator, {}, {}, {})
+        self.assertIsInstance(result, ScoredCandidates)
+        self.assertEqual(result.candidates[0].entity.identifier, "typed-alias")
+
+        for alias, constructor_args in (
+            ("Window", '"alert", 0, 1'),
+            ("EntityRef", '"service", "x"'),
+            ("AggregateRow", 'None, "metric", None, "stat", 1.0, 1'),
+            ("ScoredCandidate", 'None, 1.0'),
+        ):
+            invalid_source = (
+                "def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:\n"
+                f"    value = {alias}({constructor_args})\n"
+                "    return make_scored_candidates([], scorer=\"invalid\")\n"
+            )
+            with self.subTest(alias=alias), self.assertRaisesRegex(SecurityValidationError, "type annotation only"):
+                validate_source(invalid_source)
+
+    def test_object_and_nullable_array_parameters_use_json_aliases_and_execute(self) -> None:
+        source = '''def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
+    settings = params.get("settings")
+    threshold = 1.0
+    if settings is not None:
+        raw_threshold = settings.get("threshold")
+        if isinstance(raw_threshold, (int, float)):
+            threshold = float(raw_threshold)
+
+    labels = params.get("labels")
+    label_count = 0
+    if labels is not None:
+        for label in labels:
+            if isinstance(label, str):
+                label_count += 1
+
+    entity = make_entity_ref("service", "typed-config")
+    value = threshold + float(label_count)
+    evidence = make_evidence(
+        source="typed-config",
+        window=make_window("alert", 0, 1),
+        statistic="typed_parameter_summary",
+        value=value,
+        contributing_entities=[entity],
+        support=1,
+    )
+    candidate = make_scored_candidate(entity, value, evidence=[evidence])
+    return make_scored_candidates([candidate], scorer="typed_config")
+'''
+        profile_spec = {
+            "name": "evolved.typed_config",
+            "authoring_profile": "typed-operator-code-v1",
+            "input_ports": [],
+            "output_type": "ScoredCandidates",
+            "parameters": {
+                "settings": {"type": "object"},
+                "labels": {"type": "array", "nullable": True},
+            },
+            "source": source,
+        }
+        self.assertEqual(check_operator_types(profile_spec)["status"], "passed")
+        operator = OperatorSpec(
+            name="evolved.typed_config",
+            version="1",
+            inputs=(),
+            output_type="ScoredCandidates",
+            source=source,
+        )
+        result = SubprocessRunner(timeout_seconds=20).run(
+            operator,
+            {},
+            {"settings": {"threshold": 3.5}, "labels": ["east", 7, None, "west"]},
+            {},
+        )
+        self.assertEqual(result.candidates[0].score, 5.5)
+        nullable = SubprocessRunner(timeout_seconds=20).run(operator, {}, {"labels": None}, {})
+        self.assertEqual(nullable.candidates[0].score, 1.0)
+
+    def test_variadic_input_is_read_as_sequence_and_runs(self) -> None:
+        source = '''def operator(inputs: Inputs, params: Params, runtime: Runtime) -> Output:
+    score_sets: Sequence[ScoredCandidatesView] = inputs["scores"]
+    candidates: list[ScoredCandidateView] = []
+    for score_set in score_sets:
+        if score_set.status == "ready":
+            candidates.extend(score_set.candidates)
+    if not candidates:
+        return make_scored_candidates(candidates, scorer="sequence_merge", status="abstained")
+    return make_scored_candidates(candidates, scorer="sequence_merge")
+'''
+        proposal = {
+            "name": "evolved.sequence_merge",
+            "authoring_profile": "typed-operator-code-v1",
+            "input_ports": [{"name": "scores", "type": "ScoredCandidates", "variadic": True}],
+            "output_type": "ScoredCandidates",
+            "parameters": {},
+            "source": source,
+        }
+        self.assertEqual(check_operator_types(proposal)["status"], "passed")
+        operator = OperatorSpec(
+            name="evolved.sequence_merge",
+            version="1",
+            inputs=(PortSpec("scores", "ScoredCandidates", variadic=True),),
+            output_type="ScoredCandidates",
+            source=source,
+        )
+        entity = EntityRef("service", "sequence-input")
+        evidence = Evidence("fixture", Window("alert", 0, 1), "mean", 1.0, (entity,), 1)
+        candidate = ScoredCandidate(entity, 1.0, evidence=(evidence,), analysis_family="fixture")
+        score_set = ScoredCandidates((candidate,), scorer="fixture")
+        result = SubprocessRunner(timeout_seconds=20).run(
+            operator,
+            {"scores": (score_set,)},
+            {},
+            {},
+        )
+        self.assertEqual(result.candidates[0].entity.identifier, "sequence-input")
 
     def test_allowed_imports_and_local_helpers_work_but_other_imports_remain_blocked(self) -> None:
         source = '''import math
