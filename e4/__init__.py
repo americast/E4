@@ -19,6 +19,7 @@ from .data.submissions import (
 from .data.folder import FolderTelemetrySource
 from .bootstrap import LibrarySubmissionError, apply_library_submission, parse_library_submission
 from .engine import DiagnosisEngine, setup
+from .clients import ModelClientError, OllamaClient, OpenAIClient
 from .onboarding import (
     normalize_dataset_schema,
     paper_availability,
@@ -61,6 +62,9 @@ __version__ = "0.2.0"
 
 __all__ = [
     "DiagnosisEngine",
+    "OpenAIClient",
+    "OllamaClient",
+    "ModelClientError",
     "LibrarySubmissionError",
     "parse_library_submission",
     "apply_library_submission",

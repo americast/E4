@@ -1,6 +1,6 @@
 # E4
 
-E4 is a Python framework for diagnosing root causes from normalized telemetry. For a new dataset, begin with an adapter and a domain brief. Then prepare either the shipped compatible paper library or a clean-slate library, and use an explicit model client for diagnosis. Prompt export, validation, and library preparation are deterministic; they do not call a model.
+E4 is a Python framework for diagnosing root causes from normalized telemetry. For a new dataset, begin with an adapter and a domain brief. Then prepare either the shipped compatible paper library or a clean-slate library, and use an explicit model client for diagnosis. Prompt export, validation, and library preparation are deterministic; model requests happen only when your code calls the selected client.
 
 ## Install
 
@@ -10,6 +10,70 @@ Requires Python 3.10 or newer.
 python3.10 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e .
+```
+
+## Choose a model client
+
+E4 includes lightweight clients for OpenAI's Responses API and a local Ollama server. Both implement `complete(prompt: str) -> str`; no provider SDK is required by these clients. Choose a JSON-capable model that fits your budget and hardware.
+
+### OpenAI API
+
+Create an API key in the [OpenAI API dashboard](https://platform.openai.com/api-keys), then keep it in an environment variable. Replace the model placeholder with a Responses API model available to your account:
+
+```bash
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_MODEL="your-model-id"
+```
+
+```python
+import os
+from e4 import OpenAIClient
+
+model_client = OpenAIClient(model=os.environ["OPENAI_MODEL"])
+```
+
+The client reads `OPENAI_API_KEY` if `api_key` is omitted. It uses JSON mode by default; E4 still validates each response against its own contract. See the [OpenAI API quickstart](https://developers.openai.com/api/docs/quickstart), [Responses API reference](https://developers.openai.com/api/reference/resources/responses/methods/create), and [JSON mode/Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses).
+
+### Local Ollama
+
+On Linux, follow [Ollama's install instructions](https://docs.ollama.com/linux). On macOS or Windows, use the [Ollama download page](https://ollama.com/download). Start `ollama serve` only if the local service is not already running. Choose a model that fits the machine's memory; this example may be too large for some systems:
+
+```bash
+# Linux install (see official instructions for other platforms)
+curl -fsSL https://ollama.com/install.sh | sh
+```
+
+If the Ollama service is not already running, start it in a separate terminal and leave it running there:
+
+```bash
+ollama serve
+```
+
+Then prepare a local model:
+
+```bash
+export OLLAMA_MODEL="gemma4:31b"
+ollama pull "$OLLAMA_MODEL"
+ollama list
+ollama ps
+curl -fsS http://localhost:11434/api/tags
+```
+
+```python
+import os
+from e4 import OllamaClient
+
+model_client = OllamaClient(model=os.environ["OLLAMA_MODEL"])
+```
+
+The default host is `http://localhost:11434`; set `OLLAMA_HOST` to use another endpoint. Defaults are `context_tokens=32768` and `max_output_tokens=8192`. Override those constructor arguments to match available memory and the prompt/output size; `context_tokens` must exceed `max_output_tokens`. The local API requires no key; see [Ollama authentication](https://docs.ollama.com/api/authentication).
+
+### Smoke-check
+
+This calls the selected model; an OpenAI request may incur charges. The repository tests use mock clients.
+
+```python
+print(model_client.complete('Return exactly one JSON object: {"ok":true}'))
 ```
 
 ## 1. Describe the task and data
@@ -28,10 +92,7 @@ Keep information sources separate:
 - `metadata.json`: public schema or source facts that the adapter author may rely on.
 - `samples.txt`: small sanitized example rows, if available.
 
-The packaged system prompts supply the generic E4 contracts. Your `domain.md`, `metadata.json`, and samples supply the domain-specific facts appended to them.
-
-Do not put scored labels, known answers, or incident-specific hints in these inputs.
-For a filled domain-brief example, see [bank_domain_brief.md](e4/prompts/resources/bank_domain_brief.md); generic prompts do not load it unless Bank is selected explicitly.
+The packaged system prompts supply the generic E4 contracts; `domain.md`, `metadata.json`, and samples provide your domain-specific facts. Do not include scored labels, known answers, or incident-specific hints. For a filled brief example, see [bank_domain_brief.md](e4/prompts/resources/bank_domain_brief.md); generic prompts do not load it unless Bank is selected explicitly.
 
 ## 2. Develop and validate the adapter
 
@@ -45,10 +106,19 @@ e4 adapter-prompt samples.txt \
 e4 adapter-template > adapter_template.py
 ```
 
-Give `adapter_prompt.md` and `adapter_template.py` to your chosen coding model outside E4. The response must be strict JSON with either:
+Use the selected `model_client` to generate the adapter response. It must be strict JSON with either:
 
 - `status: "ready"`, a complete Python module in `source`, and a `config_schema`; or
 - `status: "needs_input"`, with typed `required_fields` and reasons.
+
+For example, in the same Python session as `model_client`:
+
+```python
+from pathlib import Path
+
+adapter_response = model_client.complete(Path("adapter_prompt.md").read_text(encoding="utf-8"))
+Path("adapter_response.json").write_text(adapter_response, encoding="utf-8")
+```
 
 Save the complete model response as `adapter_response.json`. Fill `adapter_config.json` with runtime values matching its generated `config_schema`, then validate without executing the submitted source:
 
@@ -90,7 +160,7 @@ e4 initialization-prompt domain.md --schema schema.json \
   --clean-slate > clean_slate_prompt.md
 ```
 
-These are prompt exports only. Send the selected prompt to your model client and save its JSON response as `library_submission.json`. Continue with the `schema` obtained from the adapter above to validate and apply it:
+These commands export prompts; they do not call a model. Use the same `model_client` to generate the selected submission and pass its JSON response to the deterministic validator:
 
 ```python
 from pathlib import Path
@@ -99,8 +169,10 @@ from e4 import apply_library_submission, prepare_library
 
 mode = "paper"  # choose "clean_slate" for an empty executable starting point
 base = prepare_library(schema, mode=mode)
-response = Path("library_submission.json").read_text(encoding="utf-8")
-prepared = apply_library_submission(response, base, schema)
+prompt_path = "bootstrap_prompt.md" if mode == "paper" else "clean_slate_prompt.md"
+submission = model_client.complete(Path(prompt_path).read_text(encoding="utf-8"))
+Path("library_submission.json").write_text(submission, encoding="utf-8")
+prepared = apply_library_submission(submission, base, schema)
 prepared.save_to_dir("prepared_library")
 ```
 
@@ -108,7 +180,7 @@ In paper mode, a response can say `unchanged`, `blocked`, or `additions`; `uncha
 
 `unchanged` returns a cloned prepared library. `blocked` stops preparation with a structured `LibrarySubmissionError`.
 
-In Python, `prepare_library()` and `render_initialization_prompt()` make no model calls. The package does not run adapter generation or pre-run bootstrap automatically. The application supplies the model client, if needed.
+In Python, `prepare_library()` and `render_initialization_prompt()` make no model calls. The package does not run adapter generation or pre-run bootstrap automatically. Your code calls `model_client.complete()` for adapter, bootstrap, and runtime prompts; reuse the same client if appropriate.
 
 Paper mode uses a partial reconstruction of the reported starter families; see [PAPER_DEFAULT_LIBRARY.md](docs/PAPER_DEFAULT_LIBRARY.md) for implemented capabilities and explicit gaps.
 
@@ -125,8 +197,6 @@ Paper mode uses a partial reconstruction of the reported starter families; see [
 | Typed source contract and examples | [`e4/prompts/authoring.py`](e4/prompts/authoring.py), [`e4/prompts/examples.py`](e4/prompts/examples.py) |
 | Runtime retrieval/composition/authoring | [`e4/prompts/templates.py`](e4/prompts/templates.py): `format_select_prompt`, `format_compose_prompt`, `format_evolve_prompt`, and `format_serve_prompt` |
 | Structured library submission | [`e4/bootstrap.py`](e4/bootstrap.py): `parse_library_submission` and `apply_library_submission` |
-
-The adapter prompt is first. Initialization then selects paper defaults or an empty clean-slate library. Runtime SELECT, COMPOSE, EVOLVE, and the separate SERVE composition are defined by the current controller and templates.
 
 ## 4. Run diagnosis
 
@@ -145,14 +215,3 @@ print(result.status, result.stage, result.answer)
 ```
 
 `BudgetStopPolicy` limits attempts and returns supported candidates as unverified when it stops; it does not certify correctness. `GroundTruthOracle` is for host-side evaluation only. Do not include its labels in prompts.
-
-## Focused checks
-
-```bash
-.venv/bin/python -m unittest \
-  tests.test_e4.test_adapter_submissions \
-  tests.test_e4.test_library_submissions \
-  tests.test_e4.test_paper_defaults
-```
-
-For a code-reading route through the adapter, library, controller, and replay boundaries, see [CODE_REVIEW_GUIDE.md](docs/CODE_REVIEW_GUIDE.md).
