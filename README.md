@@ -215,3 +215,21 @@ print(result.status, result.stage, result.answer)
 ```
 
 `BudgetStopPolicy` limits attempts and returns supported candidates as unverified when it stops; it does not certify correctness. `GroundTruthOracle` is for host-side evaluation only. Do not include its labels in prompts.
+
+## 5. Citing our work
+
+If you use E4 in your research, please cite [Agentic RCA for Internet-Scale Services Using Constrained Creativity](https://arxiv.org/abs/2610.08622).
+
+```bibtex
+@misc{sinha2026e4,
+  title         = {Agentic {RCA} for Internet-Scale Services Using Constrained Creativity},
+  author        = {Sayan Sinha and Vipul Harsh and B. Aditya Prakash
+                   and Vyas Sekar and Hui Zhang},
+  year          = {2026},
+  eprint        = {2610.08622},
+  archivePrefix = {arXiv},
+  primaryClass  = {cs.NI},
+  doi           = {10.48550/arXiv.2610.08622},
+  url           = {https://arxiv.org/abs/2610.08622}
+}
+```
