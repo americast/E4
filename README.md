@@ -233,3 +233,7 @@ If you use E4 in your research, please cite [Agentic RCA for Internet-Scale Serv
   url           = {https://arxiv.org/abs/2610.08622}
 }
 ```
+
+## 6. License
+
+E4 project code is licensed under [Apache License 2.0](LICENSE); see [NOTICE](NOTICE). External datasets, model weights, and provider services are not relicensed by this project and retain their own terms.
